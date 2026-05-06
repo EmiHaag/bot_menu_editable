@@ -72,7 +72,7 @@ class Dashboard {
                     <td style="max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${node.message}</td>
                     <td>
                         <div style="display: flex; gap: 5px;">
-                            <button type="button" onclick="openEditModal('${node.rowIndex}', '${node.id}', '${node.parentId}', '${node.trigger}', '${node.title}', \`${node.message.replace(/'/g, "\\'").replace(/\n/g, "\\n")}\`)" class="btn-action btn-orange">Editar</button>
+                            <button type="button" onclick="openEditModal('${node.rowIndex}', '${node.id}', '${node.parentId}', '${node.trigger}', '${node.title}', \`${node.message.replace(/'/g, "").replace(/"/g, '').replace(/\n/g, "\\n")}\`)" class="btn-action btn-orange">Editar</button>
                             <button type="button" onclick="openAddModal('${node.id}')" class="btn-action btn-blue">+ Hijo</button>
                             <button type="button" onclick="confirmDelete('${node.rowIndex}')" class="btn-action btn-red">Borrar</button>
                         </div>
