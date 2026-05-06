@@ -46,12 +46,16 @@ class MenuController {
                 await this.sendMenu(sock, jid, selectedOption.id);
             } else {
                 // Final message with navigation options
-                let finalMessage = `${selectedOption.message}\n\n`;
-                finalMessage += `_Escribe *9* para volver atrás._\n`;
+                let finalMessage = `${selectedOption.message}
+
+`;
+                finalMessage += `_Escribe *9* para volver atrás._
+`;
                 finalMessage += `_Escribe *0* para volver al inicio._`;
                 
-                await this.sendPresenceTyping(sock, jid);
+                await this.delay(2000); // Pausa antes de responder
                 await sock.sendMessage(jid, { text: finalMessage });
+                await this.sendPresenceTyping(sock, jid); // Simula escritura DESPUÉS de enviar el mensaje
                 
                 // Guardar el estado actual incluso si es un mensaje final
                 this.stateService.setUserState(jid, selectedOption.id);
@@ -61,9 +65,10 @@ class MenuController {
             if (currentStateId === 'root' && !selectedOption) {
                  await this.sendMenu(sock, jid, 'root');
             } else {
-                await this.sendPresenceTyping(sock, jid);
+                await this.delay(2000); // Add delay before sending message
                 await sock.sendMessage(jid, { text: 'Opción no válida.' });
-                await this.sendMenu(sock, jid, currentStateId);
+                await this.sendPresenceTyping(sock, jid); // Simulate typing AFTER sending message
+                await this.sendMenu(sock, jid, currentStateId); // Re-show menu options
             }
         }
     }
@@ -78,20 +83,27 @@ class MenuController {
             currentNode = { message: 'Hola, bienvenido. Elige una opción:' };
         }
 
-        let menuText = `${currentNode.message}\n\n`;
+        let menuText = `${currentNode.message}
+
+`;
         nodes.forEach(node => {
-            menuText += `*${node.trigger}*. ${node.title}\n`;
+            menuText += `*${node.trigger}*. ${node.title}
+`;
         });
 
         // Consistent Navigation Footer
-        menuText += `\n---\n`;
+        menuText += `
+---
+`;
         if (parentId !== 'root') {
-            menuText += `*9*. Volver atrás\n`;
+            menuText += `*9*. Volver atrás
+`;
         }
         menuText += `*0*. Menú Principal`;
 
-        await this.sendPresenceTyping(sock, jid);
+        await this.delay(2000); // Pausa antes de responder
         await sock.sendMessage(jid, { text: menuText });
+        await this.sendPresenceTyping(sock, jid); // Simula escritura DESPUÉS de enviar el mensaje
         this.stateService.setUserState(jid, parentId);
     }
 }

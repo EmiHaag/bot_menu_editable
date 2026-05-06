@@ -1,7 +1,9 @@
 const express = require('express');
 const bodyParser = require('body-parser');
 const GoogleSheetsService = require('../services/googleSheetsService');
-const { google } = require('googleapis');
+const {
+    google
+} = require('googleapis');
 const botsConfig = require('../config/bots');
 const app = express();
 const port = 3000;
@@ -18,7 +20,9 @@ class Dashboard {
         });
 
         // Aplicar middleware de parseo de cuerpo
-        app.use(bodyParser.urlencoded({ extended: true }));
+        app.use(bodyParser.urlencoded({
+            extended: true
+        }));
         app.use(bodyParser.json());
     }
 
@@ -26,27 +30,36 @@ class Dashboard {
         // Middleware to get the correct service based on botId query param
         const getService = (req) => {
             const botId = req.query.botId || (req.body && req.body.botId) || botsConfig[0].id;
-            return { service: this.services[botId], botId };
+            return {
+                service: this.services[botId],
+                botId
+            };
         };
 
         // Ruta para refrescar caché
         app.get('/refresh', (req, res) => {
-            const { service, botId } = getService(req);
+            const {
+                service,
+                botId
+            } = getService(req);
             if (service) service.clearCache();
             res.redirect(`/?botId=${botId}`);
         });
 
         // Vista Principal
         app.get('/', async (req, res) => {
-            const { service, botId } = getService(req);
-            
+            const {
+                service,
+                botId
+            } = getService(req);
+
             if (!service) {
                 return res.status(404).send('Bot no encontrado.');
             }
 
             const menuData = await service.getMenuData();
-            
-            let botOptions = botsConfig.map(bot => 
+
+            let botOptions = botsConfig.map(bot =>
                 `<option value="${bot.id}" ${bot.id === botId ? 'selected' : ''}>${bot.id}</option>`
             ).join('');
 
@@ -306,10 +319,16 @@ class Dashboard {
 
         // Ruta para Borrar
         app.get('/delete/:index', async (req, res) => {
-            const { service, botId } = getService(req);
+            const {
+                service,
+                botId
+            } = getService(req);
             const index = req.params.index;
             try {
-                const sheets = google.sheets({ version: 'v4', auth: service.auth });
+                const sheets = google.sheets({
+                    version: 'v4',
+                    auth: service.auth
+                });
                 await sheets.spreadsheets.values.clear({
                     spreadsheetId: service.spreadsheetId,
                     range: `${service.range.split('!')[0]}!A${index}:F${index}`,
@@ -324,17 +343,32 @@ class Dashboard {
 
         // Ruta para Guardar
         app.post('/save', async (req, res) => {
-            const { service, botId } = getService(req);
-            const { index, id, parentId, trigger, title, message } = req.body;
-            
+            const {
+                service,
+                botId
+            } = getService(req);
+            const {
+                index,
+                id,
+                parentId,
+                trigger,
+                title,
+                message
+            } = req.body;
+
             try {
-                const sheets = google.sheets({ version: 'v4', auth: service.auth });
+                const sheets = google.sheets({
+                    version: 'v4',
+                    auth: service.auth
+                });
                 await sheets.spreadsheets.values.update({
                     spreadsheetId: service.spreadsheetId,
                     range: `${service.range.split('!')[0]}!A${index}:F${index}`,
                     valueInputOption: 'USER_ENTERED',
                     requestBody: {
-                        values: [[botId, id || '', parentId || '', title || '', message || '', trigger || '']]
+                        values: [
+                            [botId, id || '', parentId || '', title || '', message || '', trigger || '']
+                        ]
                     }
                 });
                 service.clearCache();
@@ -347,16 +381,28 @@ class Dashboard {
 
         // Ruta para Agregar
         app.post('/add', async (req, res) => {
-            const { service, botId } = getService(req);
-            const { id, parentId, trigger, title, message } = req.body;
-            
+            const {
+                service,
+                botId
+            } = getService(req);
+            const {
+                id,
+                parentId,
+                trigger,
+                title,
+                message
+            } = req.body;
+
             try {
-                const sheets = google.sheets({ version: 'v4', auth: service.auth });
+                const sheets = google.sheets({
+                    version: 'v4',
+                    auth: service.auth
+                });
                 const sheetName = service.range.split('!')[0];
-                
+
                 const response = await sheets.spreadsheets.values.get({
                     spreadsheetId: service.spreadsheetId,
-                    range: `${sheetName}!A:A`, 
+                    range: `${sheetName}!A:A`,
                 });
 
                 const rows = response.data.values || [];
@@ -378,7 +424,9 @@ class Dashboard {
                     range: `${sheetName}!A${nextRow}:F${nextRow}`,
                     valueInputOption: 'USER_ENTERED',
                     requestBody: {
-                        values: [[botId, id || '', parentId || '', title || '', message || '', trigger || '']]
+                        values: [
+                            [botId, id || '', parentId || '', title || '', message || '', trigger || '']
+                        ]
                     }
                 });
 

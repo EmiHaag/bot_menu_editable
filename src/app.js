@@ -16,7 +16,7 @@ const botsConfig = require('./config/bots');
 async function startBot(botConfig) {
     const { id, spreadsheetId, credentials, authFolder } = botConfig;
     
-    console.log(`Starting bot: ${id}`);
+    console.log('Starting bot: ' + id);
     
     const googleSheetsService = new GoogleSheetsService({
         clientId: id,
