@@ -17,7 +17,12 @@ const dashboard = require('./utils/dashboard');
 const botsConfig = require('./config/bots');
 
 const app = express();
-const port = process.env.PORT || 3000;
+const port = process.env.PORT || 8000; // Koyeb suele usar 8000 por defecto
+
+// Koyeb Health Check endpoint
+app.get('/health', (req, res) => {
+    res.status(200).send('OK');
+});
 
 // Configuración de Basic Auth
 const adminUser = process.env.ADMIN_USER || 'admin';
