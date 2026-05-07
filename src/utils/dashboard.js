@@ -5,8 +5,6 @@ const {
     google
 } = require('googleapis');
 const botsConfig = require('../config/bots');
-const app = express();
-const port = 3000;
 
 class Dashboard {
     constructor() {
@@ -18,15 +16,17 @@ class Dashboard {
                 credentials: bot.credentials
             });
         });
-
-        // Aplicar middleware de parseo de cuerpo
-        app.use(bodyParser.urlencoded({
-            extended: true
-        }));
-        app.use(bodyParser.json());
     }
 
-    start() {
+    setupRoutes() {
+        const router = express.Router();
+
+        // Aplicar middleware de parseo de cuerpo al router
+        router.use(bodyParser.urlencoded({
+            extended: true
+        }));
+        router.use(bodyParser.json());
+
         // Middleware to get the correct service based on botId query param
         const getService = (req) => {
             const botId = req.query.botId || (req.body && req.body.botId) || botsConfig[0].id;
@@ -37,7 +37,7 @@ class Dashboard {
         };
 
         // Ruta para refrescar caché
-        app.get('/refresh', (req, res) => {
+        router.get('/refresh', (req, res) => {
             const {
                 service,
                 botId
@@ -47,7 +47,7 @@ class Dashboard {
         });
 
         // Vista Principal
-        app.get('/', async (req, res) => {
+        router.get('/', async (req, res) => {
             const {
                 service,
                 botId
@@ -318,7 +318,7 @@ class Dashboard {
         });
 
         // Ruta para Borrar
-        app.get('/delete/:index', async (req, res) => {
+        router.get('/delete/:index', async (req, res) => {
             const {
                 service,
                 botId
@@ -342,7 +342,7 @@ class Dashboard {
         });
 
         // Ruta para Guardar
-        app.post('/save', async (req, res) => {
+        router.post('/save', async (req, res) => {
             const {
                 service,
                 botId
@@ -380,7 +380,7 @@ class Dashboard {
         });
 
         // Ruta para Agregar
-        app.post('/add', async (req, res) => {
+        router.post('/add', async (req, res) => {
             const {
                 service,
                 botId
@@ -438,9 +438,7 @@ class Dashboard {
             }
         });
 
-        app.listen(port, () => {
-            console.log(`📊 Dashboard editable en: http://localhost:${port}`);
-        });
+        return router;
     }
 }
 
