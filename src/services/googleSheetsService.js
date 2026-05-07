@@ -53,13 +53,19 @@ class GoogleSheetsService {
                 rowIndex: index + 2 
             }));
 
+            console.log(`[GoogleSheetsService] Filtering data for clientId: "${this.clientId}"`);
+            
             // Filtramos por CLIENT_ID
-            // Si el clientId es 'default', permitimos también nodos que no tengan ID_client asignado
             const filteredMenu = allMenu.filter(node => {
-                const isDirectMatch = node.idClient === this.clientId;
+                const isDirectMatch = String(node.idClient).trim() === String(this.clientId).trim();
                 const isDefaultFallback = this.clientId === 'default' && (!node.idClient || node.idClient === '');
+                
+                if (isDirectMatch) console.log(`[GoogleSheetsService] Match found for node ID: ${node.id}`);
+                
                 return isDirectMatch || isDefaultFallback;
             });
+
+            console.log(`[GoogleSheetsService] Found ${filteredMenu.length} matches out of ${allMenu.length} total rows.`);
 
             cache.set(cacheKey, filteredMenu);
             return filteredMenu;

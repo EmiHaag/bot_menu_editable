@@ -1,47 +1,68 @@
 const express = require('express');
 const bodyParser = require('body-parser');
 const GoogleSheetsService = require('../services/googleSheetsService');
+const userService = require('../services/userService');
 const {
     google
 } = require('googleapis');
-const botsConfig = require('../config/bots');
 
 class Dashboard {
     constructor() {
         this.services = {};
-        botsConfig.forEach(bot => {
-            this.services[bot.id] = new GoogleSheetsService({
-                clientId: bot.id,
-                spreadsheetId: bot.spreadsheetId,
-                credentials: bot.credentials
+    }
+
+    async initService(botId) {
+        if (!this.services[botId]) {
+            this.services[botId] = new GoogleSheetsService({
+                clientId: botId,
+                spreadsheetId: process.env.SPREADSHEET_ID,
+                credentials: process.env.CREDENTIALS_JSON
             });
-        });
+        }
+        return this.services[botId];
     }
 
     setupRoutes() {
         const router = express.Router();
 
-        // Aplicar middleware de parseo de cuerpo al router
         router.use(bodyParser.urlencoded({
             extended: true
         }));
         router.use(bodyParser.json());
 
-        // Middleware to get the correct service based on botId query param
-        const getService = (req) => {
-            const botId = req.query.botId || (req.body && req.body.botId) || botsConfig[0].id;
+        // Middleware to get the correct service based on logged user and query param
+        const getServiceInfo = async (req) => {
+            const loggedUser = req.user;
+            let botId = req.query.botId || (req.body && req.body.botId);
+
+            console.log(`[Dashboard] Request from user: "${loggedUser.user}" (idCliente: "${loggedUser.idCliente}")`);
+            console.log(`[Dashboard] Requested botId: "${botId}"`);
+
+            // Si no es admin, forzar su propio botId
+            if (loggedUser.idCliente !== 'admin') {
+                botId = loggedUser.idCliente;
+                console.log(`[Dashboard] Non-admin user detected. Overriding botId to: "${botId}"`);
+            } else if (!botId) {
+                // Si es admin y no hay botId en query, buscar el primero disponible
+                const activeClients = await userService.getActiveClients();
+                botId = activeClients.length > 0 ? activeClients[0].idCliente : 'default';
+                console.log(`[Dashboard] Admin user without botId. Defaulting to: "${botId}"`);
+            }
+
+            const service = await this.initService(botId);
             return {
-                service: this.services[botId],
-                botId
+                service,
+                botId,
+                isAdmin: loggedUser.idCliente === 'admin'
             };
         };
 
         // Ruta para refrescar caché
-        router.get('/refresh', (req, res) => {
+        router.get('/refresh', async (req, res) => {
             const {
                 service,
                 botId
-            } = getService(req);
+            } = await getServiceInfo(req);
             if (service) service.clearCache();
             res.redirect(`/?botId=${botId}`);
         });
@@ -50,18 +71,32 @@ class Dashboard {
         router.get('/', async (req, res) => {
             const {
                 service,
-                botId
-            } = getService(req);
+                botId,
+                isAdmin
+            } = await getServiceInfo(req);
 
             if (!service) {
                 return res.status(404).send('Bot no encontrado.');
             }
 
             const menuData = await service.getMenuData();
+            const activeClients = await userService.getActiveClients();
 
-            let botOptions = botsConfig.map(bot =>
-                `<option value="${bot.id}" ${bot.id === botId ? 'selected' : ''}>${bot.id}</option>`
-            ).join('');
+            let botSelector = '';
+            if (isAdmin) {
+                let botOptions = activeClients.map(client =>
+                    `<option value="${client.idCliente}" ${client.idCliente === botId ? 'selected' : ''}>${client.nombreCliente} (${client.idCliente})</option>`
+                ).join('');
+                
+                botSelector = `
+                    <label>Bot:</label>
+                    <select onchange="window.location.href='/?botId=' + this.value">
+                        ${botOptions}
+                    </select>
+                `;
+            } else {
+                botSelector = `<span style="background: #e9ecef; padding: 5px 10px; border-radius: 5px; font-weight: bold; color: #495057;">Cliente: ${req.user.nombreCliente}</span>`;
+            }
 
             let rowsHtml = menuData.map((node) => `
                 <tr>
@@ -83,7 +118,7 @@ class Dashboard {
             res.send(`
                 <html>
                 <head>
-                    <title>Editor de Bot - Cliente: ${botId}</title>
+                    <title>Editor de Bot - ${botId}</title>
                     <style>
                         body { font-family: sans-serif; margin: 40px; background: #f4f4f9; }
                         table { width: 100%; border-collapse: collapse; background: white; margin-top: 20px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
@@ -126,13 +161,11 @@ class Dashboard {
                     <div class="header">
                         <h1>Editor de Menú WhatsApp</h1>
                         <div class="toolbar">
-                            <label>Bot:</label>
-                            <select onchange="window.location.href='/?botId=' + this.value">
-                                ${botOptions}
-                            </select>
-                            <button onclick="showVisual()" class="btn btn-purple">Visualizar Estructura</button>
-                            <a href="/refresh?botId=${botId}" class="btn btn-orange">Refrescar Datos</a>
-                            <a href="https://docs.google.com/spreadsheets/d/${service.spreadsheetId}" target="_blank" class="btn btn-blue">Abrir Sheet</a>
+                            ${botSelector}
+                            <button onclick="showVisual()" class="btn btn-purple">Visualizar</button>
+                            <a href="/qr" class="btn btn-green">WhatsApp QR</a>
+                            <a href="/refresh?botId=${botId}" class="btn btn-orange">Refrescar</a>
+                            ${isAdmin ? `<a href="https://docs.google.com/spreadsheets/d/${service.spreadsheetId}" target="_blank" class="btn btn-blue">Abrir Sheet</a>` : ''}
                         </div>
                     </div>
                     
@@ -156,7 +189,7 @@ class Dashboard {
                     <div id="visualModal" class="modal">
                         <div class="modal-content" style="width: 80%; max-height: 80%; overflow-y: auto;">
                             <span onclick="closeModal('visualModal')" style="float:right; cursor:pointer; font-size:24px;">&times;</span>
-                            <h2>Estructura Jerárquica del Bot</h2>
+                            <h2>Estructura Jerárquica</h2>
                             <div class="tree" id="treeContainer"></div>
                         </div>
                     </div>
@@ -322,7 +355,7 @@ class Dashboard {
             const {
                 service,
                 botId
-            } = getService(req);
+            } = await getServiceInfo(req);
             const index = req.params.index;
             try {
                 const sheets = google.sheets({
@@ -346,7 +379,7 @@ class Dashboard {
             const {
                 service,
                 botId
-            } = getService(req);
+            } = await getServiceInfo(req);
             const {
                 index,
                 id,
@@ -384,7 +417,7 @@ class Dashboard {
             const {
                 service,
                 botId
-            } = getService(req);
+            } = await getServiceInfo(req);
             const {
                 id,
                 parentId,

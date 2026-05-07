@@ -14,25 +14,45 @@ const GoogleSheetsService = require('./services/googleSheetsService');
 const StateService = require('./services/stateService');
 const MenuController = require('./controllers/menuController');
 const dashboard = require('./utils/dashboard');
-const botsConfig = require('./config/bots');
+const userService = require('./services/userService');
 
 const app = express();
-const port = process.env.PORT || 8000; // Koyeb suele usar 8000 por defecto
+const port = process.env.PORT || 8000;
 
 // Koyeb Health Check endpoint
 app.get('/health', (req, res) => {
     res.status(200).send('OK');
 });
 
-// Configuración de Basic Auth
-const adminUser = process.env.ADMIN_USER || 'admin';
-const adminPass = process.env.ADMIN_PASS || 'admin';
-
+// Configuración de Basic Auth Dinámico
 app.use(basicAuth({
-    users: { [adminUser]: adminPass },
+    authorizer: async (username, password, cb) => {
+        try {
+            const user = await userService.getUserByUsername(username);
+            if (user && user.activo && basicAuth.safeCompare(password, user.password)) {
+                return cb(null, true);
+            }
+            return cb(null, false);
+        } catch (error) {
+            console.error('Auth Error:', error);
+            return cb(null, false);
+        }
+    },
+    authorizeAsync: true,
     challenge: true,
     realm: 'Bot Menu Editor',
 }));
+
+// Middleware para inyectar el usuario en req
+app.use(async (req, res, next) => {
+    const authHeader = req.headers.authorization;
+    if (authHeader) {
+        const credentials = Buffer.from(authHeader.split(' ')[1], 'base64').toString().split(':');
+        const username = credentials[0];
+        req.user = await userService.getUserByUsername(username);
+    }
+    next();
+});
 
 const botQRs = {}; // Object to store QR codes for each bot
 
@@ -59,10 +79,10 @@ async function startBot(botConfig) {
 
         const sock = makeWASocket({
             version,
-            logger: pino({ level: 'error' }), // Reducimos nivel de log para evitar ruido
+            logger: pino({ level: 'error' }),
             auth: state,
             browser: ['Bot Menu', 'Chrome', '1.0.0'],
-            printQRInTerminal: false // Ya lo imprimimos nosotros
+            printQRInTerminal: false
         });
 
         sock.ev.on('connection.update', async (update) => {
@@ -139,6 +159,8 @@ async function startBot(botConfig) {
 async function main() {
     // Express route to serve QR codes
     app.get('/qr', (req, res) => {
+        const loggedUser = req.user;
+        
         let html = `
         <html>
             <head>
@@ -168,9 +190,14 @@ async function main() {
                 <div class="container">
         `;
 
-        const bots = Object.entries(botQRs);
+        // Filtrar bots según permisos
+        const bots = Object.entries(botQRs).filter(([id]) => {
+            if (loggedUser.idCliente === 'admin') return true;
+            return id === loggedUser.idCliente;
+        });
+
         if (bots.length === 0) {
-            html += '<p>No bots initialized yet.</p>';
+            html += '<p>No bots initialized for your account.</p>';
         }
 
         for (const [id, data] of bots) {
@@ -215,8 +242,17 @@ async function main() {
         console.log(`📱 QR WhatsApp: http://localhost:${port}/qr`);
     });
 
-    for (const botConfig of botsConfig) {
-        await startBot(botConfig);
+    // Iniciar bots dinámicamente desde Sheets
+    const activeClients = await userService.getActiveClients();
+    console.log(`[System] Found ${activeClients.length} active clients. Starting bots...`);
+
+    for (const client of activeClients) {
+        await startBot({
+            id: client.idCliente,
+            spreadsheetId: process.env.SPREADSHEET_ID,
+            credentials: process.env.CREDENTIALS_JSON,
+            authFolder: `auth_info_${client.idCliente}`
+        });
     }
 }
 
