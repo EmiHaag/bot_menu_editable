@@ -9,9 +9,10 @@ class MenuController {
     }
 
     async sendPresenceTyping(sock, jid) {
-        await sock.sendPresenceUpdate('composing', jid);
-        await this.delay(2000); // 2 segundos de simulación
         await sock.sendPresenceUpdate('paused', jid);
+        await this.delay(process.env.TIEMPO_ESPERA_RESPUESTA); //  segundos adicionales de espera antes de enviar
+        await sock.sendPresenceUpdate('composing', jid);
+        await this.delay(process.env.TIEMPO_BOT_ESTA_ESCRIBIENDO); //segundos de simulación de escritura
     }
 
     async handleIncomingMessage(sock, jid, text) {
@@ -41,7 +42,7 @@ class MenuController {
 
         if (selectedOption) {
             const subOptions = await this.googleSheetsService.getNodesByParent(selectedOption.id);
-            
+
             if (subOptions.length > 0) {
                 await this.sendMenu(sock, jid, selectedOption.id);
             } else {
@@ -52,22 +53,24 @@ class MenuController {
                 finalMessage += `_Escribe *9* para volver atrás._
 `;
                 finalMessage += `_Escribe *0* para volver al inicio._`;
-                
-                await this.delay(2000); // Pausa antes de responder
-                await sock.sendMessage(jid, { text: finalMessage });
-                await this.sendPresenceTyping(sock, jid); // Simula escritura DESPUÉS de enviar el mensaje
-                
+
+                await this.sendPresenceTyping(sock, jid); // Escritura + Espera antes de enviar
+                await sock.sendMessage(jid, {
+                    text: finalMessage
+                });
+
                 // Guardar el estado actual incluso si es un mensaje final
                 this.stateService.setUserState(jid, selectedOption.id);
             }
         } else {
             // Invalid input or first interaction
             if (currentStateId === 'root' && !selectedOption) {
-                 await this.sendMenu(sock, jid, 'root');
+                await this.sendMenu(sock, jid, 'root');
             } else {
-                await this.delay(2000); // Add delay before sending message
-                await sock.sendMessage(jid, { text: 'Opción no válida.' });
-                await this.sendPresenceTyping(sock, jid); // Simulate typing AFTER sending message
+                await this.sendPresenceTyping(sock, jid); // Escritura + Espera antes de enviar
+                await sock.sendMessage(jid, {
+                    text: 'Opción no válida.'
+                });
                 await this.sendMenu(sock, jid, currentStateId); // Re-show menu options
             }
         }
@@ -75,12 +78,14 @@ class MenuController {
 
     async sendMenu(sock, jid, parentId) {
         const nodes = await this.googleSheetsService.getNodesByParent(parentId);
-        
+
         // Try to find a node with ID 'root' for the main greeting, else use default
         let currentNode = await this.googleSheetsService.getNodeById(parentId);
-        
+
         if (parentId === 'root' && !currentNode) {
-            currentNode = { message: 'Hola, bienvenido. Elige una opción:' };
+            currentNode = {
+                message: 'Hola, bienvenido. Elige una opción:'
+            };
         }
 
         let menuText = `${currentNode.message}
@@ -101,9 +106,10 @@ class MenuController {
         }
         menuText += `*0*. Menú Principal`;
 
-        await this.delay(2000); // Pausa antes de responder
-        await sock.sendMessage(jid, { text: menuText });
-        await this.sendPresenceTyping(sock, jid); // Simula escritura DESPUÉS de enviar el mensaje
+        await this.sendPresenceTyping(sock, jid); // Escritura + Espera antes de enviar
+        await sock.sendMessage(jid, {
+            text: menuText
+        });
         this.stateService.setUserState(jid, parentId);
     }
 }

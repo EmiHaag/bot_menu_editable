@@ -35,18 +35,13 @@ class Dashboard {
             const loggedUser = req.user;
             let botId = req.query.botId || (req.body && req.body.botId);
 
-            console.log(`[Dashboard] Request from user: "${loggedUser.user}" (idCliente: "${loggedUser.idCliente}")`);
-            console.log(`[Dashboard] Requested botId: "${botId}"`);
-
             // Si no es admin, forzar su propio botId
             if (loggedUser.idCliente !== 'admin') {
                 botId = loggedUser.idCliente;
-                console.log(`[Dashboard] Non-admin user detected. Overriding botId to: "${botId}"`);
             } else if (!botId) {
                 // Si es admin y no hay botId en query, buscar el primero disponible
                 const activeClients = await userService.getActiveClients();
                 botId = activeClients.length > 0 ? activeClients[0].idCliente : 'default';
-                console.log(`[Dashboard] Admin user without botId. Defaulting to: "${botId}"`);
             }
 
             const service = await this.initService(botId);

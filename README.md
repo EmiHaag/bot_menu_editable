@@ -1,74 +1,68 @@
-# WhatsApp Menu Bot (Scalable Architecture)
+# WhatsApp Menu Bot (Multi-tenant & Scalable)
 
-Este es un bot de WhatsApp modular y escalable que utiliza Google Sheets como fuente de verdad para su sistema de menús jerárquicos.
+Este es un bot de WhatsApp modular y escalable que utiliza Google Sheets como base de datos centralizada para gestionar múltiples clientes, menús jerárquicos y autenticación de usuarios.
 
-## Estructura de Google Sheets
+## Características Principales
 
-La hoja de cálculo de Google debe tener una hoja llamada `Menu` con las siguientes columnas en la primera fila:
+- **Multi-tenant**: Soporta múltiples clientes (bots) con una sola instancia del servidor.
+- **Gestión Dinámica**: Los usuarios y bots se configuran directamente en Google Sheets.
+- **Dashboard Privado**: Cada cliente tiene acceso a su propio panel de edición sin ver los datos de otros.
+- **Simulación Humana**: El bot incluye retrasos artificiales y simulación de "escribiendo" para una experiencia más natural.
+- **Caché Inteligente**: Utiliza caché en memoria para minimizar las llamadas a la API de Google Sheets.
 
-| ID | ParentID | Title | Message | Trigger |
-|----|----------|-------|---------|---------|
-| 1  | root     | Soporte Técnico | ¿En qué podemos ayudarte con el soporte? | 1 |
-| 1_1| 1        | Internet | Por favor dinos tu proveedor: | 1 |
-| 1_2| 1        | Telefonía | El soporte de telefonía está disponible de 9 a 18h. | 2 |
-| 1_1_A| 1_1    | Fibra Óptica | Has seleccionado Fibra Óptica. Un agente te contactará. | 1 |
+## Configuración de Google Sheets
 
+El Spreadsheet debe contener al menos dos pestañas principales:
 
-   ─────────┬────────────────────────────────────────────────────────────────┬──────────────────────────────────────────────┐
-  │ Columna │ Propósito                                                      │ Ejemplo                                      │
-  ├─────────┼────────────────────────────────────────────────────────────────┼──────────────────────────────────────────────┤
-  │ Title   │ Lo que aparece en la lista de opciones.                        │ "Soporte Técnico"                            │
-  │ Message │ Lo que el bot dice después de que el usuario elige esa opción. │ "¿Qué tipo de falla tienes con tu servicio?" │
-  └─────────┴────────────────────────────────────────────────────────────────┴──────────────────────────────────────────────┘
+### 1. Pestaña `Usuarios` (Control de Acceso y Bots)
+Gestiona quién puede entrar al dashboard y qué bots deben iniciarse.
 
-  
-  ┌──────┬──────────┬─────────────────┬────────────────────────────────────────────────┬─────────┐
-  │ ID   │ ParentID │ Title           │ Message                                        │ Trigger │
-  ├──────┼──────────┼─────────────────┼────────────────────────────────────────────────┼─────────┤
-  │ root │ none     │ Inicio          │ Bienvenido a Service Tandil. Elige una opción: │ 0       │
-  │ 1    │ root     │ Soporte Técnico │ ¿Qué problema tienes?                          │ 1       │
-  │ 2    │ root     │ Ventas          │ Consulta nuestros planes:                      │ 2       │
-  └──────┴──────────┴─────────────────┴────────────────────────────────────────────────┴─────────┘
-  El bot responderá automáticamente así:
+| id_cliente | nombre_cliente | activo | user | password | fecha_suscripcion |
+|------------|----------------|--------|------|----------|-------------------|
+| admin      | Administrador  | TRUE   | admin| clave123 | 2024-05-07        |
+| cliente_1  | Mi Tienda      | TRUE   | user1| pass456  | 2024-05-07        |
 
-  > Bienvenido a Service Tandil. Elige una opción:
-  > 
-  > 1. Soporte Técnico
-  > 2. Ventas
-  > 
-  > ---
-  > 0. Menú Principal
+*   **id_cliente**: Identificador único (el ID `admin` tiene permisos totales).
+*   **activo**: Debe ser `TRUE` para que el bot de ese cliente se inicie automáticamente.
+*   **user/password**: Credenciales para acceder al Dashboard.
 
+### 2. Pestaña `Menu` (Estructura del Bot)
+Define el árbol de navegación de los mensajes.
 
-  En resumen: Title es la etiqueta de la opción y Message es el contenido o la pregunta que sigue.
+| ID_client | ID | ParentID | Title | Message | Trigger |
+|-----------|----|----------|-------|---------|---------|
+| cliente_1 | 1  | root     | Soporte | ¿En qué fallamos? | 1 |
+| cliente_1 | 1_1| 1        | Internet | Revisa tu modem. | 1 |
 
+*   **ID_client**: Debe coincidir con el `id_cliente` de la pestaña Usuarios.
+*   **Trigger**: El número o letra que el usuario debe escribir para elegir la opción.
 
+## Dashboard y QR
 
+- **Dashboard Principal**: `http://localhost:8000/`
+    - Los clientes solo ven y editan sus propias filas.
+    - El administrador puede alternar entre todos los clientes activos.
+- **Estado de WhatsApp (QR)**: `http://localhost:8000/qr`
+    - Permite vincular el bot escaneando el código QR.
+    - Los clientes solo ven el estado de su propio dispositivo.
 
-## Requisitos
+## Requisitos e Instalación
 
-- Node.js v16+
-- Cuenta de Servicio de Google (Service Account) con acceso a la Google Sheets API.
-- Archivo `credentials.json` en la raíz del proyecto.
+1.  **Node.js v16+**.
+2.  **Google Service Account**: Generar credenciales JSON y dar acceso al Spreadsheet.
+3.  **Variables de Entorno (.env)**:
+    ```env
+    PORT=8000
+    SPREADSHEET_ID=tu_id_de_google_sheets
+    CREDENTIALS_JSON={"type": "service_account", ...}
+    ```
+4.  **Instalar dependencias**: `npm install`.
+5.  **Ejecutar**: `npm start` o `node src/app.js`.
 
-## Instalación
+## Estructura del Proyecto
 
-1. Clonar el repositorio.
-2. Ejecutar `npm install`.
-3. Copiar `.env.example` a `.env` y completar con tu `SPREADSHEET_ID`. Compartir con : sheets-for-whatsapp-test@gen-lang-client-0729884159.iam.gserviceaccount.com
-4.  `credentials.json` esta como variable de entorno.
-
-## Ejecución
-
-```bash
-node src/app.js
-```
-
-Escanea el código QR que aparecerá en la terminal con tu WhatsApp.
-
-## Arquitectura
-
-- **src/services/googleSheetsService.js**: Maneja la conexión con Google Sheets y el caché local.
-- **src/services/stateService.js**: Gestiona el estado (posición en el menú) de cada usuario.
-- **src/controllers/menuController.js**: Lógica de navegación y ruteo de mensajes.
-- **src/app.js**: Punto de entrada, configuración de Baileys y listener de mensajes.
+- `src/services/userService.js`: Gestión de usuarios y auth desde Google Sheets.
+- `src/services/googleSheetsService.js`: Cliente de Sheets y filtrado por cliente.
+- `src/controllers/menuController.js`: Lógica de navegación con delays y typing.
+- `src/utils/dashboard.js`: Servidor Express para el panel de administración web.
+- `src/app.js`: Orquestador de bots dinámicos y punto de entrada.
