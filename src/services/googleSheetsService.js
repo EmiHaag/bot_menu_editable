@@ -37,12 +37,7 @@ class GoogleSheetsService {
                 range: this.range,
             });
 
-            const rows = response.data.values;
-            if (!rows || rows.length === 0) {
-                console.log('No data found in spreadsheet.');
-                return [];
-            }
-
+            const rows = response.data.values || [];
             const allMenu = rows.map((row, index) => ({
                 idClient: row[0] || '',
                 id: row[1] || '',
@@ -54,17 +49,62 @@ class GoogleSheetsService {
             }));
 
             // Filtramos por CLIENT_ID
-            const filteredMenu = allMenu.filter(node => {
+            let filteredMenu = allMenu.filter(node => {
                 const isDirectMatch = String(node.idClient).trim() === String(this.clientId).trim();
                 const isDefaultFallback = this.clientId === 'default' && (!node.idClient || node.idClient === '');
                 return isDirectMatch || isDefaultFallback;
             });
+
+            // Si no hay datos para este cliente y no es el default, inicializamos con un nodo root
+            if (filteredMenu.length === 0 && this.clientId !== 'default' && this.clientId !== 'admin') {
+                console.log(`[GoogleSheetsService] No hay datos para el cliente ${this.clientId}. Inicializando nodo root por defecto...`);
+                await this.initializeClientSheet();
+                // Limpiar caché y reintentar para obtener el nodo recién creado
+                this.clearCache();
+                return this.getMenuData();
+            }
 
             cache.set(cacheKey, filteredMenu);
             return filteredMenu;
         } catch (error) {
             console.error(`Error fetching Google Sheets data for client ${this.clientId}:`, error);
             return [];
+        }
+    }
+
+    async initializeClientSheet() {
+        try {
+            const sheets = google.sheets({ version: 'v4', auth: this.auth });
+            const sheetName = this.range.split('!')[0];
+            
+            // Buscar la primera fila vacía en la columna A
+            const response = await sheets.spreadsheets.values.get({
+                spreadsheetId: this.spreadsheetId,
+                range: `${sheetName}!A:A`,
+            });
+            const rows = response.data.values || [];
+            let nextRow = rows.length + 1;
+
+            // Asegurarse de no sobrescribir la cabecera si el sheet está vacío
+            if (nextRow < 2) nextRow = 2;
+
+            // Valores por defecto: id_cliente, id, parentID, Titulo, Mensaje, Trigger
+            const defaultValues = [
+                [this.clientId, 'root', '', 'Inicio', 'Hola bienvenido a .. ', '0']
+            ];
+
+            await sheets.spreadsheets.values.update({
+                spreadsheetId: this.spreadsheetId,
+                range: `${sheetName}!A${nextRow}:F${nextRow}`,
+                valueInputOption: 'USER_ENTERED',
+                requestBody: {
+                    values: defaultValues
+                }
+            });
+            
+            console.log(`[GoogleSheetsService] Nodo root inicializado para cliente ${this.clientId} en fila ${nextRow}`);
+        } catch (error) {
+            console.error(`Error al inicializar el sheet para el cliente ${this.clientId}:`, error.message);
         }
     }
 

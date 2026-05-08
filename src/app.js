@@ -1,9 +1,11 @@
 require('dotenv').config();
-const { 
-    default: makeWASocket, 
-    useMultiFileAuthState, 
-    DisconnectReason, 
-    fetchLatestBaileysVersion 
+const fs = require('fs');
+const path = require('path');
+const {
+    default: makeWASocket,
+    useMultiFileAuthState,
+    DisconnectReason,
+    fetchLatestBaileysVersion
 } = require('@whiskeysockets/baileys');
 const { Boom } = require('@hapi/boom');
 const QRCode = require('qrcode');
@@ -160,7 +162,7 @@ async function main() {
     // Express route to serve QR codes
     app.get('/qr', (req, res) => {
         const loggedUser = req.user;
-        
+
         let html = `
         <html>
             <head>
@@ -178,8 +180,13 @@ async function main() {
                     .status.qr_ready { background: #d1ecf1; color: #0c5460; }
                     .status.disconnected { background: #f8d7da; color: #721c24; }
                     .status.connecting { background: #fff3cd; color: #856404; }
+                    .status.logged_out { background: #dc3545; color: white; }
                     .status.error { background: #dc3545; color: white; }
                     .last-update { font-size: 11px; color: #666; margin-top: 10px; }
+                    .btn-reconnect { padding: 10px 20px; background: #28a745; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; margin-top: 10px; }
+                    .btn-reconnect:hover { background: #218838; }
+                    .btn-reconnect:disabled { background: #6c757d; cursor: not-allowed; }
+                    .action-buttons { margin-top: 15px; }
                 </style>
             </head>
             <body>
@@ -188,6 +195,32 @@ async function main() {
                     <a href="/" class="btn-back">Volver al Editor de Menú</a>
                 </div>
                 <div class="container">
+        `;
+
+        html += `
+        <script>
+            async function reconnectBot(botId) {
+                const btn = document.getElementById('btn-' + botId);
+                btn.disabled = true;
+                btn.textContent = 'Reiniciando...';
+
+                try {
+                    const response = await fetch('/reconnect/' + botId, { method: 'POST' });
+                    if (response.ok) {
+                        btn.textContent = 'Reconectando...';
+                        setTimeout(() => location.reload(), 2000);
+                    } else {
+                        alert('Error al reconectar. Intenta de nuevo.');
+                        btn.disabled = false;
+                        btn.textContent = 'Reintentar conexión';
+                    }
+                } catch (error) {
+                    alert('Error: ' + error);
+                    btn.disabled = false;
+                    btn.textContent = 'Reintentar conexión';
+                }
+            }
+        </script>
         `;
 
         // Filtrar bots según permisos
@@ -203,11 +236,12 @@ async function main() {
         for (const [id, data] of bots) {
             let statusText = data.status.replace('_', ' ');
             let instruction = 'Please wait...';
-            
+
             if (data.status === 'connected') instruction = '✅ Connected and ready';
             else if (data.status === 'qr_ready') instruction = 'Scan the QR code with WhatsApp';
             else if (data.status === 'connecting') instruction = 'Establishing connection...';
             else if (data.status === 'disconnected') instruction = 'Connection lost. Retrying...';
+            else if (data.status === 'logged_out') instruction = 'Session closed. Click the button below to reconnect.';
 
             html += `
                 <div class="bot-card">
@@ -219,6 +253,11 @@ async function main() {
                         </div>
                     `}
                     <p>${instruction}</p>
+                    ${data.status === 'logged_out' ? `
+                        <div class="action-buttons">
+                            <button class="btn-reconnect" id="btn-${id}" onclick="reconnectBot('${id}')">Reintentar conexión</button>
+                        </div>
+                    ` : ''}
                     <div class="last-update">Last update: ${data.lastUpdate}</div>
                 </div>
             `;
@@ -231,6 +270,58 @@ async function main() {
         </html>
         `;
         res.send(html);
+    });
+
+    // Endpoint to reconnect a bot
+    app.post('/reconnect/:botId', (req, res) => {
+        const loggedUser = req.user;
+        const botId = req.params.botId;
+
+        // Verify user has permission to reconnect this bot
+        if (loggedUser.idCliente !== 'admin' && loggedUser.idCliente !== botId) {
+            return res.status(403).json({ error: 'Unauthorized' });
+        }
+
+        // Find the bot config
+        const activeClients = botQRs;
+        if (!activeClients[botId]) {
+            return res.status(404).json({ error: 'Bot not found' });
+        }
+
+        try {
+            userService.getActiveClients().then(clients => {
+                const client = clients.find(c => c.idCliente === botId);
+                if (client) {
+                    botQRs[botId].status = 'starting';
+                    botQRs[botId].qr = null;
+
+                    const authFolder = `auth_info_${botId}`;
+
+                    if (fs.existsSync(authFolder)) {
+                        fs.rmSync(authFolder, { recursive: true, force: true });
+                        console.log(`[${botId}] Auth folder deleted for reconnection`);
+                    }
+
+                    setTimeout(() => {
+                        startBot({
+                            id: botId,
+                            spreadsheetId: process.env.SPREADSHEET_ID,
+                            credentials: process.env.CREDENTIALS_JSON,
+                            authFolder: authFolder
+                        });
+                    }, 500);
+
+                    res.json({ success: true, message: 'Reconnection process started' });
+                } else {
+                    res.status(404).json({ error: 'Client configuration not found' });
+                }
+            }).catch(err => {
+                res.status(500).json({ error: 'Error retrieving client config' });
+            });
+        } catch (error) {
+            console.error(`[${botId}] Error during reconnection:`, error);
+            res.status(500).json({ error: 'Error during reconnection' });
+        }
     });
 
     // Integrated Dashboard routes
