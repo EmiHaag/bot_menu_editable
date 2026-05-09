@@ -209,6 +209,8 @@ async function startBot(botConfig) {
             printQRInTerminal: false
         });
 
+        botQRs[id].sock = sock;
+
         sock.ev.on('connection.update', async (update) => {
             const { connection, lastDisconnect, qr } = update;
             botQRs[id].lastUpdate = new Date().toLocaleTimeString();
@@ -419,11 +421,14 @@ async function main() {
                         </div>
                     `}
                     <p>${instruction}</p>
-                    ${data.status === 'logged_out' ? `
-                        <div class="action-buttons">
+                    <div class="action-buttons">
+                        ${data.status === 'logged_out' ? `
                             <button class="btn-reconnect" id="btn-${id}" onclick="reconnectBot('${id}')">Reintentar conexión</button>
-                        </div>
-                    ` : ''}
+                        ` : ''}
+                        ${data.status === 'connected' ? `
+                            <button class="btn-reconnect btn-logout" id="btn-${id}" onclick="if(confirm('¿Seguro que deseas borrar la sesión de WhatsApp? Deberás escanear el QR nuevamente.')) reconnectBot('${id}')">Borrar Sesión WhatsApp</button>
+                        ` : ''}
+                    </div>
                     <div class="last-update">Last update: ${data.lastUpdate}</div>
                 </div>
             `;
@@ -455,6 +460,15 @@ async function main() {
         }
 
         try {
+            // End socket if exists
+            if (botQRs[botId] && botQRs[botId].sock) {
+                try {
+                    botQRs[botId].sock.end();
+                } catch (e) {
+                    console.error(`[${botId}] Error ending socket:`, e);
+                }
+            }
+
             userService.getActiveClients().then(clients => {
                 const client = clients.find(c => c.idCliente === botId);
                 if (client) {
