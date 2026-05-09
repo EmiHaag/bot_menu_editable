@@ -295,7 +295,7 @@ async function main() {
                     botQRs[botId].status = 'starting';
                     botQRs[botId].qr = null;
 
-                    const authFolder = `auth_info_${botId}`;
+                    const authFolder = path.join('auth_sessions', `auth_info_${botId}`);
 
                     if (fs.existsSync(authFolder)) {
                         fs.rmSync(authFolder, { recursive: true, force: true });
@@ -337,12 +337,17 @@ async function main() {
     const activeClients = await userService.getActiveClients();
     console.log(`[System] Found ${activeClients.length} active clients. Starting bots...`);
 
+    // Ensure auth_sessions directory exists
+    if (!fs.existsSync('auth_sessions')) {
+        fs.mkdirSync('auth_sessions', { recursive: true });
+    }
+
     for (const client of activeClients) {
         await startBot({
             id: client.idCliente,
             spreadsheetId: process.env.SPREADSHEET_ID,
             credentials: process.env.CREDENTIALS_JSON,
-            authFolder: `auth_info_${client.idCliente}`
+            authFolder: path.join('auth_sessions', `auth_info_${client.idCliente}`)
         });
     }
 }

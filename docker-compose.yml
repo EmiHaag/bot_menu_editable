@@ -8,6 +8,5 @@ services:
     env_file:
       - .env
     volumes:
-      - ./auth_info_baileys:/app/auth_info_baileys
-      - ./auth_info_cliente_ncr:/app/auth_info_cliente_ncr
+      - ./auth_sessions:/app/auth_sessions
 

@@ -1,7 +1,8 @@
 node_modules
 .env
+auth_sessions
+auth_info_*
 auth_info_baileys
-auth_info_cliente_ncr
 *.log
 .git
 .gitignore
