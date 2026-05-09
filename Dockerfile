@@ -11,6 +11,12 @@ RUN npm install --omit=dev
 
 COPY . .
 
+# Create volume directory for persistent data storage
+RUN mkdir -p /data/auth_sessions && chmod 755 /data
+
 EXPOSE 8000
+
+# Declare volume mount point
+VOLUME ["/data"]
 
 CMD ["node", "src/app.js"]

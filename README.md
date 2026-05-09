@@ -1,5 +1,5 @@
 # WhatsApp Menu Bot (Multi-tenant & Scalable)
-#test
+
 Este es un bot de WhatsApp modular y escalable que utiliza Google Sheets como base de datos centralizada para gestionar múltiples clientes, menús jerárquicos y autenticación de usuarios.
 
 ## Características Principales
