@@ -162,6 +162,7 @@ class Dashboard {
                             <a href="/qr" class="btn btn-green">WhatsApp QR</a>
                             <a href="/refresh?botId=${botId}" class="btn btn-orange">Refrescar</a>
                             ${isAdmin ? `<a href="https://docs.google.com/spreadsheets/d/${service.spreadsheetId}" target="_blank" class="btn btn-blue">Abrir Sheet</a>` : ''}
+                            <a href="/logout" class="btn btn-red">Salir</a>
                         </div>
                     </div>
                     

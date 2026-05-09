@@ -11,7 +11,7 @@ const { Boom } = require('@hapi/boom');
 const QRCode = require('qrcode');
 const pino = require('pino');
 const express = require('express');
-const basicAuth = require('express-basic-auth');
+const session = require('express-session');
 const GoogleSheetsService = require('./services/googleSheetsService');
 const StateService = require('./services/stateService');
 const MenuController = require('./controllers/menuController');
@@ -22,39 +22,155 @@ const app = express();
 const port = process.env.PORT || 8000;
 const AUTH_SESSIONS_DIR = process.env.AUTH_SESSIONS_DIR || '/data/auth_sessions';
 
+// Configuración de Sesiones
+app.use(session({
+    secret: process.env.SESSION_SECRET || 'bot-menu-secret',
+    resave: false,
+    saveUninitialized: false,
+    cookie: { maxAge: 24 * 60 * 60 * 1000 } // 24 horas
+}));
+
+app.use(express.urlencoded({ extended: true }));
+
 // Koyeb Health Check endpoint
 app.get('/health', (req, res) => {
     res.status(200).send('OK');
 });
 
-// Configuración de Basic Auth Dinámico
-app.use(basicAuth({
-    authorizer: async (username, password, cb) => {
-        try {
-            const user = await userService.getUserByUsername(username);
-            if (user && user.activo && basicAuth.safeCompare(password, user.password)) {
-                return cb(null, true);
-            }
-            return cb(null, false);
-        } catch (error) {
-            console.error('Auth Error:', error);
-            return cb(null, false);
-        }
-    },
-    authorizeAsync: true,
-    challenge: true,
-    realm: 'Bot Menu Editor',
-}));
+// Ruta de Login (GET)
+app.get('/login', (req, res) => {
+    res.send(`
+        <!DOCTYPE html>
+        <html lang="es">
+        <head>
+            <meta charset="UTF-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            <title>Login - Bot Menu Editor</title>
+            <style>
+                body {
+                    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+                    background-color: white;
+                    display: flex;
+                    justify-content: center;
+                    align-items: center;
+                    height: 100vh;
+                    margin: 0;
+                }
+                .login-box {
+                    background-color: #fbfbfb;
+                    border: 1px solid #e7e3e4;
+                    padding: 40px;
+                    border-radius: 8px;
+                    width: 100%;
+                    max-width: 400px;
+                    box-shadow: 0 4px 6px rgba(0,0,0,0.05);
+                }
+                .login-box h2 {
+                    margin-top: 0;
+                    color: #333;
+                    text-align: center;
+                    margin-bottom: 30px;
+                }
+                .form-group {
+                    margin-bottom: 20px;
+                }
+                .form-group label {
+                    display: block;
+                    margin-bottom: 5px;
+                    color: #666;
+                }
+                .form-group input {
+                    width: 100%;
+                    padding: 12px;
+                    border: 1px solid #e7e3e4;
+                    border-radius: 4px;
+                    box-sizing: border-box;
+                    font-size: 16px;
+                }
+                .btn-login {
+                    background-color: #00bc7d;
+                    color: white;
+                    border: none;
+                    padding: 12px;
+                    width: 100%;
+                    border-radius: 4px;
+                    font-size: 16px;
+                    font-weight: bold;
+                    cursor: pointer;
+                    transition: background-color 0.3s;
+                }
+                .btn-login:hover {
+                    background-color: #00a56d;
+                }
+                .error-msg {
+                    color: #d32f2f;
+                    background: #ffcdd2;
+                    padding: 10px;
+                    border-radius: 4px;
+                    margin-bottom: 20px;
+                    text-align: center;
+                    font-size: 14px;
+                }
+            </style>
+        </head>
+        <body>
+            <div class="login-box">
+                <h2>Bot Menu Editor</h2>
+                ${req.query.error ? '<div class="error-msg">Usuario o contraseña incorrectos</div>' : ''}
+                <form action="/login" method="POST">
+                    <div class="form-group">
+                        <label for="username">Usuario</label>
+                        <input type="text" id="username" name="username" required autofocus>
+                    </div>
+                    <div class="form-group">
+                        <label for="password">Contraseña</label>
+                        <input type="password" id="password" name="password" required>
+                    </div>
+                    <button type="submit" class="btn-login">Login</button>
+                </form>
+            </div>
+        </body>
+        </html>
+    `);
+});
 
-// Middleware para inyectar el usuario en req
-app.use(async (req, res, next) => {
-    const authHeader = req.headers.authorization;
-    if (authHeader) {
-        const credentials = Buffer.from(authHeader.split(' ')[1], 'base64').toString().split(':');
-        const username = credentials[0];
-        req.user = await userService.getUserByUsername(username);
+// Ruta de Login (POST)
+app.post('/login', async (req, res) => {
+    const { username, password } = req.body;
+    try {
+        const user = await userService.getUserByUsername(username);
+        if (user && user.activo && password === user.password) {
+            req.session.user = user;
+            return res.redirect('/');
+        }
+        res.redirect('/login?error=1');
+    } catch (error) {
+        console.error('Login Error:', error);
+        res.redirect('/login?error=1');
     }
-    next();
+});
+
+// Ruta de Logout
+app.get('/logout', (req, res) => {
+    req.session.destroy();
+    res.redirect('/login');
+});
+
+// Middleware de Autenticación
+const authMiddleware = (req, res, next) => {
+    if (req.session && req.session.user) {
+        req.user = req.session.user;
+        return next();
+    }
+    res.redirect('/login');
+};
+
+// Aplicar middleware a todas las rutas excepto login y health
+app.use((req, res, next) => {
+    if (req.path === '/login' || req.path === '/health') {
+        return next();
+    }
+    authMiddleware(req, res, next);
 });
 
 const botQRs = {}; // Object to store QR codes for each bot
@@ -193,7 +309,10 @@ async function main() {
             <body>
                 <div class="header-nav">
                     <h1>WhatsApp Status</h1>
-                    <a href="/" class="btn-back">Volver al Editor de Menú</a>
+                    <div style="display: flex; gap: 10px;">
+                        <a href="/" class="btn-back">Volver al Editor de Menú</a>
+                        <a href="/logout" class="btn-back" style="background: #dc3545;">Salir</a>
+                    </div>
                 </div>
                 <div class="container">
         `;
