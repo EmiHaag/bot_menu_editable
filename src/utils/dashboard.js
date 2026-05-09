@@ -1,3 +1,4 @@
+require('dotenv').config();
 const express = require('express');
 const bodyParser = require('body-parser');
 const GoogleSheetsService = require('../services/googleSheetsService');
@@ -82,7 +83,7 @@ class Dashboard {
                 let botOptions = activeClients.map(client =>
                     `<option value="${client.idCliente}" ${client.idCliente === botId ? 'selected' : ''}>${client.nombreCliente} (${client.idCliente})</option>`
                 ).join('');
-                
+
                 botSelector = `
                     <label>Bot:</label>
                     <select onchange="window.location.href='/?botId=' + this.value">
