@@ -8,5 +8,5 @@ services:
     env_file:
       - .env
     volumes:
-      - ./auth_sessions:/app/auth_sessions
+      - ./data/auth_sessions:/data/auth_sessions
 

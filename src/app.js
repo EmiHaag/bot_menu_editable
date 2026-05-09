@@ -20,6 +20,7 @@ const userService = require('./services/userService');
 
 const app = express();
 const port = process.env.PORT || 8000;
+const AUTH_SESSIONS_DIR = process.env.AUTH_SESSIONS_DIR || '/data/auth_sessions';
 
 // Koyeb Health Check endpoint
 app.get('/health', (req, res) => {
@@ -295,7 +296,7 @@ async function main() {
                     botQRs[botId].status = 'starting';
                     botQRs[botId].qr = null;
 
-                    const authFolder = path.join('auth_sessions', `auth_info_${botId}`);
+                    const authFolder = path.join(AUTH_SESSIONS_DIR, `auth_info_${botId}`);
 
                     if (fs.existsSync(authFolder)) {
                         fs.rmSync(authFolder, { recursive: true, force: true });
@@ -338,8 +339,8 @@ async function main() {
     console.log(`[System] Found ${activeClients.length} active clients. Starting bots...`);
 
     // Ensure auth_sessions directory exists
-    if (!fs.existsSync('auth_sessions')) {
-        fs.mkdirSync('auth_sessions', { recursive: true });
+    if (!fs.existsSync(AUTH_SESSIONS_DIR)) {
+        fs.mkdirSync(AUTH_SESSIONS_DIR, { recursive: true });
     }
 
     for (const client of activeClients) {
@@ -347,7 +348,7 @@ async function main() {
             id: client.idCliente,
             spreadsheetId: process.env.SPREADSHEET_ID,
             credentials: process.env.CREDENTIALS_JSON,
-            authFolder: path.join('auth_sessions', `auth_info_${client.idCliente}`)
+            authFolder: path.join(AUTH_SESSIONS_DIR, `auth_info_${client.idCliente}`)
         });
     }
 }
