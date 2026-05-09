@@ -286,24 +286,37 @@ async function main() {
                 <title>WhatsApp Bot QR Status</title>
                 <meta http-equiv="refresh" content="10">
                 <style>
-                    body { font-family: sans-serif; display: flex; flex-direction: column; align-items: center; padding: 20px; background: #f0f2f5; }
-                    .header-nav { width: 100%; max-width: 800px; display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
-                    .btn-back { padding: 10px 20px; background: #007bff; color: white; text-decoration: none; border-radius: 5px; font-weight: bold; }
+                    :root {
+                        --primary-color: #00bc7d;
+                        --primary-hover: #00a56d;
+                        --bg-white: #ffffff;
+                        --bg-box: #fbfbfb;
+                        --border-color: #e7e3e4;
+                        --text-main: #333;
+                        --text-muted: #666;
+                        --error-color: #dc3545;
+                        --info-color: #007bff;
+                    }
+                    body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; display: flex; flex-direction: column; align-items: center; padding: 20px; background: var(--bg-white); color: var(--text-main); }
+                    .header-nav { width: 100%; max-width: 800px; display: flex; justify-content: space-between; align-items: center; margin-bottom: 30px; padding-bottom: 20px; border-bottom: 2px solid var(--border-color); }
+                    .btn-back { padding: 12px 20px; background: var(--info-color); color: white; text-decoration: none; border-radius: 6px; font-weight: 600; font-size: 14px; transition: opacity 0.2s; }
+                    .btn-back:hover { opacity: 0.9; }
                     .container { display: flex; flex-wrap: wrap; gap: 20px; justify-content: center; }
-                    .bot-card { background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); text-align: center; min-width: 300px; }
-                    .qr-img { width: 256px; height: 256px; margin: 10px 0; border: 1px solid #ddd; }
-                    .status { font-weight: bold; margin-bottom: 10px; padding: 8px; border-radius: 4px; text-transform: uppercase; font-size: 12px; }
+                    .bot-card { background: var(--bg-box); padding: 25px; border-radius: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.02); text-align: center; min-width: 320px; border: 1px solid var(--border-color); }
+                    .qr-img { width: 256px; height: 256px; margin: 15px 0; border: 1px solid var(--border-color); border-radius: 8px; background: white; padding: 10px; }
+                    .status { font-weight: 700; margin-bottom: 15px; padding: 10px; border-radius: 6px; text-transform: uppercase; font-size: 11px; letter-spacing: 0.5px; }
                     .status.connected { background: #d4edda; color: #155724; }
                     .status.qr_ready { background: #d1ecf1; color: #0c5460; }
                     .status.disconnected { background: #f8d7da; color: #721c24; }
                     .status.connecting { background: #fff3cd; color: #856404; }
-                    .status.logged_out { background: #dc3545; color: white; }
-                    .status.error { background: #dc3545; color: white; }
-                    .last-update { font-size: 11px; color: #666; margin-top: 10px; }
-                    .btn-reconnect { padding: 10px 20px; background: #28a745; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; margin-top: 10px; }
-                    .btn-reconnect:hover { background: #218838; }
-                    .btn-reconnect:disabled { background: #6c757d; cursor: not-allowed; }
-                    .action-buttons { margin-top: 15px; }
+                    .status.logged_out { background: var(--error-color); color: white; }
+                    .status.error { background: var(--error-color); color: white; }
+                    .last-update { font-size: 11px; color: var(--text-muted); margin-top: 15px; }
+                    .btn-reconnect { padding: 12px 24px; background: var(--primary-color); color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: 700; margin-top: 15px; width: 100%; transition: background-color 0.2s; }
+                    .btn-reconnect:hover { background: var(--primary-hover); }
+                    .btn-reconnect:disabled { background: var(--text-muted); cursor: not-allowed; }
+                    .action-buttons { margin-top: 20px; }
+                    h2 { color: var(--text-main); margin-bottom: 10px; }
                 </style>
             </head>
             <body>

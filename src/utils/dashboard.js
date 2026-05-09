@@ -116,41 +116,178 @@ class Dashboard {
                 <head>
                     <title>Editor de Bot - ${botId}</title>
                     <style>
-                        body { font-family: sans-serif; margin: 40px; background: #f4f4f9; }
-                        table { width: 100%; border-collapse: collapse; background: white; margin-top: 20px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
-                        th, td { padding: 12px; border: 1px solid #ddd; text-align: left; }
-                        th { background: #007bff; color: white; }
-                        .header { display: flex; justify-content: space-between; align-items: center; }
+                        :root {
+                            --primary-color: #00bc7d;
+                            --primary-hover: #00a56d;
+                            --bg-white: #ffffff;
+                            --bg-box: #fbfbfb;
+                            --border-color: #e7e3e4;
+                            --text-main: #333;
+                            --text-muted: #666;
+                            --error-color: #dc3545;
+                            --info-color: #007bff;
+                            --warning-color: #fd7e14;
+                            --secondary-color: #6f42c1;
+                        }
+
+                        body { 
+                            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; 
+                            margin: 40px; 
+                            background: var(--bg-white); 
+                            color: var(--text-main);
+                        }
+
+                        .header { 
+                            display: flex; 
+                            justify-content: space-between; 
+                            align-items: center; 
+                            margin-bottom: 30px;
+                            padding-bottom: 20px;
+                            border-bottom: 2px solid var(--border-color);
+                        }
+
+                        table { 
+                            width: 100%; 
+                            border-collapse: collapse; 
+                            background: var(--bg-box); 
+                            margin-top: 20px; 
+                            box-shadow: 0 4px 6px rgba(0,0,0,0.02);
+                            border: 1px solid var(--border-color);
+                            border-radius: 8px;
+                            overflow: hidden;
+                        }
+
+                        th, td { 
+                            padding: 15px; 
+                            border: 1px solid var(--border-color); 
+                            text-align: left; 
+                        }
+
+                        th { 
+                            background: var(--bg-box); 
+                            color: var(--text-muted);
+                            font-weight: 600;
+                            text-transform: uppercase;
+                            font-size: 12px;
+                            letter-spacing: 0.5px;
+                        }
+
                         .toolbar { display: flex; gap: 10px; align-items: center; }
-                        .btn { padding: 10px 15px; text-decoration: none; border-radius: 5px; border: none; cursor: pointer; color: white; font-weight: bold; font-size: 14px; }
-                        .btn-blue { background: #007bff; }
-                        .btn-orange { background: #fd7e14; }
-                        .btn-purple { background: #6f42c1; }
-                        .btn-green { background: #28a745; }
-                        .btn-red { background: #dc3545; }
-                        .btn-action { padding: 6px 12px; border: none; border-radius: 4px; cursor: pointer; color: white; font-size: 12px; font-weight: bold; transition: opacity 0.2s; }
-                        .btn-action:hover { opacity: 0.8; }
-                        select { padding: 10px; border-radius: 5px; border: 1px solid #ddd; font-weight: bold; }
+                        
+                        .btn { 
+                            padding: 10px 18px; 
+                            text-decoration: none; 
+                            border-radius: 6px; 
+                            border: 1px solid var(--border-color);
+                            cursor: pointer; 
+                            color: var(--text-muted); 
+                            background: var(--bg-box);
+                            font-weight: 600; 
+                            font-size: 14px; 
+                            transition: all 0.2s;
+                            display: inline-flex;
+                            align-items: center;
+                            justify-content: center;
+                        }
+
+                        .btn:hover { 
+                            background: var(--primary-color); 
+                            color: white;
+                            border-color: var(--primary-color);
+                        }
+                        
+                        /* Unified Action Buttons */
+                        .btn-action { 
+                            padding: 8px 14px; 
+                            border: 1px solid var(--border-color); 
+                            border-radius: 4px; 
+                            cursor: pointer; 
+                            color: var(--text-muted); 
+                            background: var(--bg-box);
+                            font-size: 13px; 
+                            font-weight: 600; 
+                            transition: all 0.2s; 
+                        }
+                        .btn-action:hover { 
+                            background: var(--primary-color); 
+                            color: white; 
+                            border-color: var(--primary-color);
+                            transform: translateY(-1px); 
+                        }
+
+                        /* Legacy color classes mapped to unified style */
+                        .btn-green, .btn-blue, .btn-orange, .btn-purple, .btn-red { 
+                            background: var(--bg-box); 
+                            color: var(--text-muted);
+                            border: 1px solid var(--border-color);
+                        }
+                        .btn-green:hover, .btn-blue:hover, .btn-orange:hover, .btn-purple:hover, .btn-red:hover {
+                            background: var(--primary-color);
+                            color: white;
+                            border-color: var(--primary-color);
+                        }
+                        
+                        select { 
+                            padding: 10px; 
+                            border-radius: 6px; 
+                            border: 1px solid var(--border-color); 
+                            font-weight: 600; 
+                            background: var(--bg-box);
+                            color: var(--text-main);
+                        }
                         
                         /* Modal Styles */
-                        .modal { display: none; position: fixed; z-index: 100; left: 0; top: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); }
-                        .modal-content { background: white; margin: 2% auto; padding: 25px; width: 50%; border-radius: 8px; box-shadow: 0 4px 20px rgba(0,0,0,0.3); }
-                        .modal-content h2 { margin-top: 0; color: #333; }
-                        .form-group { margin-bottom: 15px; }
-                        .form-group label { display: block; margin-bottom: 5px; font-weight: bold; color: #555; }
-                        .form-group input, .form-group textarea { width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 4px; box-sizing: border-box; font-size: 14px; }
+                        .modal { display: none; position: fixed; z-index: 100; left: 0; top: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.4); backdrop-filter: blur(2px); }
+                        .modal-content { 
+                            background: var(--bg-white); 
+                            margin: 5% auto; 
+                            padding: 30px; 
+                            width: 50%; 
+                            border-radius: 12px; 
+                            box-shadow: 0 10px 25px rgba(0,0,0,0.1);
+                            border: 1px solid var(--border-color);
+                        }
+                        .modal-content h2 { margin-top: 0; color: var(--text-main); margin-bottom: 25px; }
+                        
+                        .form-group { margin-bottom: 20px; }
+                        .form-group label { display: block; margin-bottom: 8px; font-weight: 600; color: var(--text-muted); font-size: 14px; }
+                        .form-group input, .form-group textarea { 
+                            width: 100%; 
+                            padding: 12px; 
+                            border: 1px solid var(--border-color); 
+                            border-radius: 6px; 
+                            box-sizing: border-box; 
+                            font-size: 15px;
+                            background: var(--bg-box);
+                            color: var(--text-main);
+                            transition: border-color 0.2s;
+                        }
+                        .form-group input:focus, .form-group textarea:focus {
+                            outline: none;
+                            border-color: var(--primary-color);
+                        }
                         
                         .tree ul { padding-top: 20px; position: relative; transition: all 0.5s; }
                         .tree li { float: left; text-align: center; list-style-type: none; position: relative; padding: 20px 5px 0 5px; transition: all 0.5s; }
-                        .tree li::before, .tree li::after { content: ''; position: absolute; top: 0; right: 50%; border-top: 1px solid #ccc; width: 50%; height: 20px; }
-                        .tree li::after { right: auto; left: 50%; border-left: 1px solid #ccc; }
+                        .tree li::before, .tree li::after { content: ''; position: absolute; top: 0; right: 50%; border-top: 1px solid var(--border-color); width: 50%; height: 20px; }
+                        .tree li::after { right: auto; left: 50%; border-left: 1px solid var(--border-color); }
                         .tree li:only-child::after, .tree li:only-child::before { display: none; }
                         .tree li:only-child { padding-top: 0; }
                         .tree li:first-child::before, .tree li:last-child::after { border: 0 none; }
-                        .tree li:last-child::before { border-right: 1px solid #ccc; border-radius: 0 5px 0 0; }
+                        .tree li:last-child::before { border-right: 1px solid var(--border-color); border-radius: 0 5px 0 0; }
                         .tree li:first-child::after { border-radius: 5px 0 0 0; }
-                        .tree ul ul::before { content: ''; position: absolute; top: 0; left: 50%; border-left: 1px solid #ccc; width: 0; height: 20px; }
-                        .tree li div { border: 1px solid #ccc; padding: 5px 10px; text-decoration: none; color: #666; font-size: 11px; display: inline-block; border-radius: 5px; background: #fff; }
+                        .tree ul ul::before { content: ''; position: absolute; top: 0; left: 50%; border-left: 1px solid var(--border-color); width: 0; height: 20px; }
+                        .tree li div { 
+                            border: 1px solid var(--border-color); 
+                            padding: 10px 15px; 
+                            text-decoration: none; 
+                            color: var(--text-muted); 
+                            font-size: 12px; 
+                            display: inline-block; 
+                            border-radius: 6px; 
+                            background: var(--bg-box); 
+                            box-shadow: 0 2px 4px rgba(0,0,0,0.02);
+                        }
                     </style>
                 </head>
                 <body>
