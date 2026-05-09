@@ -216,15 +216,26 @@ class Dashboard {
                         }
 
                         /* Legacy color classes mapped to unified style */
-                        .btn-green, .btn-blue, .btn-orange, .btn-purple, .btn-red { 
+                        .btn-green, .btn-blue, .btn-orange, .btn-purple { 
                             background: var(--bg-box); 
                             color: var(--text-muted);
                             border: 1px solid var(--border-color);
                         }
-                        .btn-green:hover, .btn-blue:hover, .btn-orange:hover, .btn-purple:hover, .btn-red:hover {
+                        .btn-green:hover, .btn-blue:hover, .btn-orange:hover, .btn-purple:hover {
                             background: var(--primary-color);
                             color: white;
                             border-color: var(--primary-color);
+                        }
+
+                        /* Red button (Logout/Delete) always red */
+                        .btn-red {
+                            background: var(--error-color) !important;
+                            color: white !important;
+                            border: 1px solid var(--error-color) !important;
+                        }
+                        .btn-red:hover {
+                            opacity: 0.9;
+                            transform: translateY(-1px);
                         }
                         
                         select { 

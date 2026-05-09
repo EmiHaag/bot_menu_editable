@@ -152,8 +152,13 @@ app.post('/login', async (req, res) => {
 
 // Ruta de Logout
 app.get('/logout', (req, res) => {
-    req.session.destroy();
-    res.redirect('/login');
+    req.session.destroy((err) => {
+        if (err) {
+            console.error('Error destroying session:', err);
+        }
+        res.clearCookie('connect.sid'); // Nombre por defecto de la cookie de session
+        res.redirect('/login');
+    });
 });
 
 // Middleware de Autenticación
@@ -299,22 +304,50 @@ async function main() {
                     }
                     body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; display: flex; flex-direction: column; align-items: center; padding: 20px; background: var(--bg-white); color: var(--text-main); }
                     .header-nav { width: 100%; max-width: 800px; display: flex; justify-content: space-between; align-items: center; margin-bottom: 30px; padding-bottom: 20px; border-bottom: 2px solid var(--border-color); }
-                    .btn-back { padding: 12px 20px; background: var(--info-color); color: white; text-decoration: none; border-radius: 6px; font-weight: 600; font-size: 14px; transition: opacity 0.2s; }
-                    .btn-back:hover { opacity: 0.9; }
-                    .container { display: flex; flex-wrap: wrap; gap: 20px; justify-content: center; }
-                    .bot-card { background: var(--bg-box); padding: 25px; border-radius: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.02); text-align: center; min-width: 320px; border: 1px solid var(--border-color); }
-                    .qr-img { width: 256px; height: 256px; margin: 15px 0; border: 1px solid var(--border-color); border-radius: 8px; background: white; padding: 10px; }
-                    .status { font-weight: 700; margin-bottom: 15px; padding: 10px; border-radius: 6px; text-transform: uppercase; font-size: 11px; letter-spacing: 0.5px; }
-                    .status.connected { background: #d4edda; color: #155724; }
-                    .status.qr_ready { background: #d1ecf1; color: #0c5460; }
-                    .status.disconnected { background: #f8d7da; color: #721c24; }
-                    .status.connecting { background: #fff3cd; color: #856404; }
-                    .status.logged_out { background: var(--error-color); color: white; }
-                    .status.error { background: var(--error-color); color: white; }
-                    .last-update { font-size: 11px; color: var(--text-muted); margin-top: 15px; }
-                    .btn-reconnect { padding: 12px 24px; background: var(--primary-color); color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: 700; margin-top: 15px; width: 100%; transition: background-color 0.2s; }
-                    .btn-reconnect:hover { background: var(--primary-hover); }
-                    .btn-reconnect:disabled { background: var(--text-muted); cursor: not-allowed; }
+                    .btn-back { 
+                        padding: 12px 20px; 
+                        background: var(--bg-box); 
+                        color: var(--text-muted); 
+                        text-decoration: none; 
+                        border-radius: 6px; 
+                        font-weight: 600; 
+                        font-size: 14px; 
+                        transition: all 0.2s; 
+                        border: 1px solid var(--border-color);
+                        display: inline-flex;
+                        align-items: center;
+                    }
+                    .btn-back:hover { 
+                        background: var(--primary-color); 
+                        color: white; 
+                        border-color: var(--primary-color);
+                    }
+                    .btn-reconnect { 
+                        padding: 12px 24px; 
+                        background: var(--bg-box); 
+                        color: var(--text-muted); 
+                        border: 1px solid var(--border-color); 
+                        border-radius: 6px; 
+                        cursor: pointer; 
+                        font-weight: 700; 
+                        margin-top: 15px; 
+                        width: 100%; 
+                        transition: all 0.2s; 
+                    }
+                    .btn-reconnect:hover { 
+                        background: var(--primary-color); 
+                        color: white; 
+                        border-color: var(--primary-color);
+                    }
+                    .btn-reconnect:disabled { background: var(--border-color); color: var(--text-muted); cursor: not-allowed; }
+                    .btn-logout {
+                        background: var(--error-color) !important;
+                        color: white !important;
+                        border-color: var(--error-color) !important;
+                    }
+                    .btn-logout:hover {
+                        opacity: 0.9;
+                    }
                     .action-buttons { margin-top: 20px; }
                     h2 { color: var(--text-main); margin-bottom: 10px; }
                 </style>
@@ -324,7 +357,7 @@ async function main() {
                     <h1>WhatsApp Status</h1>
                     <div style="display: flex; gap: 10px;">
                         <a href="/" class="btn-back">Volver al Editor de Menú</a>
-                        <a href="/logout" class="btn-back" style="background: #dc3545;">Salir</a>
+                        <a href="/logout" class="btn-back btn-logout">Salir</a>
                     </div>
                 </div>
                 <div class="container">
