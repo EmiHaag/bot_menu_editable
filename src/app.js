@@ -7,7 +7,9 @@ const {
     DisconnectReason,
     fetchLatestBaileysVersion
 } = require('@whiskeysockets/baileys');
-const { Boom } = require('@hapi/boom');
+const {
+    Boom
+} = require('@hapi/boom');
 const QRCode = require('qrcode');
 const pino = require('pino');
 const express = require('express');
@@ -27,10 +29,14 @@ app.use(session({
     secret: process.env.SESSION_SECRET || 'bot-menu-secret',
     resave: false,
     saveUninitialized: false,
-    cookie: { maxAge: 24 * 60 * 60 * 1000 } // 24 horas
+    cookie: {
+        maxAge: 24 * 60 * 60 * 1000
+    } // 24 horas
 }));
 
-app.use(express.urlencoded({ extended: true }));
+app.use(express.urlencoded({
+    extended: true
+}));
 
 // Koyeb Health Check endpoint
 app.get('/health', (req, res) => {
@@ -39,6 +45,13 @@ app.get('/health', (req, res) => {
 
 // Ruta de Login (GET)
 app.get('/login', (req, res) => {
+    let errorMsg = '';
+    if (req.query.error === '1') {
+        errorMsg = '<div class="error-msg">Usuario o contraseña incorrectos</div>';
+    } else if (req.query.error === '2') {
+        errorMsg = '<div class="error-msg">Tu cuenta está inactiva. Contacta al administrador.</div>';
+    }
+
     res.send(`
         <!DOCTYPE html>
         <html lang="es">
@@ -117,7 +130,7 @@ app.get('/login', (req, res) => {
             <div class="login-box" style="position: relative;">
                 <canvas id="botLogoLogin" width="200" height="200" style="position: absolute; top: -110px; left: -70px; width: 180px; height: 180px; pointer-events: none; filter: drop-shadow(0 5px 15px rgba(0,0,0,0.1));"></canvas>
                 <h2>Bot Menu Editor</h2>
-                ${req.query.error ? '<div class="error-msg">Usuario o contraseña incorrectos</div>' : ''}
+                ${errorMsg}
                 <form action="/login" method="POST">
                     <div class="form-group">
                         <label for="username">Usuario</label>
@@ -165,14 +178,26 @@ app.get('/login', (req, res) => {
 
 // Ruta de Login (POST)
 app.post('/login', async (req, res) => {
-    const { username, password } = req.body;
+    const {
+        username,
+        password
+    } = req.body;
     try {
         const user = await userService.getUserByUsername(username);
-        if (user && user.activo && password === user.password) {
-            req.session.user = user;
-            return res.redirect('/');
+        
+        // 1. Verificar si el usuario existe y la contraseña coincide
+        if (!user || user.password !== password) {
+            return res.redirect('/login?error=1');
         }
-        res.redirect('/login?error=1');
+
+        // 2. Verificar si el usuario está activo
+        if (!user.activo) {
+            return res.redirect('/login?error=2');
+        }
+
+        // Si todo está bien, iniciar sesión
+        req.session.user = user;
+        return res.redirect('/');
     } catch (error) {
         console.error('Login Error:', error);
         res.redirect('/login?error=1');
@@ -210,42 +235,54 @@ app.use((req, res, next) => {
 const botQRs = {}; // Object to store status and data for each bot
 
 async function startBot(botConfig, forceStart = false) {
-    const { id, spreadsheetId, credentials, authFolder } = botConfig;
-    
+    const {
+        id,
+        spreadsheetId,
+        credentials,
+        authFolder
+    } = botConfig;
+
     // Si el bot ya está corriendo o conectando, no hacer nada a menos que sea forceStart
     if (botQRs[id]?.status === 'connected' || botQRs[id]?.status === 'connecting' || botQRs[id]?.status === 'qr_ready') {
         if (!forceStart) return;
     }
 
     console.log(`[${id}] Starting initialization...`);
-    botQRs[id] = { 
+    botQRs[id] = {
         ...botQRs[id],
-        status: 'starting', 
-        qr: null, 
+        status: 'starting',
+        qr: null,
         rawQr: null,
         lastUpdate: new Date().toLocaleTimeString(),
         config: botConfig,
         lastActiveViewer: Date.now() // Al iniciar, asumimos que alguien lo está viendo
     };
-    
+
     try {
         const googleSheetsService = new GoogleSheetsService({
             clientId: id,
             spreadsheetId,
             credentials
         });
-        
+
         const stateService = new StateService(id);
         const menuController = new MenuController(googleSheetsService, stateService);
 
-        const { state, saveCreds } = await useMultiFileAuthState(authFolder);
-        const { version } = await fetchLatestBaileysVersion();
+        const {
+            state,
+            saveCreds
+        } = await useMultiFileAuthState(authFolder);
+        const {
+            version
+        } = await fetchLatestBaileysVersion();
 
         console.log(`[${id}] Using Baileys version: ${version.join('.')}`);
 
         const sock = makeWASocket({
             version,
-            logger: pino({ level: 'error' }),
+            logger: pino({
+                level: 'error'
+            }),
             auth: state,
             browser: ['Bot Menu', 'Chrome', '1.0.0'],
             printQRInTerminal: false
@@ -254,20 +291,24 @@ async function startBot(botConfig, forceStart = false) {
         botQRs[id].sock = sock;
 
         sock.ev.on('connection.update', async (update) => {
-            const { connection, lastDisconnect, qr } = update;
+            const {
+                connection,
+                lastDisconnect,
+                qr
+            } = update;
             botQRs[id].lastUpdate = new Date().toLocaleTimeString();
-            
+
             if (qr) {
                 console.log(`[${id}] New QR code received`);
                 botQRs[id].rawQr = qr;
-                
+
                 // Si es la primera vez que recibimos el QR en este ciclo, guardamos el timestamp
                 if (botQRs[id].status !== 'qr_ready') {
                     botQRs[id].qrReadyTimestamp = Date.now();
                 }
-                
+
                 botQRs[id].status = 'qr_ready';
-                
+
                 // Solo generar la imagen si alguien está mirando (últimos 30 segundos)
                 if (Date.now() - (botQRs[id].lastActiveViewer || 0) < 30000) {
                     try {
@@ -279,13 +320,13 @@ async function startBot(botConfig, forceStart = false) {
             }
 
             if (connection === 'close') {
-                const statusCode = (lastDisconnect.error instanceof Boom) ? 
+                const statusCode = (lastDisconnect.error instanceof Boom) ?
                     lastDisconnect.error.output.statusCode : 0;
-                
+
                 const shouldReconnect = statusCode !== DisconnectReason.loggedOut;
-                
+
                 console.log(`[${id}] Connection closed. Status: ${statusCode}. Reconnecting: ${shouldReconnect}`);
-                
+
                 // Si fue cerrado por inactividad o timeout, no intentar reconectar automáticamente
                 if (botQRs[id].status === 'stopped_inactivity' || botQRs[id].status === 'timeout_qr') {
                     console.log(`[${id}] Connection stopped due to inactivity/timeout. Waiting for manual start.`);
@@ -323,10 +364,10 @@ async function startBot(botConfig, forceStart = false) {
                 for (const msg of m.messages) {
                     if (!msg.key.fromMe && msg.message) {
                         const jid = msg.key.remoteJid;
-                        const text = msg.message.conversation || 
-                                     msg.message.extendedTextMessage?.text || 
-                                     msg.message.buttonsResponseMessage?.selectedButtonId ||
-                                     msg.message.listResponseMessage?.singleSelectReply?.selectedRowId;
+                        const text = msg.message.conversation ||
+                            msg.message.extendedTextMessage?.text ||
+                            msg.message.buttonsResponseMessage?.selectedButtonId ||
+                            msg.message.listResponseMessage?.singleSelectReply?.selectedRowId;
 
                         if (text) {
                             console.log(`[${id}] Message from ${jid}: ${text}`);
@@ -351,11 +392,15 @@ async function main() {
         const loggedUser = req.user;
 
         if (loggedUser.idCliente !== 'admin' && loggedUser.idCliente !== id) {
-            return res.status(403).json({ error: 'Unauthorized' });
+            return res.status(403).json({
+                error: 'Unauthorized'
+            });
         }
 
         const data = botQRs[id];
-        if (!data) return res.status(404).json({ error: 'Not found' });
+        if (!data) return res.status(404).json({
+            error: 'Not found'
+        });
 
         // Marcar actividad del visor
         data.lastActiveViewer = Date.now();
@@ -382,18 +427,28 @@ async function main() {
         const loggedUser = req.user;
 
         if (loggedUser.idCliente !== 'admin' && loggedUser.idCliente !== id) {
-            return res.status(403).json({ error: 'Unauthorized' });
+            return res.status(403).json({
+                error: 'Unauthorized'
+            });
         }
 
         const data = botQRs[id];
-        if (!data || !data.config) return res.status(404).json({ error: 'Config not found' });
+        if (!data || !data.config) return res.status(404).json({
+            error: 'Config not found'
+        });
 
         if (data.status === 'connected' || data.status === 'connecting' || data.status === 'qr_ready') {
-            return res.json({ success: true, message: 'Already running' });
+            return res.json({
+                success: true,
+                message: 'Already running'
+            });
         }
 
         startBot(data.config, true);
-        res.json({ success: true, message: 'Starting...' });
+        res.json({
+            success: true,
+            message: 'Starting...'
+        });
     });
 
     // API: Detener conexión de un bot (por inactividad/visibilidad)
@@ -402,26 +457,38 @@ async function main() {
         const loggedUser = req.user;
 
         if (loggedUser.idCliente !== 'admin' && loggedUser.idCliente !== id) {
-            return res.status(403).json({ error: 'Unauthorized' });
+            return res.status(403).json({
+                error: 'Unauthorized'
+            });
         }
 
         const data = botQRs[id];
-        if (!data) return res.status(404).json({ error: 'Not found' });
+        if (!data) return res.status(404).json({
+            error: 'Not found'
+        });
 
         // Solo detener si está en estados de "espera de QR"
         if (data.status === 'qr_ready' || data.status === 'starting' || data.status === 'connecting') {
             console.log(`[${id}] Stopping connection explicitly (User left page)`);
             if (data.sock) {
-                try { data.sock.end(); } catch (e) {}
+                try {
+                    data.sock.end();
+                } catch (e) {}
             }
             data.status = 'stopped_inactivity';
             data.qr = null;
             data.rawQr = null;
             data.qrReadyTimestamp = null;
-            return res.json({ success: true, message: 'Stopped' });
+            return res.json({
+                success: true,
+                message: 'Stopped'
+            });
         }
 
-        res.json({ success: true, message: 'No action needed' });
+        res.json({
+            success: true,
+            message: 'No action needed'
+        });
     });
 
     // Integrated Dashboard routes
@@ -658,20 +725,29 @@ async function main() {
         const botId = req.params.botId;
 
         if (loggedUser.idCliente !== 'admin' && loggedUser.idCliente !== botId) {
-            return res.status(403).json({ error: 'Unauthorized' });
+            return res.status(403).json({
+                error: 'Unauthorized'
+            });
         }
 
         const data = botQRs[botId];
-        if (!data) return res.status(404).json({ error: 'Bot not found' });
+        if (!data) return res.status(404).json({
+            error: 'Bot not found'
+        });
 
         try {
             if (data.sock) {
-                try { data.sock.end(); } catch (e) {}
+                try {
+                    data.sock.end();
+                } catch (e) {}
             }
 
             const authFolder = path.join(AUTH_SESSIONS_DIR, `auth_info_${botId}`);
             if (fs.existsSync(authFolder)) {
-                fs.rmSync(authFolder, { recursive: true, force: true });
+                fs.rmSync(authFolder, {
+                    recursive: true,
+                    force: true
+                });
                 console.log(`[${botId}] Session deleted manually`);
             }
 
@@ -679,10 +755,14 @@ async function main() {
             botQRs[botId].qr = null;
             botQRs[botId].rawQr = null;
 
-            res.json({ success: true });
+            res.json({
+                success: true
+            });
         } catch (error) {
             console.error(`[${botId}] Error during session deletion:`, error);
-            res.status(500).json({ error: 'Error' });
+            res.status(500).json({
+                error: 'Error'
+            });
         }
     });
 
@@ -697,7 +777,9 @@ async function main() {
     console.log(`[System] Loading ${activeClients.length} potential clients...`);
 
     if (!fs.existsSync(AUTH_SESSIONS_DIR)) {
-        fs.mkdirSync(AUTH_SESSIONS_DIR, { recursive: true });
+        fs.mkdirSync(AUTH_SESSIONS_DIR, {
+            recursive: true
+        });
     }
 
     for (const client of activeClients) {
@@ -705,7 +787,7 @@ async function main() {
 
         const authFolder = path.join(AUTH_SESSIONS_DIR, `auth_info_${client.idCliente}`);
         const credsFile = path.join(authFolder, 'creds.json');
-        
+
         const botConfig = {
             id: client.idCliente,
             spreadsheetId: process.env.SPREADSHEET_ID,
@@ -742,7 +824,9 @@ async function main() {
                     console.log(`[${id}] QR Scan Timeout (30s exceeded). Stopping...`);
                     data.status = 'timeout_qr';
                     if (data.sock) {
-                        try { data.sock.end(); } catch (e) {}
+                        try {
+                            data.sock.end();
+                        } catch (e) {}
                     }
                     data.qr = null;
                     data.rawQr = null;
@@ -756,7 +840,9 @@ async function main() {
                 if (now - (data.lastActiveViewer || 0) > 45000) {
                     console.log(`[${id}] Stopping connection due to inactive viewer (Saving memory)`);
                     if (data.sock) {
-                        try { data.sock.end(); } catch (e) {}
+                        try {
+                            data.sock.end();
+                        } catch (e) {}
                     }
                     data.status = 'stopped_inactivity';
                     data.qr = null;
@@ -764,7 +850,7 @@ async function main() {
                     data.qrReadyTimestamp = null;
                 }
             }
-            
+
             // Si el bot está en qr_ready pero no hay visor activo hace 15 segundos, limpiar la imagen Base64 para liberar memoria
             if (data.status === 'qr_ready' && data.qr && (now - (data.lastActiveViewer || 0) > 15000)) {
                 console.log(`[${id}] Clearing QR image from memory (Still in qr_ready state)`);
@@ -775,4 +861,3 @@ async function main() {
 }
 
 main();
-
