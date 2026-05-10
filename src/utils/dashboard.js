@@ -285,8 +285,8 @@ class Dashboard {
                             border-color: var(--primary-color);
                         }
                         
-                        .tree ul { padding-top: 20px; position: relative; transition: all 0.5s; }
-                        .tree li { float: left; text-align: center; list-style-type: none; position: relative; padding: 20px 5px 0 5px; transition: all 0.5s; }
+                        .tree ul { padding-top: 20px; position: relative; transition: all 0.5s; display: flex; justify-content: center; }
+                        .tree li { text-align: center; list-style-type: none; position: relative; padding: 20px 5px 0 5px; transition: all 0.5s; }
                         .tree li::before, .tree li::after { content: ''; position: absolute; top: 0; right: 50%; border-top: 1px solid var(--border-color); width: 50%; height: 20px; }
                         .tree li::after { right: auto; left: 50%; border-left: 1px solid var(--border-color); }
                         .tree li:only-child::after, .tree li:only-child::before { display: none; }
@@ -414,8 +414,8 @@ class Dashboard {
                         <thead>
                             <tr>
                                 <th>ID</th>
-                                <th>ParentID</th>
-                                <th>Trigger</th>
+                                <th>Hijo de</th>
+                                <th>Disparador</th>
                                 <th>Título</th>
                                 <th>Mensaje (Resumen)</th>
                                 <th>Acciones</th>
@@ -428,7 +428,7 @@ class Dashboard {
 
                     <!-- Visual Modal -->
                     <div id="visualModal" class="modal">
-                        <div class="modal-content" style="width: 80%; max-height: 80%; overflow-y: auto;">
+                        <div class="modal-content" style="width: 80%; max-height: 80%; overflow-y: auto; text-align: center;">
                             <span onclick="closeModal('visualModal')" style="float:right; cursor:pointer; font-size:24px;">&times;</span>
                             <h2>Estructura Jerárquica</h2>
                             <div class="tree" id="treeContainer"></div>
@@ -445,13 +445,13 @@ class Dashboard {
                                 <div class="form-column">
                                     <div style="background: #e9ecef; padding: 15px; border-radius: 5px; margin-bottom: 20px; border-left: 5px solid #007bff;">
                                         <small style="color: #666; display: block; margin-bottom: 10px;">Vista previa de la relación:</small>
-                                        <div id="addPreview" style="font-family: monospace; white-space: pre; font-size: 13px;"></div>
+                                        <div id="addPreview" style="font-family: monospace; white-space: pre-wrap; font-size: 13px; max-height: 120px; overflow-y: auto; overflow-x: hidden;"></div>
                                     </div>
 
                                     <form action="/add" method="POST">
                                         <input type="hidden" name="botId" value="${botId}">
                                         <div class="form-group">
-                                            <label>Parent ID (Padre):</label>
+                                            <label>Hijo de:</label>
                                             <input type="text" id="addParentId" name="parentId" readonly style="background: #eee;">
                                         </div>
                                         <div class="form-group">
@@ -459,7 +459,7 @@ class Dashboard {
                                             <input type="text" id="addId" name="id" placeholder="ej: soporte_tecnico" required oninput="updatePreview('add')">
                                         </div>
                                         <div class="form-group">
-                                            <label>Trigger (Número/Letra):</label>
+                                            <label>Disparador (Número/Letra):</label>
                                             <input type="text" id="addTrigger" name="trigger" placeholder="ej: 1" required oninput="updatePreview('add')">
                                         </div>
                                         <div class="form-group">
@@ -503,7 +503,7 @@ class Dashboard {
                                 <div class="form-column">
                                     <div style="background: #fff3cd; padding: 15px; border-radius: 5px; margin-bottom: 20px; border-left: 5px solid #ffc107;">
                                         <small style="color: #856404; display: block; margin-bottom: 10px;">Vista previa actual:</small>
-                                        <div id="editPreview" style="font-family: monospace; white-space: pre; font-size: 13px;"></div>
+                                        <div id="editPreview" style="font-family: monospace; white-space: pre-wrap; font-size: 13px; max-height: 120px; overflow-y: auto; overflow-x: hidden;"></div>
                                     </div>
 
                                     <form action="/save" method="POST">
@@ -518,7 +518,7 @@ class Dashboard {
                                             <input type="text" id="editParentId" name="parentId" required oninput="updatePreview('edit')">
                                         </div>
                                         <div class="form-group">
-                                            <label>Trigger (Número/Letra):</label>
+                                            <label>Disparador (Número/Letra):</label>
                                             <input type="text" id="editTrigger" name="trigger" required oninput="updatePreview('edit')">
                                         </div>
                                         <div class="form-group">

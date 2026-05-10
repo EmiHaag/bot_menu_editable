@@ -1,0 +1,5 @@
+{
+  "ignore": ["auth_sessions/*", "node_modules/*"],
+  "ext": "js,json",
+  "watch": ["src/", ".env"]
+}
