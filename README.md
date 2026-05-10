@@ -43,8 +43,18 @@ Define el árbol de navegación de los mensajes.
     - Los clientes solo ven y editan sus propias filas.
     - El administrador puede alternar entre todos los clientes activos.
 - **Estado de WhatsApp (QR)**: `http://localhost:8000/qr`
-    - Permite vincular el bot escaneando el código QR.
-    - Los clientes solo ven el estado de su propio dispositivo.
+    - Panel dinámico para vincular dispositivos sin refrescos de página.
+    - Generación de QR bajo demanda y auto-limpieza de recursos.
+
+## Optimización de Recursos y Gestión de QR
+
+Para maximizar la eficiencia y minimizar el consumo de memoria, el sistema implementa una gestión inteligente de conexiones:
+
+- **Carga Bajo Demanda**: Los bots que no tienen una sesión activa no se conectan automáticamente al iniciar el servidor. Solo se activan cuando el usuario lo solicita manualmente.
+- **Lazy QR Generation**: El código QR solo se convierte a imagen (Base64) si hay un usuario visualizando activamente el panel de control.
+- **Timeout de Escaneo**: Una vez generado el QR, el sistema otorga **30 segundos** para ser escaneado. Si no hay éxito, la conexión se cierra automáticamente.
+- **Gestión de Visibilidad**: Si la pestaña del navegador se oculta, se minimiza o se cierra, el bot en espera de QR se **detiene inmediatamente** para liberar recursos.
+- **Auto-apagado por Inactividad**: Si no se detecta actividad en la página `/qr` durante 45 segundos, el servidor finaliza los procesos de conexión pendientes.
 
 ## Requisitos e Instalación
 
