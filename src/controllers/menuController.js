@@ -26,7 +26,7 @@ class MenuController {
         }
 
         // Handle "back" command
-        if (input === '9' || input === 'atras' || input === 'atrás') {
+        if (input === 'v' || input === 'atras' || input === 'atrás') {
             if (currentStateId === 'root') {
                 await this.sendMenu(sock, jid, 'root');
             } else {
@@ -50,7 +50,7 @@ class MenuController {
                 let finalMessage = `${selectedOption.message}
 
 `;
-                finalMessage += `_Escribe *9* para volver atrás._
+                finalMessage += `_Escribe *v* para volver atrás._
 `;
                 finalMessage += `_Escribe *0* para volver al inicio._`;
 
@@ -101,7 +101,7 @@ class MenuController {
 ---
 `;
         if (parentId !== 'root') {
-            menuText += `*9*. Volver atrás
+            menuText += `*v*. Volver atrás
 `;
         }
         menuText += `*0*. Menú Principal`;
