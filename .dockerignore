@@ -6,3 +6,4 @@ auth_info_baileys
 *.log
 .git
 .gitignore
+nodemon.json

@@ -30,7 +30,8 @@ app.use(session({
     store: new FileStore({
         path: path.join(AUTH_SESSIONS_DIR, 'web_sessions'),
         ttl: 600, // 10 minutos
-        reapInterval: 60 // Limpiar sesiones expiradas cada minuto
+        reapInterval: 3600, // Limpiar sesiones expiradas cada hora
+        logFn: () => {} // Silenciar logs de la librería
     }),
     secret: process.env.SESSION_SECRET || 'bot-menu-secret',
     resave: false,

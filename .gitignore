@@ -5,3 +5,4 @@ auth_info_*/
 auth_info_baileys/
 package-lock.json
 *.log
+nodemon.json
