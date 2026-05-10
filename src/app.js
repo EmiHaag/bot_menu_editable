@@ -285,7 +285,14 @@ async function startBot(botConfig, forceStart = false) {
             }),
             auth: state,
             browser: ['Bot Menu', 'Chrome', '1.0.0'],
-            printQRInTerminal: false
+            printQRInTerminal: false,
+            syncFullHistory: false,
+            shouldSyncHistoryMessage: () => false,
+            getMessage: async (key) => {
+                return {
+                    conversation: 'bot-menu'
+                };
+            }
         });
 
         botQRs[id].sock = sock;
