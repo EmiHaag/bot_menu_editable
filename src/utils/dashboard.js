@@ -99,7 +99,7 @@ class Dashboard {
                 if (node.id === 'root' && (displayTrigger === '0' || displayTrigger === '' || !displayTrigger)) {
                     displayTrigger = 'Hola';
                 }
-                
+
                 return `
                 <tr>
                     <td><code>${node.id}</code></td>
@@ -115,7 +115,8 @@ class Dashboard {
                         </div>
                     </td>
                 </tr>
-            `;}).join('');
+            `;
+            }).join('');
 
             res.send(`
                 <html>
@@ -671,16 +672,36 @@ class Dashboard {
                             
                             // 1. Mensaje del Padre (Contexto)
                             let parentHtml = '';
-                            if (parentId !== 'root' && parent.message) {
-                                let parentContent = parent.message;
-                                const parentChildren = menuData.filter(n => n.parentId === parent.id);
-                                if (parentChildren.length > 0) {
-                                    parentContent += '\\n\\n';
-                                    parentChildren.forEach(opt => {
-                                        parentContent += \`*\${opt.trigger}*. \${opt.title}\\n\`;
-                                    });
+                            if (parent) {
+                                let parentContent = parent.message || '';
+                                if (parent.id === 'root' && (!parentContent || parentContent === '')) {
+                                    parentContent = 'Hola';
                                 }
-                                parentHtml = \`<div class="wa-bubble">\${parentContent.replace(/\\n/g, '<br>')}</div>\`;
+
+                                const parentChildren = menuData.filter(n => n.parentId === parent.id);
+                                let optionsList = '';
+                                let foundCurrent = false;
+
+                                parentChildren.forEach(opt => {
+                                    if (type === 'edit' && opt.id === (document.getElementById('editId').value || id)) {
+                                        optionsList += \`*\${trigger}*. \${title}\\n\`;
+                                        foundCurrent = true;
+                                    } else {
+                                        optionsList += \`*\${opt.trigger}*. \${opt.title}\\n\`;
+                                    }
+                                });
+
+                                if (type === 'add' && !foundCurrent) {
+                                    optionsList += \`*\${trigger}*. \${title}\\n\`;
+                                }
+
+                                if (optionsList) {
+                                    parentContent += '\\n\\n' + optionsList;
+                                }
+
+                                if (parentContent) {
+                                    parentHtml = \`<div class="wa-bubble">\${parentContent.replace(/\\n/g, '<br>')}</div>\`;
+                                }
                             }
 
                             // 2. Acción del Usuario (El trigger)
