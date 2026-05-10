@@ -94,22 +94,28 @@ class Dashboard {
                 botSelector = `<span style="background: #e9ecef; padding: 5px 10px; border-radius: 5px; font-weight: bold; color: #495057;">Cliente: ${req.user.nombreCliente}</span>`;
             }
 
-            let rowsHtml = menuData.map((node) => `
+            let rowsHtml = menuData.map((node) => {
+                let displayTrigger = node.trigger;
+                if (node.id === 'root' && (displayTrigger === '0' || displayTrigger === '' || !displayTrigger)) {
+                    displayTrigger = 'Hola';
+                }
+                
+                return `
                 <tr>
                     <td><code>${node.id}</code></td>
                     <td><code>${node.parentId}</code></td>
-                    <td><b>${node.trigger}</b></td>
+                    <td><b>${displayTrigger}</b></td>
                     <td>${node.title}</td>
                     <td style="max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${node.message}</td>
                     <td>
                         <div style="display: flex; gap: 5px;">
-                            <button type="button" onclick="openEditModal('${node.rowIndex}', '${node.id}', '${node.parentId}', '${node.trigger}', '${node.title}', \`${node.message.replace(/'/g, "").replace(/"/g, '').replace(/\n/g, "\\n")}\`)" class="btn-action btn-orange">Editar</button>
+                            <button type="button" onclick="openEditModal('${node.rowIndex}', '${node.id}', '${node.parentId}', '${displayTrigger}', '${node.title}', \`${node.message.replace(/'/g, "").replace(/"/g, '').replace(/\n/g, "\\n")}\`)" class="btn-action btn-orange">Editar</button>
                             <button type="button" onclick="openAddModal('${node.id}')" class="btn-action btn-blue">+ Hijo</button>
                             <button type="button" onclick="confirmDelete('${node.rowIndex}')" class="btn-action btn-red">Borrar</button>
                         </div>
                     </td>
                 </tr>
-            `).join('');
+            `;}).join('');
 
             res.send(`
                 <html>
@@ -299,6 +305,92 @@ class Dashboard {
                             background: var(--bg-box); 
                             box-shadow: 0 2px 4px rgba(0,0,0,0.02);
                         }
+
+                        /* WhatsApp Preview Styles */
+                        .modal-body-wrapper { display: flex; gap: 30px; align-items: flex-start; }
+                        .form-column { flex: 1; }
+                        .chat-column { width: 320px; position: sticky; top: 0; }
+                        
+                        .whatsapp-container {
+                            background: #e5ddd5;
+                            background-image: url('https://user-images.githubusercontent.com/15075759/28719144-86dc0f70-73b1-11e7-911d-60d70fcded21.png');
+                            border-radius: 12px;
+                            overflow: hidden;
+                            border: 1px solid var(--border-color);
+                            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+                        }
+                        .whatsapp-header {
+                            background: #075e54;
+                            color: white;
+                            padding: 10px 15px;
+                            display: flex;
+                            align-items: center;
+                            gap: 10px;
+                        }
+                        .whatsapp-body {
+                            padding: 15px;
+                            height: 350px;
+                            overflow-y: auto;
+                            display: flex;
+                            flex-direction: column;
+                            gap: 10px;
+                        }
+                        .wa-bubble {
+                            background: white;
+                            padding: 8px 12px;
+                            border-radius: 0 10px 10px 10px;
+                            max-width: 85%;
+                            font-size: 14px;
+                            position: relative;
+                            box-shadow: 0 1px 2px rgba(0,0,0,0.1);
+                            white-space: pre-wrap;
+                            word-wrap: break-word;
+                            color: #333;
+                            line-height: 1.4;
+                        }
+                        .wa-bubble::before {
+                            content: '';
+                            position: absolute;
+                            left: -10px;
+                            top: 0;
+                            border: 10px solid transparent;
+                            border-top-color: white;
+                            border-right-color: white;
+                        }
+                        .wa-bubble-user {
+                            align-self: flex-end;
+                            background: #dcf8c6;
+                            padding: 8px 12px;
+                            border-radius: 10px 0 10px 10px;
+                            max-width: 85%;
+                            font-size: 14px;
+                            position: relative;
+                            box-shadow: 0 1px 2px rgba(0,0,0,0.1);
+                            color: #333;
+                            line-height: 1.4;
+                        }
+                        .wa-bubble-user::after {
+                            content: '';
+                            position: absolute;
+                            right: -10px;
+                            top: 0;
+                            border: 10px solid transparent;
+                            border-top-color: #dcf8c6;
+                            border-left-color: #dcf8c6;
+                        }
+                        .wa-footer {
+                            background: #f0f0f0;
+                            padding: 10px;
+                            display: flex;
+                            align-items: center;
+                            gap: 10px;
+                        }
+                        .wa-input {
+                            background: white;
+                            flex: 1;
+                            height: 35px;
+                            border-radius: 20px;
+                        }
                     </style>
                 </head>
                 <body>
@@ -344,78 +436,118 @@ class Dashboard {
 
                     <!-- Add Child Modal -->
                     <div id="addModal" class="modal">
-                        <div class="modal-content">
+                        <div class="modal-content" style="width: 800px;">
                             <span onclick="closeModal('addModal')" style="float:right; cursor:pointer; font-size:24px;">&times;</span>
                             <h2>Agregar Nuevo Hijo</h2>
                             
-                            <div style="background: #e9ecef; padding: 15px; border-radius: 5px; margin-bottom: 20px; border-left: 5px solid #007bff;">
-                                <small style="color: #666; display: block; margin-bottom: 10px;">Vista previa de la relación:</small>
-                                <div id="addPreview" style="font-family: monospace; white-space: pre;"></div>
-                            </div>
+                            <div class="modal-body-wrapper">
+                                <div class="form-column">
+                                    <div style="background: #e9ecef; padding: 15px; border-radius: 5px; margin-bottom: 20px; border-left: 5px solid #007bff;">
+                                        <small style="color: #666; display: block; margin-bottom: 10px;">Vista previa de la relación:</small>
+                                        <div id="addPreview" style="font-family: monospace; white-space: pre; font-size: 13px;"></div>
+                                    </div>
 
-                            <form action="/add" method="POST">
-                                <input type="hidden" name="botId" value="${botId}">
-                                <div class="form-group">
-                                    <label>Parent ID (Padre):</label>
-                                    <input type="text" id="addParentId" name="parentId" readonly style="background: #eee;">
+                                    <form action="/add" method="POST">
+                                        <input type="hidden" name="botId" value="${botId}">
+                                        <div class="form-group">
+                                            <label>Parent ID (Padre):</label>
+                                            <input type="text" id="addParentId" name="parentId" readonly style="background: #eee;">
+                                        </div>
+                                        <div class="form-group">
+                                            <label>Nuevo ID (Único):</label>
+                                            <input type="text" id="addId" name="id" placeholder="ej: soporte_tecnico" required oninput="updatePreview('add')">
+                                        </div>
+                                        <div class="form-group">
+                                            <label>Trigger (Número/Letra):</label>
+                                            <input type="text" id="addTrigger" name="trigger" placeholder="ej: 1" required oninput="updatePreview('add')">
+                                        </div>
+                                        <div class="form-group">
+                                            <label>Título (En el menú):</label>
+                                            <input type="text" id="addTitle" name="title" placeholder="ej: Hablar con Soporte" required oninput="updatePreview('add')">
+                                        </div>
+                                        <div class="form-group">
+                                            <label>Mensaje (Respuesta):</label>
+                                            <textarea id="addMessage" name="message" rows="3" placeholder="Mensaje que enviará el bot..." oninput="updatePreview('add')"></textarea>
+                                        </div>
+                                        <button type="submit" class="btn btn-green" style="width: 100%;">Crear Nodo Hijo</button>
+                                    </form>
                                 </div>
-                                <div class="form-group">
-                                    <label>Nuevo ID (Único):</label>
-                                    <input type="text" id="addId" name="id" placeholder="ej: soporte_tecnico" required oninput="updatePreview('add')">
+
+                                <div class="chat-column">
+                                    <div class="whatsapp-container">
+                                        <div class="whatsapp-header">
+                                            <div style="width: 30px; height: 30px; background: #ccc; border-radius: 50%;"></div>
+                                            <div style="font-weight: bold; font-size: 14px;">Bot WhatsApp</div>
+                                        </div>
+                                        <div class="whatsapp-body" id="addChatBody">
+                                            <!-- Chat content -->
+                                        </div>
+                                        <div class="wa-footer">
+                                            <div class="wa-input"></div>
+                                        </div>
+                                    </div>
+                                    <p style="font-size: 11px; color: #999; text-align: center; margin-top: 10px;">* Simulación de respuesta del bot</p>
                                 </div>
-                                <div class="form-group">
-                                    <label>Trigger (Número/Letra):</label>
-                                    <input type="text" id="addTrigger" name="trigger" placeholder="ej: 1" required oninput="updatePreview('add')">
-                                </div>
-                                <div class="form-group">
-                                    <label>Título (En el menú):</label>
-                                    <input type="text" id="addTitle" name="title" placeholder="ej: Hablar con Soporte" required oninput="updatePreview('add')">
-                                </div>
-                                <div class="form-group">
-                                    <label>Mensaje (Respuesta):</label>
-                                    <textarea name="message" rows="3" placeholder="Mensaje que enviará el bot..."></textarea>
-                                </div>
-                                <button type="submit" class="btn btn-green" style="width: 100%;">Crear Nodo Hijo</button>
-                            </form>
+                            </div>
                         </div>
                     </div>
 
                     <!-- Edit Modal -->
                     <div id="editModal" class="modal">
-                        <div class="modal-content">
+                        <div class="modal-content" style="width: 800px;">
                             <span onclick="closeModal('editModal')" style="float:right; cursor:pointer; font-size:24px;">&times;</span>
                             <h2>Editar Nodo</h2>
                             
-                            <div style="background: #fff3cd; padding: 15px; border-radius: 5px; margin-bottom: 20px; border-left: 5px solid #ffc107;">
-                                <small style="color: #856404; display: block; margin-bottom: 10px;">Vista previa actual:</small>
-                                <div id="editPreview" style="font-family: monospace; white-space: pre;"></div>
-                            </div>
+                            <div class="modal-body-wrapper">
+                                <div class="form-column">
+                                    <div style="background: #fff3cd; padding: 15px; border-radius: 5px; margin-bottom: 20px; border-left: 5px solid #ffc107;">
+                                        <small style="color: #856404; display: block; margin-bottom: 10px;">Vista previa actual:</small>
+                                        <div id="editPreview" style="font-family: monospace; white-space: pre; font-size: 13px;"></div>
+                                    </div>
 
-                            <form action="/save" method="POST">
-                                <input type="hidden" name="botId" value="${botId}">
-                                <input type="hidden" id="editIndex" name="index">
-                                <div class="form-group">
-                                    <label>ID (Único):</label>
-                                    <input type="text" id="editId" name="id" required oninput="updatePreview('edit')">
+                                    <form action="/save" method="POST">
+                                        <input type="hidden" name="botId" value="${botId}">
+                                        <input type="hidden" id="editIndex" name="index">
+                                        <div class="form-group">
+                                            <label>ID (Único):</label>
+                                            <input type="text" id="editId" name="id" required oninput="updatePreview('edit')">
+                                        </div>
+                                        <div class="form-group">
+                                            <label>Parent ID (Padre):</label>
+                                            <input type="text" id="editParentId" name="parentId" required oninput="updatePreview('edit')">
+                                        </div>
+                                        <div class="form-group">
+                                            <label>Trigger (Número/Letra):</label>
+                                            <input type="text" id="editTrigger" name="trigger" required oninput="updatePreview('edit')">
+                                        </div>
+                                        <div class="form-group">
+                                            <label>Título (En el menú):</label>
+                                            <input type="text" id="editTitle" name="title" required oninput="updatePreview('edit')">
+                                        </div>
+                                        <div class="form-group">
+                                            <label>Mensaje (Respuesta):</label>
+                                            <textarea id="editMessage" name="message" rows="4" oninput="updatePreview('edit')"></textarea>
+                                        </div>
+                                        <button type="submit" class="btn btn-green" style="width: 100%;">Guardar Cambios</button>
+                                    </form>
                                 </div>
-                                <div class="form-group">
-                                    <label>Parent ID (Padre):</label>
-                                    <input type="text" id="editParentId" name="parentId" required oninput="updatePreview('edit')">
+
+                                <div class="chat-column">
+                                    <div class="whatsapp-container">
+                                        <div class="whatsapp-header">
+                                            <div style="width: 30px; height: 30px; background: #ccc; border-radius: 50%;"></div>
+                                            <div style="font-weight: bold; font-size: 14px;">Bot WhatsApp</div>
+                                        </div>
+                                        <div class="whatsapp-body" id="editChatBody">
+                                            <!-- Chat content -->
+                                        </div>
+                                        <div class="wa-footer">
+                                            <div class="wa-input"></div>
+                                        </div>
+                                    </div>
+                                    <p style="font-size: 11px; color: #999; text-align: center; margin-top: 10px;">* Simulación de respuesta del bot</p>
                                 </div>
-                                <div class="form-group">
-                                    <label>Trigger (Número/Letra):</label>
-                                    <input type="text" id="editTrigger" name="trigger" required oninput="updatePreview('edit')">
-                                </div>
-                                <div class="form-group">
-                                    <label>Título (En el menú):</label>
-                                    <input type="text" id="editTitle" name="title" required oninput="updatePreview('edit')">
-                                </div>
-                                <div class="form-group">
-                                    <label>Mensaje (Respuesta):</label>
-                                    <textarea id="editMessage" name="message" rows="4"></textarea>
-                                </div>
-                                <button type="submit" class="btn btn-green" style="width: 100%;">Guardar Cambios</button>
-                            </form>
+                            </div>
                         </div>
                     </div>
 
@@ -464,8 +596,20 @@ class Dashboard {
                         }
 
                         function openAddModal(parentId) {
-                            currentParent = menuData.find(n => n.id === parentId) || { title: 'Raíz', id: 'root' };
+                            const parent = menuData.find(n => n.id === parentId) || { title: 'Raíz', id: 'root' };
+                            currentParent = parent;
                             document.getElementById('addParentId').value = parentId;
+                            
+                            const childrenCount = menuData.filter(n => n.parentId === parentId).length;
+                            const nextNumber = childrenCount + 1;
+
+                            // Sugerencia de ID: nombre_padre + _opcion + X
+                            const prefix = parentId === 'root' ? 'menu' : parentId;
+                            document.getElementById('addId').value = \`\${prefix}_opcion\${nextNumber}\`;
+
+                            // Sugerencia de Trigger: X
+                            document.getElementById('addTrigger').value = nextNumber;
+
                             document.getElementById('addModal').style.display = "block";
                             updatePreview('add');
                         }
@@ -474,10 +618,23 @@ class Dashboard {
                             document.getElementById('editIndex').value = index;
                             document.getElementById('editId').value = id;
                             document.getElementById('editParentId').value = parentId;
-                            document.getElementById('editTrigger').value = trigger;
+                            document.getElementById('editTrigger').value = (id === 'root' && (trigger === '' || trigger === '0' || !trigger)) ? 'Hola' : trigger;
                             document.getElementById('editTitle').value = title;
                             document.getElementById('editMessage').value = message;
                             
+                            const parentInput = document.getElementById('editParentId');
+                            if (id === 'root') {
+                                parentInput.required = false;
+                                parentInput.readOnly = true;
+                                parentInput.style.background = '#eee';
+                                parentInput.placeholder = '(Sin padre - Nodo Raíz)';
+                            } else {
+                                parentInput.required = true;
+                                parentInput.readOnly = false;
+                                parentInput.style.background = 'var(--bg-box)';
+                                parentInput.placeholder = '';
+                            }
+
                             currentParent = menuData.find(n => n.id === parentId) || { title: 'Raíz', id: 'root' };
                             document.getElementById('editModal').style.display = "block";
                             updatePreview('edit');
@@ -487,18 +644,62 @@ class Dashboard {
                             const id = document.getElementById(type + 'Id').value || '...';
                             const trigger = document.getElementById(type + 'Trigger').value || '?';
                             const title = document.getElementById(type + 'Title').value || 'Nuevo Título';
+                            const message = document.getElementById(type + 'Message').value || '';
                             const parentId = type === 'edit' ? document.getElementById('editParentId').value : document.getElementById('addParentId').value;
-                            
+
                             const parent = menuData.find(n => n.id === parentId) || { title: 'Raíz', id: 'root' };
+                            const grandparent = parent.parentId ? (menuData.find(n => n.id === parent.parentId) || (parent.parentId === 'root' ? { title: 'Raíz', id: 'root' } : null)) : null;
+
                             const siblings = menuData.filter(n => n.parentId === parent.id && n.id !== (type === 'edit' ? document.getElementById('editId').value : ''));
-                            
+
                             let siblingText = '';
+                            const indent = grandparent ? '      ' : '  ';
                             siblings.forEach(s => {
-                                siblingText += \`  ├── [ \${s.trigger}. \${s.title} ] (ID: \${s.id})\\n\`;
+                                siblingText += \`\${indent}├── [ \${s.trigger}. \${s.title} ] (ID: \${s.id})\\n\`;
                             });
 
+                            let headerText = '';
+                            if (grandparent) {
+                                headerText = \`[ \${grandparent.title} ]\\n  └── \`;
+                            }
+
                             const preview = document.getElementById(type + 'Preview');
-                            preview.innerHTML = \`[ \${parent.title} ]\\n\${siblingText}  └── [ \${trigger}. \${title} ] (ID: \${id})\`;
+                            preview.innerHTML = \`\${headerText}[ \${parent.title} ]\\n\${siblingText}\${indent}└── <span style="color: var(--primary-color); font-weight: bold;">[ \${trigger}. \${title} ] (ID: \${id})</span>\`;
+
+                            // --- WhatsApp Chat Preview ---
+                            const chatBody = document.getElementById(type + 'ChatBody');
+                            
+                            // 1. Mensaje del Padre (Contexto)
+                            let parentHtml = '';
+                            if (parentId !== 'root' && parent.message) {
+                                let parentContent = parent.message;
+                                const parentChildren = menuData.filter(n => n.parentId === parent.id);
+                                if (parentChildren.length > 0) {
+                                    parentContent += '\\n\\n';
+                                    parentChildren.forEach(opt => {
+                                        parentContent += \`*\${opt.trigger}*. \${opt.title}\\n\`;
+                                    });
+                                }
+                                parentHtml = \`<div class="wa-bubble">\${parentContent.replace(/\\n/g, '<br>')}</div>\`;
+                            }
+
+                            // 2. Acción del Usuario (El trigger)
+                            const userHtml = \`<div class="wa-bubble-user">\${trigger}</div>\`;
+
+                            // 3. Respuesta Actual (Lo que se está editando)
+                            let chatContent = message || '_Sin mensaje configurado_';
+                            const subOptions = menuData.filter(n => n.parentId === id);
+                            if (subOptions.length > 0) {
+                                chatContent += '\\n\\n';
+                                subOptions.forEach(opt => {
+                                    chatContent += \`*\${opt.trigger}*. \${opt.title}\\n\`;
+                                });
+                                chatContent += \`\\n---\\n*v*. Volver atrás\\n*0*. Menú Principal\`;
+                            }
+                            const botHtml = \`<div class="wa-bubble">\${chatContent.replace(/\\n/g, '<br>')}</div>\`;
+
+                            chatBody.innerHTML = parentHtml + userHtml + botHtml;
+                            chatBody.scrollTop = chatBody.scrollHeight;
                         }
 
                         function confirmDelete(index) {

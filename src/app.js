@@ -14,6 +14,7 @@ const QRCode = require('qrcode');
 const pino = require('pino');
 const express = require('express');
 const session = require('express-session');
+const FileStore = require('session-file-store')(session);
 const GoogleSheetsService = require('./services/googleSheetsService');
 const StateService = require('./services/stateService');
 const MenuController = require('./controllers/menuController');
@@ -26,12 +27,17 @@ const AUTH_SESSIONS_DIR = process.env.AUTH_SESSIONS_DIR || '/data/auth_sessions'
 
 // Configuración de Sesiones
 app.use(session({
+    store: new FileStore({
+        path: path.join(AUTH_SESSIONS_DIR, 'web_sessions'),
+        ttl: 600, // 10 minutos
+        reapInterval: 60 // Limpiar sesiones expiradas cada minuto
+    }),
     secret: process.env.SESSION_SECRET || 'bot-menu-secret',
     resave: false,
     saveUninitialized: false,
     cookie: {
-        maxAge: 24 * 60 * 60 * 1000
-    } // 24 horas
+        maxAge: 10 * 60 * 1000
+    } // 10 minutos
 }));
 
 app.use(express.urlencoded({
