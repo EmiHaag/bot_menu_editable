@@ -255,15 +255,18 @@ class Dashboard {
                         }
                         
                         /* Modal Styles */
-                        .modal { display: none; position: fixed; z-index: 100; left: 0; top: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.4); backdrop-filter: blur(2px); }
+                        .modal { display: none; position: fixed; z-index: 100; left: 0; top: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.4); backdrop-filter: blur(2px); overflow-y: auto; padding: 20px 0; }
                         .modal-content { 
                             background: var(--bg-white); 
-                            margin: 5% auto; 
+                            margin: 20px auto; 
                             padding: 30px; 
                             width: 50%; 
+                            max-height: calc(100vh - 80px);
+                            overflow-y: auto;
                             border-radius: 12px; 
                             box-shadow: 0 10px 25px rgba(0,0,0,0.1);
                             border: 1px solid var(--border-color);
+                            position: relative;
                         }
                         .modal-content h2 { margin-top: 0; color: var(--text-main); margin-bottom: 25px; }
                         
@@ -579,6 +582,14 @@ class Dashboard {
                             const children = menuData.filter(n => n.parentId === parentId);
                             if (children.length === 0) return '';
                             
+                            // Ordenar por trigger (numérico si es posible)
+                            children.sort((a, b) => {
+                                const ta = parseFloat(a.trigger) || 0;
+                                const tb = parseFloat(b.trigger) || 0;
+                                if (ta !== tb) return ta - tb;
+                                return String(a.trigger).localeCompare(String(b.trigger));
+                            });
+
                             let html = '<ul>';
                             children.forEach(child => {
                                 html += '<li>';
@@ -651,12 +662,39 @@ class Dashboard {
                             const parent = menuData.find(n => n.id === parentId) || { title: 'Raíz', id: 'root' };
                             const grandparent = parent.parentId ? (menuData.find(n => n.id === parent.parentId) || (parent.parentId === 'root' ? { title: 'Raíz', id: 'root' } : null)) : null;
 
-                            const siblings = menuData.filter(n => n.parentId === parent.id && n.id !== (type === 'edit' ? document.getElementById('editId').value : ''));
+                            // Preparar lista de items para mostrar (incluyendo el actual)
+                            let displayItems = menuData
+                                .filter(n => n.parentId === parent.id && n.id !== (type === 'edit' ? document.getElementById('editId').value : ''))
+                                .map(n => ({ ...n, isCurrent: false }));
+                            
+                            displayItems.push({
+                                id: id,
+                                trigger: trigger,
+                                title: title,
+                                isCurrent: true
+                            });
 
-                            let siblingText = '';
+                            // Ordenar por trigger (numérico si es posible)
+                            displayItems.sort((a, b) => {
+                                const ta = parseFloat(a.trigger) || 0;
+                                const tb = parseFloat(b.trigger) || 0;
+                                if (ta !== tb) return ta - tb;
+                                return String(a.trigger).localeCompare(String(b.trigger));
+                            });
+
+                            let itemsHtml = '';
                             const indent = grandparent ? '      ' : '  ';
-                            siblings.forEach(s => {
-                                siblingText += \`\${indent}├── [ \${s.trigger}. \${s.title} ] (ID: \${s.id})\\n\`;
+                            
+                            displayItems.forEach((item, index) => {
+                                const isLast = index === displayItems.length - 1;
+                                const connector = isLast ? '└── ' : '├── ';
+                                let itemLine = \`[ \${item.trigger}. \${item.title} ] (ID: \${item.id})\`;
+                                
+                                if (item.isCurrent) {
+                                    itemLine = \`<span style="color: var(--primary-color); font-weight: bold;">\${itemLine}</span>\`;
+                                }
+                                
+                                itemsHtml += \`\${indent}\${connector}\${itemLine}\\n\`;
                             });
 
                             let headerText = '';
@@ -665,7 +703,7 @@ class Dashboard {
                             }
 
                             const preview = document.getElementById(type + 'Preview');
-                            preview.innerHTML = \`\${headerText}[ \${parent.title} ]\\n\${siblingText}\${indent}└── <span style="color: var(--primary-color); font-weight: bold;">[ \${trigger}. \${title} ] (ID: \${id})</span>\`;
+                            preview.innerHTML = \`\${headerText}[ \${parent.title} ]\\n\${itemsHtml}\`;
 
                             // --- WhatsApp Chat Preview ---
                             const chatBody = document.getElementById(type + 'ChatBody');
@@ -678,22 +716,15 @@ class Dashboard {
                                     parentContent = 'Hola';
                                 }
 
-                                const parentChildren = menuData.filter(n => n.parentId === parent.id);
+                                // Usar los mismos displayItems ordenados para la lista de opciones
                                 let optionsList = '';
-                                let foundCurrent = false;
-
-                                parentChildren.forEach(opt => {
-                                    if (type === 'edit' && opt.id === (document.getElementById('editId').value || id)) {
+                                displayItems.forEach(item => {
+                                    if (item.isCurrent) {
                                         optionsList += \`*\${trigger}*. \${title}\\n\`;
-                                        foundCurrent = true;
                                     } else {
-                                        optionsList += \`*\${opt.trigger}*. \${opt.title}\\n\`;
+                                        optionsList += \`*\${item.trigger}*. \${item.title}\\n\`;
                                     }
                                 });
-
-                                if (type === 'add' && !foundCurrent) {
-                                    optionsList += \`*\${trigger}*. \${title}\\n\`;
-                                }
 
                                 if (optionsList) {
                                     parentContent += '\\n\\n' + optionsList;
