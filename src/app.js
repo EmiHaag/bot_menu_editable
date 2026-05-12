@@ -36,6 +36,7 @@ app.use(session({
     secret: process.env.SESSION_SECRET || 'bot-menu-secret',
     resave: false,
     saveUninitialized: false,
+    rolling: true,
     cookie: {
         maxAge: 10 * 60 * 1000
     } // 10 minutos
