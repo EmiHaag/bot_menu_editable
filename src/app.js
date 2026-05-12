@@ -45,6 +45,9 @@ app.use(express.urlencoded({
     extended: true
 }));
 
+// Servir archivos estáticos
+app.use(express.static(path.join(__dirname, 'public')));
+
 // Koyeb Health Check endpoint
 app.get('/health', (req, res) => {
     res.status(200).send('OK');
@@ -65,7 +68,8 @@ app.get('/login', (req, res) => {
         <head>
             <meta charset="UTF-8">
             <meta name="viewport" content="width=device-width, initial-scale=1.0">
-            <title>Login - Bot Menu Editor</title>
+            <title>Login - Editor de Menú de WhatsApp</title>
+            <script src="/js/robot-logo.js"></script>
             <style>
                 body {
                     font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
@@ -135,8 +139,8 @@ app.get('/login', (req, res) => {
         </head>
         <body>
             <div class="login-box" style="position: relative;">
-                <canvas id="botLogoLogin" width="200" height="200" style="position: absolute; top: -110px; left: -70px; width: 180px; height: 180px; pointer-events: none; filter: drop-shadow(0 5px 15px rgba(0,0,0,0.1));"></canvas>
-                <h2>Bot Menu Editor</h2>
+                <canvas id="botLogoLogin" width="200" height="200" style="position: absolute; top: -90px; left: 50%; transform: translateX(-50%); width: 140px; height: 140px; pointer-events: none; filter: drop-shadow(0 5px 15px rgba(0,0,0,0.1));"></canvas>
+                <h2>Editor de Menú de WhatsApp</h2>
                 ${errorMsg}
                 <form action="/login" method="POST">
                     <div class="form-group">
@@ -152,30 +156,6 @@ app.get('/login', (req, res) => {
             </div>
 
             <script>
-                function drawRobot(canvasId) {
-                    const canvas = document.getElementById(canvasId);
-                    if (!canvas) return;
-                    const ctx = canvas.getContext('2d');
-                    
-                    // Cuerpo
-                    ctx.beginPath(); ctx.roundRect(50, 80, 100, 80, 15); ctx.fillStyle = '#4A90E2'; ctx.fill();
-                    // Cuello
-                    ctx.fillStyle = '#357ABD'; ctx.fillRect(90, 70, 20, 10);
-                    // Cabeza
-                    ctx.beginPath(); ctx.roundRect(60, 25, 80, 50, 20); ctx.fillStyle = '#4A90E2'; ctx.fill();
-                    // Visor
-                    ctx.beginPath(); ctx.roundRect(70, 35, 60, 30, 10); ctx.fillStyle = '#2C3E50'; ctx.fill();
-                    // Ojos
-                    ctx.beginPath(); ctx.arc(88, 50, 5, 0, Math.PI * 2); ctx.arc(112, 50, 5, 0, Math.PI * 2); ctx.fillStyle = '#00FFCC'; ctx.fill();
-                    // Herramienta
-                    ctx.save(); ctx.translate(140, 140); ctx.rotate(-Math.PI / 4);
-                    ctx.beginPath(); ctx.roundRect(-5, -40, 10, 60, 5); ctx.fillStyle = '#FF5E62'; ctx.fill();
-                    ctx.beginPath(); ctx.moveTo(-5, -40); ctx.lineTo(0, -55); ctx.lineTo(5, -40); ctx.fillStyle = '#2C3E50'; ctx.fill();
-                    ctx.restore();
-                    // Antena
-                    ctx.beginPath(); ctx.moveTo(100, 25); ctx.lineTo(100, 10); ctx.strokeStyle = '#4A90E2'; ctx.lineWidth = 3; ctx.stroke();
-                    ctx.beginPath(); ctx.arc(100, 10, 4, 0, Math.PI * 2); ctx.fillStyle = '#FF5E62'; ctx.fill();
-                }
                 drawRobot('botLogoLogin');
             </script>
         </body>
@@ -191,7 +171,7 @@ app.post('/login', async (req, res) => {
     } = req.body;
     try {
         const user = await userService.getUserByUsername(username);
-        
+
         // 1. Verificar si el usuario existe y la contraseña coincide
         if (!user || user.password !== password) {
             return res.redirect('/login?error=1');
@@ -520,6 +500,7 @@ async function main() {
         <html>
             <head>
                 <title>WhatsApp Bot QR Status</title>
+                <script src="/js/robot-logo.js"></script>
                 <style>
                     :root {
                         --primary-color: #00bc7d;
@@ -610,21 +591,6 @@ async function main() {
                 </div>
 
                 <script>
-                    function drawRobot(canvasId) {
-                        const canvas = document.getElementById(canvasId);
-                        if (!canvas) return;
-                        const ctx = canvas.getContext('2d');
-                        ctx.beginPath(); ctx.roundRect(50, 80, 100, 80, 15); ctx.fillStyle = '#4A90E2'; ctx.fill();
-                        ctx.fillStyle = '#357ABD'; ctx.fillRect(90, 70, 20, 10);
-                        ctx.beginPath(); ctx.roundRect(60, 25, 80, 50, 20); ctx.fillStyle = '#4A90E2'; ctx.fill();
-                        ctx.beginPath(); ctx.roundRect(70, 35, 60, 30, 10); ctx.fillStyle = '#2C3E50'; ctx.fill();
-                        ctx.beginPath(); ctx.arc(88, 50, 5, 0, Math.PI * 2); ctx.arc(112, 50, 5, 0, Math.PI * 2); ctx.fillStyle = '#00FFCC'; ctx.fill();
-                        ctx.save(); ctx.translate(140, 140); ctx.rotate(-Math.PI / 4);
-                        ctx.beginPath(); ctx.roundRect(-5, -40, 10, 60, 5); ctx.fillStyle = '#FF5E62'; ctx.fill();
-                        ctx.beginPath(); ctx.moveTo(-5, -40); ctx.lineTo(0, -55); ctx.lineTo(5, -40); ctx.fillStyle = '#2C3E50'; ctx.fill(); ctx.restore();
-                        ctx.beginPath(); ctx.moveTo(100, 25); ctx.lineTo(100, 10); ctx.strokeStyle = '#4A90E2'; ctx.lineWidth = 3; ctx.stroke();
-                        ctx.beginPath(); ctx.arc(100, 10, 4, 0, Math.PI * 2); ctx.fillStyle = '#FF5E62'; ctx.fill();
-                    }
                     drawRobot('botLogoQR');
 
                     const botIds = ${JSON.stringify(bots.map(([id]) => id))};

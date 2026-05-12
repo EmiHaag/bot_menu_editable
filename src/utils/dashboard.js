@@ -121,7 +121,7 @@ class Dashboard {
             res.send(`
                 <html>
                 <head>
-                    <title>Editor de Bot - ${botId}</title>
+                    <title>Editor de Menú de WhatsApp - ${botId}</title>
                     <style>
                         :root {
                             --primary-color: #00bc7d;
@@ -396,12 +396,13 @@ class Dashboard {
                             border-radius: 20px;
                         }
                     </style>
+                    <script src="/js/robot-logo.js"></script>
                 </head>
                 <body>
                     <div class="header">
                         <div style="display: flex; align-items: center; gap: 15px;">
                             <canvas id="botLogoDash" width="200" height="200" style="width: 50px; height: 50px;"></canvas>
-                            <h1>Editor de Menú WhatsApp</h1>
+                            <h2>Editor de Menú de WhatsApp</h2>
                         </div>
                         <div class="toolbar">
                             ${botSelector}
@@ -560,22 +561,6 @@ class Dashboard {
                         const botId = "${botId}";
                         let currentParent = null;
 
-                        function drawRobot(canvasId) {
-                            const canvas = document.getElementById(canvasId);
-                            if (!canvas) return;
-                            const ctx = canvas.getContext('2d');
-                            ctx.clearRect(0, 0, canvas.width, canvas.height);
-                            ctx.beginPath(); ctx.roundRect(50, 80, 100, 80, 15); ctx.fillStyle = '#4A90E2'; ctx.fill();
-                            ctx.fillStyle = '#357ABD'; ctx.fillRect(90, 70, 20, 10);
-                            ctx.beginPath(); ctx.roundRect(60, 25, 80, 50, 20); ctx.fillStyle = '#4A90E2'; ctx.fill();
-                            ctx.beginPath(); ctx.roundRect(70, 35, 60, 30, 10); ctx.fillStyle = '#2C3E50'; ctx.fill();
-                            ctx.beginPath(); ctx.arc(88, 50, 5, 0, Math.PI * 2); ctx.arc(112, 50, 5, 0, Math.PI * 2); ctx.fillStyle = '#00FFCC'; ctx.fill();
-                            ctx.save(); ctx.translate(140, 140); ctx.rotate(-Math.PI / 4);
-                            ctx.beginPath(); ctx.roundRect(-5, -40, 10, 60, 5); ctx.fillStyle = '#FF5E62'; ctx.fill();
-                            ctx.beginPath(); ctx.moveTo(-5, -40); ctx.lineTo(0, -55); ctx.lineTo(5, -40); ctx.fillStyle = '#2C3E50'; ctx.fill(); ctx.restore();
-                            ctx.beginPath(); ctx.moveTo(100, 25); ctx.lineTo(100, 10); ctx.strokeStyle = '#4A90E2'; ctx.lineWidth = 3; ctx.stroke();
-                            ctx.beginPath(); ctx.arc(100, 10, 4, 0, Math.PI * 2); ctx.fillStyle = '#FF5E62'; ctx.fill();
-                        }
                         drawRobot('botLogoDash');
                         
                         function buildTree(parentId) {
