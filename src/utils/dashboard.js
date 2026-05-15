@@ -102,8 +102,6 @@ class Dashboard {
 
                 return `
                 <tr>
-                    <td><code>${node.id}</code></td>
-                    <td><code>${node.parentId}</code></td>
                     <td><b>${displayTrigger}</b></td>
                     <td>${node.title}</td>
                     <td style="max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${node.message}</td>
@@ -417,8 +415,6 @@ class Dashboard {
                     <table>
                         <thead>
                             <tr>
-                                <th>ID</th>
-                                <th>Hijo de</th>
                                 <th>Disparador</th>
                                 <th>Título</th>
                                 <th>Mensaje (Resumen)</th>
@@ -454,14 +450,8 @@ class Dashboard {
 
                                     <form action="/add" method="POST">
                                         <input type="hidden" name="botId" value="${botId}">
-                                        <div class="form-group">
-                                            <label>Hijo de:</label>
-                                            <input type="text" id="addParentId" name="parentId" readonly style="background: #eee;">
-                                        </div>
-                                        <div class="form-group">
-                                            <label>Nuevo ID (Único):</label>
-                                            <input type="text" id="addId" name="id" placeholder="ej: soporte_tecnico" required oninput="updatePreview('add')">
-                                        </div>
+                                        <input type="hidden" id="addParentId" name="parentId">
+                                        <input type="hidden" id="addId" name="id">
                                         <div class="form-group">
                                             <label>Disparador (Número/Letra):</label>
                                             <input type="text" id="addTrigger" name="trigger" placeholder="ej: 1" required oninput="updatePreview('add')">
@@ -513,14 +503,8 @@ class Dashboard {
                                     <form action="/save" method="POST">
                                         <input type="hidden" name="botId" value="${botId}">
                                         <input type="hidden" id="editIndex" name="index">
-                                        <div class="form-group">
-                                            <label>ID (Único):</label>
-                                            <input type="text" id="editId" name="id" required oninput="updatePreview('edit')">
-                                        </div>
-                                        <div class="form-group">
-                                            <label>Parent ID (Padre):</label>
-                                            <input type="text" id="editParentId" name="parentId" required oninput="updatePreview('edit')">
-                                        </div>
+                                        <input type="hidden" id="editId" name="id">
+                                        <input type="hidden" id="editParentId" name="parentId">
                                         <div class="form-group">
                                             <label>Disparador (Número/Letra):</label>
                                             <input type="text" id="editTrigger" name="trigger" required oninput="updatePreview('edit')">
@@ -578,7 +562,7 @@ class Dashboard {
                             let html = '<ul>';
                             children.forEach(child => {
                                 html += '<li>';
-                                html += '<div><b>' + child.trigger + '. ' + child.title + '</b><br><small>ID: ' + child.id + '</small></div>';
+                                html += '<div><b>' + child.trigger + '. ' + child.title + '</b></div>';
                                 html += buildTree(child.id);
                                 html += '</li>';
                             });
@@ -673,7 +657,7 @@ class Dashboard {
                             displayItems.forEach((item, index) => {
                                 const isLast = index === displayItems.length - 1;
                                 const connector = isLast ? '└── ' : '├── ';
-                                let itemLine = \`[ \${item.trigger}. \${item.title} ] (ID: \${item.id})\`;
+                                let itemLine = \`[ \${item.trigger}. \${item.title} ]\`;
                                 
                                 if (item.isCurrent) {
                                     itemLine = \`<span style="color: var(--primary-color); font-weight: bold;">\${itemLine}</span>\`;
