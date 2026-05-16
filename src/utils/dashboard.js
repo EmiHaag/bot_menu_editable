@@ -101,24 +101,33 @@ class Dashboard {
                 }
 
                 const isOrder = node.message && node.message.includes('##PEDIDO##');
-                const cleanMessage = (node.message || "").replace('##PEDIDO##', '').trim();
+                const isQty = node.message && node.message.includes('##CANTIDAD##');
+                const isFinal = node.message && node.message.includes('##FINALIZAR##');
+                const cleanMessage = (node.message || "")
+                    .replace('##PEDIDO##', '')
+                    .replace('##CANTIDAD##', '')
+                    .replace('##FINALIZAR##', '')
+                    .trim();
 
-                const escapedMessage = cleanMessage
-                    .replace(/\r\n/g, "\n") // Normalizar CRLF a LF
-                    .replace(/\r/g, "\n")   // Normalizar CR a LF
-                    .replace(/'/g, "")      // Quitar comillas simples
-                    .replace(/"/g, "")      // Quitar comillas dobles
-                    .replace(/\n/g, "\\n"); // Escapar para JS
+                const fullMessageEscaped = (node.message || "")
+                    .replace(/\r\n/g, "\n")
+                    .replace(/\r/g, "\n")
+                    .replace(/'/g, "")
+                    .replace(/"/g, "")
+                    .replace(/\n/g, "\\n");
 
                 return `
                 <tr>
                     <td><b>${displayTrigger}</b></td>
                     <td>${node.title}</td>
                     <td style="max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${cleanMessage}</td>
+                    <td>${node.price ? '$' + node.price : '-'}</td>
                     <td style="text-align: center;">${isOrder ? '<span style="color: var(--primary-color);">✅</span>' : '⚪'}</td>
+                    <td style="text-align: center;">${isQty ? '<span style="color: var(--info-color);">🔢</span>' : '⚪'}</td>
+                    <td style="text-align: center;">${isFinal ? '<span style="color: var(--secondary-color);">🏁</span>' : '⚪'}</td>
                     <td>
                         <div style="display: flex; gap: 5px;">
-                            <button type="button" onclick="openEditModal('${node.rowIndex}', '${node.id}', '${node.parentId}', '${displayTrigger}', '${node.title}', \`${escapedMessage}\`, ${isOrder})" class="btn-action btn-orange">Editar</button>
+                            <button type="button" onclick="openEditModal('${node.rowIndex}', '${node.id}', '${node.parentId}', '${displayTrigger}', '${node.title}', \`${fullMessageEscaped}\`, '${node.price || ''}', ${isOrder}, ${isQty}, ${isFinal})" class="btn-action btn-orange">Editar</button>
                             <button type="button" onclick="openAddModal('${node.id}')" class="btn-action btn-blue">+ Hijo</button>
                             <button type="button" onclick="confirmDelete('${node.rowIndex}', '${node.id}')" class="btn-action btn-red">Borrar</button>
                             </div>
@@ -428,7 +437,10 @@ class Dashboard {
                                 <th>Disparador</th>
                                 <th>Título</th>
                                 <th>Mensaje (Resumen)</th>
+                                <th>Precio</th>
                                 <th>Pedido</th>
+                                <th>Cant.</th>
+                                <th>Fin</th>
                                 <th>Acciones</th>
                             </tr>
                         </thead>
@@ -463,9 +475,15 @@ class Dashboard {
                                         <input type="hidden" name="botId" value="${botId}">
                                         <input type="hidden" id="addParentId" name="parentId">
                                         <input type="hidden" id="addId" name="id">
-                                        <div class="form-group">
-                                            <label>Disparador (Número/Letra):</label>
-                                            <input type="text" id="addTrigger" name="trigger" placeholder="ej: 1" required oninput="updatePreview('add')">
+                                        <div style="display: flex; gap: 15px;">
+                                            <div class="form-group" style="flex: 1;">
+                                                <label>Disparador (Número/Letra):</label>
+                                                <input type="text" id="addTrigger" name="trigger" placeholder="ej: 1" required oninput="updatePreview('add')">
+                                            </div>
+                                            <div class="form-group" style="flex: 1;">
+                                                <label>Precio ($) <small>(Opcional)</small>:</label>
+                                                <input type="text" id="addPrice" name="price" placeholder="ej: 1500" oninput="updatePreview('add')">
+                                            </div>
                                         </div>
                                         <div class="form-group">
                                             <label>Título (En el menú):</label>
@@ -475,9 +493,19 @@ class Dashboard {
                                             <label>Mensaje (Respuesta):</label>
                                             <textarea id="addMessage" name="message" rows="3" placeholder="Mensaje que enviará el bot..." oninput="updatePreview('add')"></textarea>
                                         </div>
-                                        <div class="form-group" style="display: flex; align-items: center; gap: 10px; background: #f8f9fa; padding: 10px; border-radius: 6px; border: 1px dashed var(--border-color);">
-                                            <input type="checkbox" id="addIsOrder" onchange="toggleOrderTag('add')" style="width: 20px; height: 20px; cursor: pointer;">
-                                            <label for="addIsOrder" style="margin-bottom: 0; cursor: pointer;">¿Crear pedido? <small>(Agrega este item al pedido en memoria)</small></label>
+                                        <div class="form-group" style="display: flex; gap: 10px; margin-bottom: 20px;">
+                                            <div style="flex: 1; display: flex; align-items: center; gap: 10px; background: #f8f9fa; padding: 10px; border-radius: 6px; border: 1px dashed var(--border-color);">
+                                                <input type="checkbox" id="addIsOrder" onchange="toggleOrderTag('add', '##PEDIDO##')" style="width: 20px; height: 20px; cursor: pointer;">
+                                                <label for="addIsOrder" style="margin-bottom: 0; cursor: pointer; font-size: 13px;">¿Crear pedido?</label>
+                                            </div>
+                                            <div style="flex: 1; display: flex; align-items: center; gap: 10px; background: #eefbff; padding: 10px; border-radius: 6px; border: 1px dashed #bee5eb;">
+                                                <input type="checkbox" id="addIsQty" onchange="toggleOrderTag('add', '##CANTIDAD##')" style="width: 20px; height: 20px; cursor: pointer;">
+                                                <label for="addIsQty" style="margin-bottom: 0; cursor: pointer; font-size: 13px;">¿Pedir cantidad?</label>
+                                            </div>
+                                            <div style="flex: 1; display: flex; align-items: center; gap: 10px; background: #f3f0ff; padding: 10px; border-radius: 6px; border: 1px dashed #d1d1ff;">
+                                                <input type="checkbox" id="addIsFinal" onchange="toggleOrderTag('add', '##FINALIZAR##')" style="width: 20px; height: 20px; cursor: pointer;">
+                                                <label for="addIsFinal" style="margin-bottom: 0; cursor: pointer; font-size: 13px;">¿Finalizar?</label>
+                                            </div>
                                         </div>
                                         <button type="submit" class="btn btn-green" style="width: 100%;">Crear Nodo Hijo</button>
                                     </form>
@@ -520,9 +548,15 @@ class Dashboard {
                                         <input type="hidden" id="editIndex" name="index">
                                         <input type="hidden" id="editId" name="id">
                                         <input type="hidden" id="editParentId" name="parentId">
-                                        <div class="form-group">
-                                            <label>Disparador (Número/Letra):</label>
-                                            <input type="text" id="editTrigger" name="trigger" required oninput="updatePreview('edit')">
+                                        <div style="display: flex; gap: 15px;">
+                                            <div class="form-group" style="flex: 1;">
+                                                <label>Disparador (Número/Letra):</label>
+                                                <input type="text" id="editTrigger" name="trigger" required oninput="updatePreview('edit')">
+                                            </div>
+                                            <div class="form-group" style="flex: 1;">
+                                                <label>Precio ($) <small>(Opcional)</small>:</label>
+                                                <input type="text" id="editPrice" name="price" oninput="updatePreview('edit')">
+                                            </div>
                                         </div>
                                         <div class="form-group">
                                             <label>Título (En el menú):</label>
@@ -532,9 +566,19 @@ class Dashboard {
                                             <label>Mensaje (Respuesta):</label>
                                             <textarea id="editMessage" name="message" rows="4" oninput="updatePreview('edit')"></textarea>
                                         </div>
-                                        <div class="form-group" style="display: flex; align-items: center; gap: 10px; background: #fff3cd; padding: 10px; border-radius: 6px; border: 1px dashed #ffc107;">
-                                            <input type="checkbox" id="editIsOrder" onchange="toggleOrderTag('edit')" style="width: 20px; height: 20px; cursor: pointer;">
-                                            <label for="editIsOrder" style="margin-bottom: 0; cursor: pointer; color: #856404;">¿Crear pedido? <small>(Agrega este item al pedido en memoria)</small></label>
+                                        <div class="form-group" style="display: flex; gap: 10px; margin-bottom: 20px;">
+                                            <div style="flex: 1; display: flex; align-items: center; gap: 10px; background: #fff3cd; padding: 10px; border-radius: 6px; border: 1px dashed #ffc107;">
+                                                <input type="checkbox" id="editIsOrder" onchange="toggleOrderTag('edit', '##PEDIDO##')" style="width: 20px; height: 20px; cursor: pointer;">
+                                                <label for="editIsOrder" style="margin-bottom: 0; cursor: pointer; color: #856404; font-size: 13px;">¿Crear pedido?</label>
+                                            </div>
+                                            <div style="flex: 1; display: flex; align-items: center; gap: 10px; background: #eefbff; padding: 10px; border-radius: 6px; border: 1px dashed #bee5eb;">
+                                                <input type="checkbox" id="editIsQty" onchange="toggleOrderTag('edit', '##CANTIDAD##')" style="width: 20px; height: 20px; cursor: pointer;">
+                                                <label for="editIsQty" style="margin-bottom: 0; cursor: pointer; color: #0c5460; font-size: 13px;">¿Pedir cantidad?</label>
+                                            </div>
+                                            <div style="flex: 1; display: flex; align-items: center; gap: 10px; background: #f3f0ff; padding: 10px; border-radius: 6px; border: 1px dashed #d1d1ff;">
+                                                <input type="checkbox" id="editIsFinal" onchange="toggleOrderTag('edit', '##FINALIZAR##')" style="width: 20px; height: 20px; cursor: pointer;">
+                                                <label for="editIsFinal" style="margin-bottom: 0; cursor: pointer; color: #5227cc; font-size: 13px;">¿Finalizar?</label>
+                                            </div>
                                         </div>
                                         <button type="submit" class="btn btn-green" style="width: 100%;">Guardar Cambios</button>
                                     </form>
@@ -597,7 +641,7 @@ class Dashboard {
                             let html = '<ul>';
                             children.forEach(child => {
                                 html += '<li>';
-                                html += '<div><b>' + child.trigger + '. ' + child.title + '</b></div>';
+                                html += '<div><b>' + child.trigger + '. ' + child.title + (child.price ? ' ($' + child.price + ')' : '') + '</b></div>';
                                 html += buildTree(child.id);
                                 html += '</li>';
                             });
@@ -625,19 +669,23 @@ class Dashboard {
 
                             // Sugerencia de Trigger: X
                             document.getElementById('addTrigger').value = nextNumber;
+                            document.getElementById('addPrice').value = '';
 
                             document.getElementById('addModal').style.display = "block";
                             updatePreview('add');
                         }
 
-                        function openEditModal(index, id, parentId, trigger, title, message, isOrder) {
+                        function openEditModal(index, id, parentId, trigger, title, message, price, isOrder, isQty, isFinal) {
                             document.getElementById('editIndex').value = index;
                             document.getElementById('editId').value = id;
                             document.getElementById('editParentId').value = parentId;
                             document.getElementById('editTrigger').value = (id === 'root' && (trigger === '' || trigger === '0' || !trigger)) ? 'Hola' : trigger;
                             document.getElementById('editTitle').value = title;
                             document.getElementById('editMessage').value = message;
+                            document.getElementById('editPrice').value = price;
                             document.getElementById('editIsOrder').checked = isOrder;
+                            document.getElementById('editIsQty').checked = isQty;
+                            document.getElementById('editIsFinal').checked = isFinal;
 
                             const parentInput = document.getElementById('editParentId');
                             if (id === 'root') {
@@ -662,6 +710,7 @@ class Dashboard {
                             const trigger = document.getElementById(type + 'Trigger').value || '?';
                             const title = document.getElementById(type + 'Title').value || 'Nuevo Título';
                             const message = document.getElementById(type + 'Message').value || '';
+                            const price = document.getElementById(type + 'Price').value;
                             const parentId = type === 'edit' ? document.getElementById('editParentId').value : document.getElementById('addParentId').value;
 
                             const parent = menuData.find(n => n.id === parentId) || { title: 'Raíz', id: 'root' };
@@ -676,6 +725,7 @@ class Dashboard {
                                 id: id,
                                 trigger: trigger,
                                 title: title,
+                                price: price,
                                 isCurrent: true
                             });
 
@@ -693,7 +743,7 @@ class Dashboard {
                             displayItems.forEach((item, index) => {
                                 const isLast = index === displayItems.length - 1;
                                 const connector = isLast ? '└── ' : '├── ';
-                                let itemLine = \`[ \${item.trigger}. \${item.title} ]\`;
+                                let itemLine = \`[ \${item.trigger}. \${item.title}\${item.price ? ' ($' + item.price + ')' : ''} ]\`;
                                 
                                 if (item.isCurrent) {
                                     itemLine = \`<span style="color: var(--primary-color); font-weight: bold;">\${itemLine}</span>\`;
@@ -724,10 +774,12 @@ class Dashboard {
                                 // Usar los mismos displayItems ordenados para la lista de opciones
                                 let optionsList = '';
                                 displayItems.forEach(item => {
+                                    const itemPrice = item.isCurrent ? price : item.price;
+                                    const priceText = itemPrice ? ' ($' + itemPrice + ')' : '';
                                     if (item.isCurrent) {
-                                        optionsList += \`*\${trigger}*. \${title}\\n\`;
+                                        optionsList += \`*\${trigger}*. \${title}\${priceText}\\n\`;
                                     } else {
-                                        optionsList += \`*\${item.trigger}*. \${item.title}\\n\`;
+                                        optionsList += \`*\${item.trigger}*. \${item.title}\${priceText}\\n\`;
                                     }
                                 });
 
@@ -744,12 +796,13 @@ class Dashboard {
                             const userHtml = \`<div class="wa-bubble-user">\${trigger}</div>\`;
 
                             // 3. Respuesta Actual (Lo que se está editando)
-                            let chatContent = message || '_Sin mensaje configurado_';
+                            let chatContent = (message || '_Sin mensaje configurado_').replace('##PEDIDO##', '').replace('##CANTIDAD##', '').replace('##FINALIZAR##', '').trim();
                             const subOptions = menuData.filter(n => n.parentId === id);
                             if (subOptions.length > 0) {
                                 chatContent += '\\n\\n';
                                 subOptions.forEach(opt => {
-                                    chatContent += \`*\${opt.trigger}*. \${opt.title}\\n\`;
+                                    const optPrice = opt.price ? ' ($' + opt.price + ')' : '';
+                                    chatContent += \`*\${opt.trigger}*. \${opt.title}\${optPrice}\\n\`;
                                 });
                                 chatContent += \`\\n---\\n*v*. Volver atrás\\n*0*. Menú Principal\`;
                             }
@@ -784,18 +837,30 @@ class Dashboard {
                             document.getElementById(modalId).style.display = "none";
                         }
 
-                        function toggleOrderTag(type) {
+                        function toggleOrderTag(type, tag) {
                             const messageEl = document.getElementById(type + 'Message');
-                            const checkbox = document.getElementById(type + 'IsOrder');
-                            let currentVal = messageEl.value;
+                            const isOrderCheckbox = document.getElementById(type === 'edit' ? 'editIsOrder' : 'addIsOrder');
+                            const isQtyCheckbox = document.getElementById(type === 'edit' ? 'editIsQty' : 'addIsQty');
+                            const isFinalCheckbox = document.getElementById(type === 'edit' ? 'editIsFinal' : 'addIsFinal');
                             
-                            if (checkbox.checked) {
-                                if (!currentVal.includes('##PEDIDO##')) {
-                                    messageEl.value = currentVal + (currentVal ? '\\n\\n' : '') + '##PEDIDO##';
-                                }
+                            let currentVal = messageEl.value.replace('##PEDIDO##', '').replace('##CANTIDAD##', '').replace('##FINALIZAR##', '').trim();
+                            
+                            if (tag === '##PEDIDO##' && isOrderCheckbox.checked) {
+                                isQtyCheckbox.checked = false;
+                                isFinalCheckbox.checked = false;
+                                messageEl.value = currentVal + (currentVal ? '\\n\\n' : '') + '##PEDIDO##';
+                            } else if (tag === '##CANTIDAD##' && isQtyCheckbox.checked) {
+                                isOrderCheckbox.checked = false;
+                                isFinalCheckbox.checked = false;
+                                messageEl.value = currentVal + (currentVal ? '\\n\\n' : '') + '##CANTIDAD##';
+                            } else if (tag === '##FINALIZAR##' && isFinalCheckbox.checked) {
+                                isOrderCheckbox.checked = false;
+                                isQtyCheckbox.checked = false;
+                                messageEl.value = currentVal + (currentVal ? '\\n\\n' : '') + '##FINALIZAR##';
                             } else {
-                                messageEl.value = currentVal.replace('##PEDIDO##', '').replace(/\\n\\n$/, '').trim();
+                                messageEl.value = currentVal;
                             }
+                            
                             updatePreview(type);
                         }
                     </script>
@@ -822,7 +887,7 @@ class Dashboard {
                     });
                     await sheets.spreadsheets.values.clear({
                         spreadsheetId: service.spreadsheetId,
-                        range: `${service.range.split('!')[0]}!A${index}:F${index}`,
+                        range: `${service.range.split('!')[0]}!A${index}:G${index}`,
                     });
                     service.clearCache();
                 }
@@ -845,7 +910,8 @@ class Dashboard {
                 parentId,
                 trigger,
                 title,
-                message
+                message,
+                price
             } = req.body;
 
             try {
@@ -855,11 +921,11 @@ class Dashboard {
                 });
                 await sheets.spreadsheets.values.update({
                     spreadsheetId: service.spreadsheetId,
-                    range: `${service.range.split('!')[0]}!A${index}:F${index}`,
+                    range: `${service.range.split('!')[0]}!A${index}:G${index}`,
                     valueInputOption: 'USER_ENTERED',
                     requestBody: {
                         values: [
-                            [botId, id || '', parentId || '', title || '', message || '', trigger || '']
+                            [botId, id || '', parentId || '', title || '', message || '', trigger || '', price || '']
                         ]
                     }
                 });
@@ -882,7 +948,8 @@ class Dashboard {
                 parentId,
                 trigger,
                 title,
-                message
+                message,
+                price
             } = req.body;
 
             try {
@@ -913,11 +980,11 @@ class Dashboard {
 
                 await sheets.spreadsheets.values.update({
                     spreadsheetId: service.spreadsheetId,
-                    range: `${sheetName}!A${nextRow}:F${nextRow}`,
+                    range: `${sheetName}!A${nextRow}:G${nextRow}`,
                     valueInputOption: 'USER_ENTERED',
                     requestBody: {
                         values: [
-                            [botId, id || '', parentId || '', title || '', message || '', trigger || '']
+                            [botId, id || '', parentId || '', title || '', message || '', trigger || '', price || '']
                         ]
                     }
                 });

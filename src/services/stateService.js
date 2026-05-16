@@ -37,6 +37,18 @@ class StateService {
     clearUserOrder(jid) {
         this.cache.del(this._getKey(jid) + ':order');
     }
+
+    setPendingQuantityItem(jid, itemTitle) {
+        this.cache.set(this._getKey(jid) + ':pending_qty', itemTitle, 600); // 10 min expiry
+    }
+
+    getPendingQuantityItem(jid) {
+        return this.cache.get(this._getKey(jid) + ':pending_qty');
+    }
+
+    clearPendingQuantityItem(jid) {
+        this.cache.del(this._getKey(jid) + ':pending_qty');
+    }
 }
 
 module.exports = StateService;

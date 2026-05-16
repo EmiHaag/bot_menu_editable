@@ -7,7 +7,7 @@ class GoogleSheetsService {
     constructor(config) {
         this.spreadsheetId = config.spreadsheetId;
         this.clientId = config.clientId; 
-        this.range = config.range || 'Menu!A2:F'; // A:ID_client, B:ID, C:ParentID, D:Title, E:Message, F:Trigger
+        this.range = config.range || 'Menu!A2:G'; // A:ID_client, B:ID, C:ParentID, D:Title, E:Message, F:Trigger, G:Price
         
         let credentials;
         try {
@@ -45,6 +45,7 @@ class GoogleSheetsService {
                 title: row[3] || '',
                 message: row[4] || '',
                 trigger: row[5] || '',
+                price: row[6] || '',
                 rowIndex: index + 2 
             }));
 
@@ -88,14 +89,14 @@ class GoogleSheetsService {
             // Asegurarse de no sobrescribir la cabecera si el sheet está vacío
             if (nextRow < 2) nextRow = 2;
 
-            // Valores por defecto: id_cliente, id, parentID, Titulo, Mensaje, Trigger
+            // Valores por defecto: id_cliente, id, parentID, Titulo, Mensaje, Trigger, Precio
             const defaultValues = [
-                [this.clientId, 'root', '', 'Inicio', 'Hola bienvenido a .. ', '0']
+                [this.clientId, 'root', '', 'Inicio', 'Hola bienvenido a .. ', '0', '']
             ];
 
             await sheets.spreadsheets.values.update({
                 spreadsheetId: this.spreadsheetId,
-                range: `${sheetName}!A${nextRow}:F${nextRow}`,
+                range: `${sheetName}!A${nextRow}:G${nextRow}`,
                 valueInputOption: 'USER_ENTERED',
                 requestBody: {
                     values: defaultValues
@@ -143,7 +144,7 @@ class GoogleSheetsService {
             const promises = Array.from(toDelete).map(rowIndex => 
                 sheets.spreadsheets.values.clear({
                     spreadsheetId: this.spreadsheetId,
-                    range: `${sheetName}!A${rowIndex}:F${rowIndex}`,
+                    range: `${sheetName}!A${rowIndex}:G${rowIndex}`,
                 })
             );
 
