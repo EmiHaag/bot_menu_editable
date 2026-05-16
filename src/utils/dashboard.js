@@ -100,14 +100,25 @@ class Dashboard {
                     displayTrigger = 'Hola';
                 }
 
+                const isOrder = node.message && node.message.includes('##PEDIDO##');
+                const cleanMessage = (node.message || "").replace('##PEDIDO##', '').trim();
+
+                const escapedMessage = cleanMessage
+                    .replace(/\r\n/g, "\n") // Normalizar CRLF a LF
+                    .replace(/\r/g, "\n")   // Normalizar CR a LF
+                    .replace(/'/g, "")      // Quitar comillas simples
+                    .replace(/"/g, "")      // Quitar comillas dobles
+                    .replace(/\n/g, "\\n"); // Escapar para JS
+
                 return `
                 <tr>
                     <td><b>${displayTrigger}</b></td>
                     <td>${node.title}</td>
-                    <td style="max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${node.message}</td>
+                    <td style="max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${cleanMessage}</td>
+                    <td style="text-align: center;">${isOrder ? '<span style="color: var(--primary-color);">✅</span>' : '⚪'}</td>
                     <td>
                         <div style="display: flex; gap: 5px;">
-                            <button type="button" onclick="openEditModal('${node.rowIndex}', '${node.id}', '${node.parentId}', '${displayTrigger}', '${node.title}', \`${node.message.replace(/'/g, "").replace(/"/g, '').replace(/\n/g, "\\n")}\`)" class="btn-action btn-orange">Editar</button>
+                            <button type="button" onclick="openEditModal('${node.rowIndex}', '${node.id}', '${node.parentId}', '${displayTrigger}', '${node.title}', \`${escapedMessage}\`, ${isOrder})" class="btn-action btn-orange">Editar</button>
                             <button type="button" onclick="openAddModal('${node.id}')" class="btn-action btn-blue">+ Hijo</button>
                             <button type="button" onclick="confirmDelete('${node.rowIndex}', '${node.id}')" class="btn-action btn-red">Borrar</button>
                             </div>
@@ -417,6 +428,7 @@ class Dashboard {
                                 <th>Disparador</th>
                                 <th>Título</th>
                                 <th>Mensaje (Resumen)</th>
+                                <th>Pedido</th>
                                 <th>Acciones</th>
                             </tr>
                         </thead>
@@ -462,6 +474,10 @@ class Dashboard {
                                         <div class="form-group">
                                             <label>Mensaje (Respuesta):</label>
                                             <textarea id="addMessage" name="message" rows="3" placeholder="Mensaje que enviará el bot..." oninput="updatePreview('add')"></textarea>
+                                        </div>
+                                        <div class="form-group" style="display: flex; align-items: center; gap: 10px; background: #f8f9fa; padding: 10px; border-radius: 6px; border: 1px dashed var(--border-color);">
+                                            <input type="checkbox" id="addIsOrder" onchange="toggleOrderTag('add')" style="width: 20px; height: 20px; cursor: pointer;">
+                                            <label for="addIsOrder" style="margin-bottom: 0; cursor: pointer;">¿Crear pedido? <small>(Agrega este item al pedido en memoria)</small></label>
                                         </div>
                                         <button type="submit" class="btn btn-green" style="width: 100%;">Crear Nodo Hijo</button>
                                     </form>
@@ -515,6 +531,10 @@ class Dashboard {
                                         <div class="form-group">
                                             <label>Mensaje (Respuesta):</label>
                                             <textarea id="editMessage" name="message" rows="4" oninput="updatePreview('edit')"></textarea>
+                                        </div>
+                                        <div class="form-group" style="display: flex; align-items: center; gap: 10px; background: #fff3cd; padding: 10px; border-radius: 6px; border: 1px dashed #ffc107;">
+                                            <input type="checkbox" id="editIsOrder" onchange="toggleOrderTag('edit')" style="width: 20px; height: 20px; cursor: pointer;">
+                                            <label for="editIsOrder" style="margin-bottom: 0; cursor: pointer; color: #856404;">¿Crear pedido? <small>(Agrega este item al pedido en memoria)</small></label>
                                         </div>
                                         <button type="submit" class="btn btn-green" style="width: 100%;">Guardar Cambios</button>
                                     </form>
@@ -610,14 +630,15 @@ class Dashboard {
                             updatePreview('add');
                         }
 
-                        function openEditModal(index, id, parentId, trigger, title, message) {
+                        function openEditModal(index, id, parentId, trigger, title, message, isOrder) {
                             document.getElementById('editIndex').value = index;
                             document.getElementById('editId').value = id;
                             document.getElementById('editParentId').value = parentId;
                             document.getElementById('editTrigger').value = (id === 'root' && (trigger === '' || trigger === '0' || !trigger)) ? 'Hola' : trigger;
                             document.getElementById('editTitle').value = title;
                             document.getElementById('editMessage').value = message;
-                            
+                            document.getElementById('editIsOrder').checked = isOrder;
+
                             const parentInput = document.getElementById('editParentId');
                             if (id === 'root') {
                                 parentInput.required = false;
@@ -761,6 +782,21 @@ class Dashboard {
 
                         function closeModal(modalId) {
                             document.getElementById(modalId).style.display = "none";
+                        }
+
+                        function toggleOrderTag(type) {
+                            const messageEl = document.getElementById(type + 'Message');
+                            const checkbox = document.getElementById(type + 'IsOrder');
+                            let currentVal = messageEl.value;
+                            
+                            if (checkbox.checked) {
+                                if (!currentVal.includes('##PEDIDO##')) {
+                                    messageEl.value = currentVal + (currentVal ? '\\n\\n' : '') + '##PEDIDO##';
+                                }
+                            } else {
+                                messageEl.value = currentVal.replace('##PEDIDO##', '').replace(/\\n\\n$/, '').trim();
+                            }
+                            updatePreview(type);
                         }
                     </script>
                 </body>

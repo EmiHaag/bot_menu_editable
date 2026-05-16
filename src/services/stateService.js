@@ -20,6 +20,22 @@ class StateService {
 
     resetUserState(jid) {
         this.cache.del(this._getKey(jid));
+        this.cache.del(this._getKey(jid) + ':order');
+    }
+
+    addItemToOrder(jid, item) {
+        const key = this._getKey(jid) + ':order';
+        const currentOrder = this.cache.get(key) || [];
+        currentOrder.push(item);
+        this.cache.set(key, currentOrder);
+    }
+
+    getUserOrder(jid) {
+        return this.cache.get(this._getKey(jid) + ':order') || [];
+    }
+
+    clearUserOrder(jid) {
+        this.cache.del(this._getKey(jid) + ':order');
     }
 }
 

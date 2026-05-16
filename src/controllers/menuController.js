@@ -25,6 +25,17 @@ class MenuController {
             return;
         }
 
+        // Handle clear order command
+        if (input === 'vaciar' || input === 'limpiar' || input === 'borrar pedido') {
+            this.stateService.clearUserOrder(jid);
+            await this.sendPresenceTyping(sock, jid);
+            await sock.sendMessage(jid, {
+                text: '🗑️ Tu pedido ha sido vaciado.'
+            });
+            await this.sendMenu(sock, jid, currentStateId);
+            return;
+        }
+
         // Handle "back" command
         if (input === 'v' || input === 'atras' || input === 'atrás') {
             if (currentStateId === 'root') {
@@ -41,17 +52,20 @@ class MenuController {
         const selectedOption = options.find(opt => opt.trigger.toLowerCase() === input);
 
         if (selectedOption) {
+            // Check for order tag in message
+            if (selectedOption.message && selectedOption.message.includes('##PEDIDO##')) {
+                this.stateService.addItemToOrder(jid, selectedOption.title);
+            }
+
             const subOptions = await this.googleSheetsService.getNodesByParent(selectedOption.id);
 
             if (subOptions.length > 0) {
                 await this.sendMenu(sock, jid, selectedOption.id);
             } else {
                 // Final message with navigation options
-                let finalMessage = `${selectedOption.message}
+                let finalMessage = this.replaceOrderSummary(selectedOption.message, jid);
 
-`;
-                finalMessage += `_Escribe *v* para volver atrás._
-`;
+                finalMessage += `\n\n_Escribe *v* para volver atrás._\n`;
                 finalMessage += `_Escribe *0* para volver al inicio._`;
 
                 await this.sendPresenceTyping(sock, jid); // Escritura + Espera antes de enviar
@@ -88,21 +102,24 @@ class MenuController {
             };
         }
 
-        let menuText = `${currentNode.message}
-
-`;
+        let menuText = this.replaceOrderSummary(currentNode.message, jid) + '\n\n';
         nodes.forEach(node => {
-            menuText += `*${node.trigger}*. ${node.title}
-`;
+            menuText += `*${node.trigger}*. ${node.title}\n`;
         });
 
         // Consistent Navigation Footer
-        menuText += `
----
-`;
+        menuText += `\n---\n`;
+        
+        // Add "Vaciar pedido" only in the root menu if there are items
+        if (parentId === 'root') {
+            const order = this.stateService.getUserOrder(jid);
+            if (order.length > 0) {
+                menuText += `*vaciar*. Vaciar pedido\n`;
+            }
+        }
+
         if (parentId !== 'root') {
-            menuText += `*v*. Volver atrás
-`;
+            menuText += `*v*. Volver atrás\n`;
         }
         menuText += `*0*. Menú Principal`;
 
@@ -111,6 +128,19 @@ class MenuController {
             text: menuText
         });
         this.stateService.setUserState(jid, parentId);
+    }
+
+    replaceOrderSummary(text, jid) {
+        if (!text) return '';
+        
+        // Remove the internal tag from the message
+        let cleanText = text.replace('##PEDIDO##', '').trim();
+        
+        const order = this.stateService.getUserOrder(jid);
+        if (order.length === 0) return cleanText;
+
+        const summary = `\n\n🛍️ *Tu pedido:* ${order.join(', ')}`;
+        return cleanText + summary;
     }
 }
 
