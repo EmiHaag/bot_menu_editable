@@ -118,6 +118,40 @@ class GoogleSheetsService {
         return menu.find(node => node.id === id);
     }
 
+    async deleteNodeAndChildren(nodeId) {
+        const menu = await this.getMenuData();
+        const toDelete = new Set();
+
+        const findChildren = (id) => {
+            const children = menu.filter(node => node.parentId === id);
+            children.forEach(child => {
+                toDelete.add(child.rowIndex);
+                findChildren(child.id);
+            });
+        };
+
+        const targetNode = menu.find(node => node.id === nodeId);
+        if (targetNode) {
+            toDelete.add(targetNode.rowIndex);
+            findChildren(nodeId);
+        }
+
+        if (toDelete.size > 0) {
+            const sheets = google.sheets({ version: 'v4', auth: this.auth });
+            const sheetName = this.range.split('!')[0];
+            
+            const promises = Array.from(toDelete).map(rowIndex => 
+                sheets.spreadsheets.values.clear({
+                    spreadsheetId: this.spreadsheetId,
+                    range: `${sheetName}!A${rowIndex}:F${rowIndex}`,
+                })
+            );
+
+            await Promise.all(promises);
+            this.clearCache();
+        }
+    }
+
     clearCache() {
         cache.del(`menu_data_${this.clientId}`);
     }

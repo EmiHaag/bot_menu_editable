@@ -109,13 +109,12 @@ class Dashboard {
                         <div style="display: flex; gap: 5px;">
                             <button type="button" onclick="openEditModal('${node.rowIndex}', '${node.id}', '${node.parentId}', '${displayTrigger}', '${node.title}', \`${node.message.replace(/'/g, "").replace(/"/g, '').replace(/\n/g, "\\n")}\`)" class="btn-action btn-orange">Editar</button>
                             <button type="button" onclick="openAddModal('${node.id}')" class="btn-action btn-blue">+ Hijo</button>
-                            <button type="button" onclick="confirmDelete('${node.rowIndex}')" class="btn-action btn-red">Borrar</button>
-                        </div>
-                    </td>
-                </tr>
-            `;
-            }).join('');
-
+                            <button type="button" onclick="confirmDelete('${node.rowIndex}', '${node.id}')" class="btn-action btn-red">Borrar</button>
+                            </div>
+                            </td>
+                            </tr>
+                            `;
+                            }).join('');
             res.send(`
                 <html>
                 <head>
@@ -540,6 +539,22 @@ class Dashboard {
                         </div>
                     </div>
 
+                    <div id="deleteConfirmModal" class="modal">
+                        <div class="modal-content" style="width: 450px; text-align: center; padding: 40px;">
+                            <div style="margin-bottom: 25px;">
+                                <div style="width: 60px; height: 60px; background: #fff5f5; border-radius: 50%; display: flex; align-items: center; justify-content: center; margin: 0 auto 20px;">
+                                    <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="#dc3545" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path><line x1="10" y1="11" x2="10" y2="17"></line><line x1="14" y1="11" x2="14" y2="17"></line></svg>
+                                </div>
+                                <h3 id="deleteConfirmTitle" style="margin: 0 0 10px; color: #333;">¿Eliminar esta opción?</h3>
+                                <p id="deleteConfirmMessage" style="color: #666; font-size: 14px; line-height: 1.5; margin: 0;">¿Estás seguro de que deseas borrar esta fila?</p>
+                            </div>
+                            <div style="display: flex; gap: 12px; justify-content: center;">
+                                <button type="button" onclick="closeModal('deleteConfirmModal')" class="btn" style="flex: 1; padding: 12px;">Cancelar</button>
+                                <button type="button" id="deleteConfirmBtn" class="btn btn-red" style="flex: 1; padding: 12px;">Eliminar</button>
+                            </div>
+                        </div>
+                    </div>
+
                     <script>
                         const menuData = ${JSON.stringify(menuData)};
                         const botId = "${botId}";
@@ -723,10 +738,25 @@ class Dashboard {
                             chatBody.scrollTop = chatBody.scrollHeight;
                         }
 
-                        function confirmDelete(index) {
-                            if (confirm('¿Estás seguro de que deseas borrar esta fila?')) {
-                                window.location.href = '/delete/' + index + '?botId=' + botId;
+                        function confirmDelete(index, nodeId) {
+                            const hasChildren = menuData.some(n => n.parentId === nodeId);
+                            const title = document.getElementById('deleteConfirmTitle');
+                            const message = document.getElementById('deleteConfirmMessage');
+                            const confirmBtn = document.getElementById('deleteConfirmBtn');
+
+                            if (hasChildren) {
+                                title.innerText = '¿Eliminar opción y sub-menús?';
+                                message.innerText = 'Esta opción tiene sub-menús. Si la borras, también se borrarán todos sus hijos. ¿Deseas continuar?';
+                            } else {
+                                title.innerText = '¿Eliminar esta opción?';
+                                message.innerText = '¿Estás seguro de que deseas borrar esta fila?';
                             }
+
+                            confirmBtn.onclick = function() {
+                                window.location.href = '/delete/' + index + '?botId=' + botId + '&nodeId=' + nodeId;
+                            };
+
+                            document.getElementById('deleteConfirmModal').style.display = "block";
                         }
 
                         function closeModal(modalId) {
@@ -745,16 +775,21 @@ class Dashboard {
                 botId
             } = await getServiceInfo(req);
             const index = req.params.index;
+            const nodeId = req.query.nodeId;
             try {
-                const sheets = google.sheets({
-                    version: 'v4',
-                    auth: service.auth
-                });
-                await sheets.spreadsheets.values.clear({
-                    spreadsheetId: service.spreadsheetId,
-                    range: `${service.range.split('!')[0]}!A${index}:F${index}`,
-                });
-                service.clearCache();
+                if (nodeId) {
+                    await service.deleteNodeAndChildren(nodeId);
+                } else {
+                    const sheets = google.sheets({
+                        version: 'v4',
+                        auth: service.auth
+                    });
+                    await sheets.spreadsheets.values.clear({
+                        spreadsheetId: service.spreadsheetId,
+                        range: `${service.range.split('!')[0]}!A${index}:F${index}`,
+                    });
+                    service.clearCache();
+                }
                 res.redirect(`/?botId=${botId}`);
             } catch (error) {
                 console.error('Error al borrar en Sheets:', error);
