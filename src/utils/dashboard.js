@@ -94,7 +94,7 @@ class Dashboard {
                 botSelector = `<span style="background: #e9ecef; padding: 5px 10px; border-radius: 5px; font-weight: bold; color: #495057;">Cliente: ${req.user.nombreCliente}</span>`;
             }
 
-            let rowsHtml = menuData.map((node) => {
+            let rowsHtml = menuData.map((node, idx) => {
                 let displayTrigger = node.trigger;
                 if (node.id === 'root' && (displayTrigger === '0' || displayTrigger === '' || !displayTrigger)) {
                     displayTrigger = 'Hola';
@@ -103,18 +103,13 @@ class Dashboard {
                 const isOrder = node.message && node.message.includes('##PEDIDO##');
                 const isQty = node.message && node.message.includes('##CANTIDAD##');
                 const isFinal = node.message && node.message.includes('##FINALIZAR##');
+                const isData = node.message && node.message.includes('##DATOS##');
                 const cleanMessage = (node.message || "")
                     .replace('##PEDIDO##', '')
                     .replace('##CANTIDAD##', '')
                     .replace('##FINALIZAR##', '')
+                    .replace('##DATOS##', '')
                     .trim();
-
-                const fullMessageEscaped = (node.message || "")
-                    .replace(/\r\n/g, "\n")
-                    .replace(/\r/g, "\n")
-                    .replace(/'/g, "")
-                    .replace(/"/g, "")
-                    .replace(/\n/g, "\\n");
 
                 return `
                 <tr>
@@ -125,11 +120,12 @@ class Dashboard {
                     <td style="text-align: center;">${isOrder ? '<span style="color: var(--primary-color);">✅</span>' : '⚪'}</td>
                     <td style="text-align: center;">${isQty ? '<span style="color: var(--info-color);">🔢</span>' : '⚪'}</td>
                     <td style="text-align: center;">${isFinal ? '<span style="color: var(--secondary-color);">🏁</span>' : '⚪'}</td>
+                    <td style="text-align: center;">${isData ? '<span style="color: var(--warning-color);">📝</span>' : '⚪'}</td>
                     <td>
                         <div style="display: flex; gap: 5px;">
-                            <button type="button" onclick="openEditModal('${node.rowIndex}', '${node.id}', '${node.parentId}', '${displayTrigger}', '${node.title}', \`${fullMessageEscaped}\`, '${node.price || ''}', ${isOrder}, ${isQty}, ${isFinal})" class="btn-action btn-orange">Editar</button>
-                            <button type="button" onclick="openAddModal('${node.id}')" class="btn-action btn-blue">+ Hijo</button>
-                            <button type="button" onclick="confirmDelete('${node.rowIndex}', '${node.id}')" class="btn-action btn-red">Borrar</button>
+                            <button type="button" onclick="openEditModal(${idx})" class="btn-action btn-orange">Editar</button>
+                            <button type="button" onclick="openAddModal(${idx})" class="btn-action btn-blue">+ Hijo</button>
+                            <button type="button" onclick="confirmDelete(${idx})" class="btn-action btn-red">Borrar</button>
                             </div>
                             </td>
                             </tr>
@@ -441,6 +437,7 @@ class Dashboard {
                                 <th>Pedido</th>
                                 <th>Cant.</th>
                                 <th>Fin</th>
+                                <th>Datos</th>
                                 <th>Acciones</th>
                             </tr>
                         </thead>
@@ -505,6 +502,10 @@ class Dashboard {
                                             <div style="flex: 1; display: flex; align-items: center; gap: 10px; background: #f3f0ff; padding: 10px; border-radius: 6px; border: 1px dashed #d1d1ff;">
                                                 <input type="checkbox" id="addIsFinal" onchange="toggleOrderTag('add', '##FINALIZAR##')" style="width: 20px; height: 20px; cursor: pointer;">
                                                 <label for="addIsFinal" style="margin-bottom: 0; cursor: pointer; font-size: 13px;">¿Finalizar?</label>
+                                            </div>
+                                            <div style="flex: 1; display: flex; align-items: center; gap: 10px; background: #fff4e5; padding: 10px; border-radius: 6px; border: 1px dashed #ff9800;">
+                                                <input type="checkbox" id="addIsData" onchange="toggleOrderTag('add', '##DATOS##')" style="width: 20px; height: 20px; cursor: pointer;">
+                                                <label for="addIsData" style="margin-bottom: 0; cursor: pointer; font-size: 13px;">¿Capturar dato?</label>
                                             </div>
                                         </div>
                                         <button type="submit" class="btn btn-green" style="width: 100%;">Crear Nodo Hijo</button>
@@ -578,6 +579,10 @@ class Dashboard {
                                             <div style="flex: 1; display: flex; align-items: center; gap: 10px; background: #f3f0ff; padding: 10px; border-radius: 6px; border: 1px dashed #d1d1ff;">
                                                 <input type="checkbox" id="editIsFinal" onchange="toggleOrderTag('edit', '##FINALIZAR##')" style="width: 20px; height: 20px; cursor: pointer;">
                                                 <label for="editIsFinal" style="margin-bottom: 0; cursor: pointer; color: #5227cc; font-size: 13px;">¿Finalizar?</label>
+                                            </div>
+                                            <div style="flex: 1; display: flex; align-items: center; gap: 10px; background: #fff4e5; padding: 10px; border-radius: 6px; border: 1px dashed #ff9800;">
+                                                <input type="checkbox" id="editIsData" onchange="toggleOrderTag('edit', '##DATOS##')" style="width: 20px; height: 20px; cursor: pointer;">
+                                                <label for="editIsData" style="margin-bottom: 0; cursor: pointer; color: #856404; font-size: 13px;">¿Capturar dato?</label>
                                             </div>
                                         </div>
                                         <button type="submit" class="btn btn-green" style="width: 100%;">Guardar Cambios</button>
@@ -655,8 +660,9 @@ class Dashboard {
                             document.getElementById('visualModal').style.display = "block";
                         }
 
-                        function openAddModal(parentId) {
-                            const parent = menuData.find(n => n.id === parentId) || { title: 'Raíz', id: 'root' };
+                        function openAddModal(idx) {
+                            const parent = menuData[idx] || { title: 'Raíz', id: 'root' };
+                            const parentId = parent.id;
                             currentParent = parent;
                             document.getElementById('addParentId').value = parentId;
                             
@@ -675,20 +681,29 @@ class Dashboard {
                             updatePreview('add');
                         }
 
-                        function openEditModal(index, id, parentId, trigger, title, message, price, isOrder, isQty, isFinal) {
-                            document.getElementById('editIndex').value = index;
-                            document.getElementById('editId').value = id;
-                            document.getElementById('editParentId').value = parentId;
-                            document.getElementById('editTrigger').value = (id === 'root' && (trigger === '' || trigger === '0' || !trigger)) ? 'Hola' : trigger;
-                            document.getElementById('editTitle').value = title;
-                            document.getElementById('editMessage').value = message;
-                            document.getElementById('editPrice').value = price;
+                        function openEditModal(idx) {
+                            const node = menuData[idx];
+                            if (!node) return;
+
+                            const isOrder = node.message && node.message.includes('##PEDIDO##');
+                            const isQty = node.message && node.message.includes('##CANTIDAD##');
+                            const isFinal = node.message && node.message.includes('##FINALIZAR##');
+                            const isData = node.message && node.message.includes('##DATOS##');
+
+                            document.getElementById('editIndex').value = node.rowIndex;
+                            document.getElementById('editId').value = node.id;
+                            document.getElementById('editParentId').value = node.parentId;
+                            document.getElementById('editTrigger').value = (node.id === 'root' && (node.trigger === '' || node.trigger === '0' || !node.trigger)) ? 'Hola' : node.trigger;
+                            document.getElementById('editTitle').value = node.title;
+                            document.getElementById('editMessage').value = node.message || '';
+                            document.getElementById('editPrice').value = node.price || '';
                             document.getElementById('editIsOrder').checked = isOrder;
                             document.getElementById('editIsQty').checked = isQty;
                             document.getElementById('editIsFinal').checked = isFinal;
+                            document.getElementById('editIsData').checked = isData;
 
                             const parentInput = document.getElementById('editParentId');
-                            if (id === 'root') {
+                            if (node.id === 'root') {
                                 parentInput.required = false;
                                 parentInput.readOnly = true;
                                 parentInput.style.background = '#eee';
@@ -700,7 +715,7 @@ class Dashboard {
                                 parentInput.placeholder = '';
                             }
 
-                            currentParent = menuData.find(n => n.id === parentId) || { title: 'Raíz', id: 'root' };
+                            currentParent = menuData.find(n => n.id === node.parentId) || { title: 'Raíz', id: 'root' };
                             document.getElementById('editModal').style.display = "block";
                             updatePreview('edit');
                         }
@@ -812,7 +827,12 @@ class Dashboard {
                             chatBody.scrollTop = chatBody.scrollHeight;
                         }
 
-                        function confirmDelete(index, nodeId) {
+                        function confirmDelete(idx) {
+                            const node = menuData[idx];
+                            if (!node) return;
+                            const nodeId = node.id;
+                            const index = node.rowIndex;
+
                             const hasChildren = menuData.some(n => n.parentId === nodeId);
                             const title = document.getElementById('deleteConfirmTitle');
                             const message = document.getElementById('deleteConfirmMessage');
@@ -842,21 +862,35 @@ class Dashboard {
                             const isOrderCheckbox = document.getElementById(type === 'edit' ? 'editIsOrder' : 'addIsOrder');
                             const isQtyCheckbox = document.getElementById(type === 'edit' ? 'editIsQty' : 'addIsQty');
                             const isFinalCheckbox = document.getElementById(type === 'edit' ? 'editIsFinal' : 'addIsFinal');
+                            const isDataCheckbox = document.getElementById(type === 'edit' ? 'editIsData' : 'addIsData');
                             
-                            let currentVal = messageEl.value.replace('##PEDIDO##', '').replace('##CANTIDAD##', '').replace('##FINALIZAR##', '').trim();
+                            let currentVal = messageEl.value
+                                .replace('##PEDIDO##', '')
+                                .replace('##CANTIDAD##', '')
+                                .replace('##FINALIZAR##', '')
+                                .replace('##DATOS##', '')
+                                .trim();
                             
                             if (tag === '##PEDIDO##' && isOrderCheckbox.checked) {
                                 isQtyCheckbox.checked = false;
                                 isFinalCheckbox.checked = false;
+                                isDataCheckbox.checked = false;
                                 messageEl.value = currentVal + (currentVal ? '\\n\\n' : '') + '##PEDIDO##';
                             } else if (tag === '##CANTIDAD##' && isQtyCheckbox.checked) {
                                 isOrderCheckbox.checked = false;
                                 isFinalCheckbox.checked = false;
+                                isDataCheckbox.checked = false;
                                 messageEl.value = currentVal + (currentVal ? '\\n\\n' : '') + '##CANTIDAD##';
                             } else if (tag === '##FINALIZAR##' && isFinalCheckbox.checked) {
                                 isOrderCheckbox.checked = false;
                                 isQtyCheckbox.checked = false;
+                                isDataCheckbox.checked = false;
                                 messageEl.value = currentVal + (currentVal ? '\\n\\n' : '') + '##FINALIZAR##';
+                            } else if (tag === '##DATOS##' && isDataCheckbox.checked) {
+                                isOrderCheckbox.checked = false;
+                                isQtyCheckbox.checked = false;
+                                isFinalCheckbox.checked = false;
+                                messageEl.value = currentVal + (currentVal ? '\\n\\n' : '') + '##DATOS##';
                             } else {
                                 messageEl.value = currentVal;
                             }

@@ -49,6 +49,18 @@ class StateService {
     clearPendingQuantityItem(jid) {
         this.cache.del(this._getKey(jid) + ':pending_qty');
     }
+
+    setWaitingForData(jid, nodeId) {
+        this.cache.set(this._getKey(jid) + ':waiting_data', nodeId, 600);
+    }
+
+    getWaitingForData(jid) {
+        return this.cache.get(this._getKey(jid) + ':waiting_data');
+    }
+
+    clearWaitingForData(jid) {
+        this.cache.del(this._getKey(jid) + ':waiting_data');
+    }
 }
 
 module.exports = StateService;

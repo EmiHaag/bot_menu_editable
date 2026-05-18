@@ -1,0 +1,11 @@
+Gracias por comunicarte con la oficina de Sistemas. Recorda que brindamos atención solo por mensaje, no llamadas ni mensajes de audio.
+"¿Desde que área te estas comunicando? 
+*A) Municipalidad ( Palacios)
+ B) Hospital 
+ C) Otro*
+"
+
+No dejar editar el disparador al usuario, crea confusion
+
+opcion el editor necesita que el usuario le de una respuesta random como "direccion" el bot le da mensaje por default
+se da opcion de "pedido". Agregar opcion para que el bot no responda nada 

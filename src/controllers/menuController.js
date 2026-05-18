@@ -19,6 +19,25 @@ class MenuController {
         const currentStateId = this.stateService.getUserState(jid);
         const input = text.trim().toLowerCase();
 
+        // Check if we are waiting for free-form data (e.g. Address, Name)
+        const waitingNodeId = this.stateService.getWaitingForData(jid);
+        if (waitingNodeId) {
+            // Any input is accepted. We move to the first child of this node.
+            const children = await this.googleSheetsService.getNodesByParent(waitingNodeId);
+            this.stateService.clearWaitingForData(jid);
+
+            if (children.length > 0) {
+                // Transition to the first child
+                await this.sendMenu(sock, jid, children[0].id);
+                return;
+            } else {
+                // No children? We acknowledge but stay here. 
+                // The user can still use 'v' or '0' thanks to the footer in the message they just replied to.
+                await sock.sendMessage(jid, { text: '✅ Datos recibidos.' });
+                return;
+            }
+        }
+
         // Check if we are waiting for a quantity
         const pendingItem = this.stateService.getPendingQuantityItem(jid);
         if (pendingItem && !isNaN(input) && parseInt(input) > 0) {
@@ -90,6 +109,8 @@ class MenuController {
                     this.stateService.setPendingQuantityItem(jid, selectedOption.title);
                 } else if (selectedOption.message.includes('##PEDIDO##')) {
                     this.stateService.addItemToOrder(jid, `1 x ${selectedOption.title}`);
+                } else if (selectedOption.message.includes('##DATOS##')) {
+                    this.stateService.setWaitingForData(jid, selectedOption.id);
                 }
             }
 
@@ -189,6 +210,7 @@ class MenuController {
             .replace('##PEDIDO##', '')
             .replace('##CANTIDAD##', '')
             .replace('##FINALIZAR##', '')
+            .replace('##DATOS##', '')
             .trim();
 
         const order = this.stateService.getUserOrder(jid);

@@ -222,6 +222,29 @@ app.use((req, res, next) => {
 
 const botQRs = {}; // Object to store status and data for each bot
 
+function initializeBotEntry(client) {
+    if (botQRs[client.idCliente]) return botQRs[client.idCliente];
+    if (client.idCliente === 'admin') return null;
+
+    const authFolder = path.join(AUTH_SESSIONS_DIR, `auth_info_${client.idCliente}`);
+    const botConfig = {
+        id: client.idCliente,
+        spreadsheetId: process.env.SPREADSHEET_ID,
+        credentials: process.env.CREDENTIALS_JSON,
+        authFolder: authFolder
+    };
+
+    botQRs[client.idCliente] = {
+        status: 'waiting_start',
+        qr: null,
+        rawQr: null,
+        lastUpdate: new Date().toLocaleTimeString(),
+        config: botConfig,
+        lastActiveViewer: 0
+    };
+    return botQRs[client.idCliente];
+}
+
 async function startBot(botConfig, forceStart = false) {
     const {
         id,
@@ -490,8 +513,17 @@ async function main() {
     app.use('/', dashboard.setupRoutes());
 
     // Nueva ruta /qr dinámica
-    app.get('/qr', (req, res) => {
+    app.get('/qr', async (req, res) => {
         const loggedUser = req.user;
+        
+        // Ensure bot entries are initialized for the current user/clients
+        if (loggedUser.idCliente === 'admin') {
+            const allUsers = await userService.getUsers();
+            allUsers.forEach(u => initializeBotEntry(u));
+        } else {
+            initializeBotEntry(loggedUser);
+        }
+
         const bots = Object.entries(botQRs).filter(([id]) => {
             if (loggedUser.idCliente === 'admin') return true;
             return id === loggedUser.idCliente;
@@ -766,30 +798,13 @@ async function main() {
     for (const client of activeClients) {
         if (client.idCliente === 'admin') continue;
 
-        const authFolder = path.join(AUTH_SESSIONS_DIR, `auth_info_${client.idCliente}`);
-        const credsFile = path.join(authFolder, 'creds.json');
-
-        const botConfig = {
-            id: client.idCliente,
-            spreadsheetId: process.env.SPREADSHEET_ID,
-            credentials: process.env.CREDENTIALS_JSON,
-            authFolder: authFolder
-        };
-
-        // Inicializar objeto de estado
-        botQRs[client.idCliente] = {
-            status: 'waiting_start',
-            qr: null,
-            rawQr: null,
-            lastUpdate: new Date().toLocaleTimeString(),
-            config: botConfig,
-            lastActiveViewer: 0
-        };
+        const entry = initializeBotEntry(client);
+        const credsFile = path.join(entry.config.authFolder, 'creds.json');
 
         // Solo iniciar automáticamente si tiene sesión activa Y el cliente está marcado como activo
         if (fs.existsSync(credsFile) && client.activo) {
             console.log(`[System] Auto-starting active session for ${client.idCliente}`);
-            startBot(botConfig);
+            startBot(entry.config);
         } else {
             console.log(`[System] Bot ${client.idCliente} waiting for manual start (No active session or inactive).`);
         }

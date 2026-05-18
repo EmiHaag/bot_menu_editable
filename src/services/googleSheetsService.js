@@ -150,10 +150,10 @@ class GoogleSheetsService {
 
             await Promise.all(promises);
             this.clearCache();
-        }
-    }
+            }
+            }
 
-    clearCache() {
+            clearCache() {
         cache.del(`menu_data_${this.clientId}`);
     }
 }
