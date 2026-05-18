@@ -685,7 +685,7 @@ class Dashboard {
 
                             // Sugerencia de ID: nombre_padre + _opcion + X
                             const prefix = parentId === 'root' ? 'menu' : parentId;
-                            document.getElementById('addId').value = \`\${prefix}_opcion\${nextNumber}\`;
+                            document.getElementById('addId').value = '\${prefix}_opcion\${nextNumber}';
 
                             // Sugerencia de Trigger: X
                             document.getElementById('addTrigger').value = nextNumber;
