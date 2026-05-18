@@ -23,7 +23,7 @@ const userService = require('./services/userService');
 
 const app = express();
 const port = process.env.PORT || 8000;
-const AUTH_SESSIONS_DIR = process.env.AUTH_SESSIONS_DIR || '/data/auth_sessions';
+const AUTH_SESSIONS_DIR = process.env.AUTH_SESSIONS_DIR || path.join(__dirname, '..', 'auth_sessions');
 
 // Configuración de Sesiones
 app.use(session({

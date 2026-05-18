@@ -6,3 +6,4 @@ auth_info_baileys/
 package-lock.json
 *.log
 nodemon.json
+notas_pruebas

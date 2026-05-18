@@ -141,7 +141,18 @@ class MenuController {
         } else {
             // Invalid input or first interaction
             if (currentStateId === 'root' && !selectedOption) {
-                await this.sendMenu(sock, jid, 'root');
+                const rootNode = await this.googleSheetsService.getNodeById('root');
+                const isStrict = rootNode && rootNode.strictTrigger === 'true';
+
+                if (isStrict) {
+                    const rootTrigger = (rootNode && rootNode.trigger) ? rootNode.trigger.toLowerCase() : 'hola';
+                    if (input === rootTrigger) {
+                        await this.sendMenu(sock, jid, 'root');
+                    }
+                    // Si es estricto y no coincide el disparador, se ignora el mensaje
+                } else {
+                    await this.sendMenu(sock, jid, 'root');
+                }
             } else {
                 await this.sendPresenceTyping(sock, jid); // Escritura + Espera antes de enviar
                 await sock.sendMessage(jid, {

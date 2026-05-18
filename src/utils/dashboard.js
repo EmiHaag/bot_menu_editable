@@ -96,8 +96,11 @@ class Dashboard {
 
             let rowsHtml = menuData.map((node, idx) => {
                 let displayTrigger = node.trigger;
-                if (node.id === 'root' && (displayTrigger === '0' || displayTrigger === '' || !displayTrigger)) {
-                    displayTrigger = 'Hola';
+                let displayTitle = node.title;
+
+                if (node.id === 'root') {
+                    displayTrigger = '<span style="color: #999;">-</span>';
+                    displayTitle = '<span style="color: #999; font-style: italic;">(Configuración Inicial)</span>';
                 }
 
                 const isOrder = node.message && node.message.includes('##PEDIDO##');
@@ -114,7 +117,7 @@ class Dashboard {
                 return `
                 <tr>
                     <td><b>${displayTrigger}</b></td>
-                    <td>${node.title}</td>
+                    <td>${displayTitle}</td>
                     <td style="max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${cleanMessage}</td>
                     <td>${node.price ? '$' + node.price : '-'}</td>
                     <td style="text-align: center;">${isOrder ? '<span style="color: var(--primary-color);">✅</span>' : '⚪'}</td>
@@ -126,11 +129,11 @@ class Dashboard {
                             <button type="button" onclick="openEditModal(${idx})" class="btn-action btn-orange">Editar</button>
                             <button type="button" onclick="openAddModal(${idx})" class="btn-action btn-blue">+ Hijo</button>
                             <button type="button" onclick="confirmDelete(${idx})" class="btn-action btn-red">Borrar</button>
-                            </div>
-                            </td>
-                            </tr>
-                            `;
-                            }).join('');
+                        </div>
+                    </td>
+                </tr>
+                `;
+            }).join('');
             res.send(`
                 <html>
                 <head>
@@ -505,7 +508,7 @@ class Dashboard {
                                             </div>
                                             <div style="flex: 1; display: flex; align-items: center; gap: 10px; background: #fff4e5; padding: 10px; border-radius: 6px; border: 1px dashed #ff9800;">
                                                 <input type="checkbox" id="addIsData" onchange="toggleOrderTag('add', '##DATOS##')" style="width: 20px; height: 20px; cursor: pointer;">
-                                                <label for="addIsData" style="margin-bottom: 0; cursor: pointer; font-size: 13px;">¿Capturar dato?</label>
+                                                <label for="addIsData" style="margin-bottom: 0; cursor: pointer; font-size: 13px;">Capturar dato y continuar</label>
                                             </div>
                                         </div>
                                         <button type="submit" class="btn btn-green" style="width: 100%;">Crear Nodo Hijo</button>
@@ -549,7 +552,18 @@ class Dashboard {
                                         <input type="hidden" id="editIndex" name="index">
                                         <input type="hidden" id="editId" name="id">
                                         <input type="hidden" id="editParentId" name="parentId">
-                                        <div style="display: flex; gap: 15px;">
+                                        
+                                        <div class="form-group" id="strictTriggerGroup" style="display: none; background: #f0fdf4; padding: 15px; border-radius: 6px; border: 1px solid #bbf7d0; margin-bottom: 20px;">
+                                            <div style="display: flex; align-items: center; gap: 12px;">
+                                                <input type="checkbox" id="editStrictTrigger" name="strictTrigger" value="true" style="width: 22px; height: 22px; cursor: pointer;">
+                                                <div>
+                                                    <label for="editStrictTrigger" style="margin-bottom: 2px; cursor: pointer; color: #166534; font-size: 14px; font-weight: 700;">Activar bot solo con disparador exacto</label>
+                                                    <p style="margin: 0; font-size: 12px; color: #15803d;">Si está marcado, el bot solo responderá si el usuario escribe exactamente el disparador inicial. Si no, responderá a cualquier palabra.</p>
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        <div style="display: flex; gap: 15px;" id="editTriggerGroup">
                                             <div class="form-group" style="flex: 1;">
                                                 <label>Disparador (Número/Letra):</label>
                                                 <input type="text" id="editTrigger" name="trigger" required oninput="updatePreview('edit')">
@@ -559,7 +573,7 @@ class Dashboard {
                                                 <input type="text" id="editPrice" name="price" oninput="updatePreview('edit')">
                                             </div>
                                         </div>
-                                        <div class="form-group">
+                                        <div class="form-group" id="editTitleGroup">
                                             <label>Título (En el menú):</label>
                                             <input type="text" id="editTitle" name="title" required oninput="updatePreview('edit')">
                                         </div>
@@ -567,7 +581,7 @@ class Dashboard {
                                             <label>Mensaje (Respuesta):</label>
                                             <textarea id="editMessage" name="message" rows="4" oninput="updatePreview('edit')"></textarea>
                                         </div>
-                                        <div class="form-group" style="display: flex; gap: 10px; margin-bottom: 20px;">
+                                        <div class="form-group" id="editTagsGroup" style="display: flex; gap: 10px; margin-bottom: 20px;">
                                             <div style="flex: 1; display: flex; align-items: center; gap: 10px; background: #fff3cd; padding: 10px; border-radius: 6px; border: 1px dashed #ffc107;">
                                                 <input type="checkbox" id="editIsOrder" onchange="toggleOrderTag('edit', '##PEDIDO##')" style="width: 20px; height: 20px; cursor: pointer;">
                                                 <label for="editIsOrder" style="margin-bottom: 0; cursor: pointer; color: #856404; font-size: 13px;">¿Crear pedido?</label>
@@ -702,6 +716,31 @@ class Dashboard {
                             document.getElementById('editIsFinal').checked = isFinal;
                             document.getElementById('editIsData').checked = isData;
 
+                            const strictGroup = document.getElementById('strictTriggerGroup');
+                            const strictCheckbox = document.getElementById('editStrictTrigger');
+                            const titleInput = document.getElementById('editTitle');
+                            const editTriggerGroup = document.getElementById('editTriggerGroup');
+                            const editTitleGroup = document.getElementById('editTitleGroup');
+                            const editTagsGroup = document.getElementById('editTagsGroup');
+
+                            if (node.id === 'root') {
+                                strictGroup.style.display = 'block';
+                                strictCheckbox.checked = node.strictTrigger === 'true';
+                                editTriggerGroup.style.display = 'none';
+                                editTitleGroup.style.display = 'none';
+                                editTagsGroup.style.display = 'none';
+                                titleInput.readOnly = true;
+                                titleInput.style.background = '#eee';
+                            } else {
+                                strictGroup.style.display = 'none';
+                                strictCheckbox.checked = false;
+                                editTriggerGroup.style.display = 'flex';
+                                editTitleGroup.style.display = 'block';
+                                editTagsGroup.style.display = 'flex';
+                                titleInput.readOnly = false;
+                                titleInput.style.background = 'var(--bg-box)';
+                            }
+
                             const parentInput = document.getElementById('editParentId');
                             if (node.id === 'root') {
                                 parentInput.required = false;
@@ -733,16 +772,18 @@ class Dashboard {
 
                             // Preparar lista de items para mostrar (incluyendo el actual)
                             let displayItems = menuData
-                                .filter(n => n.parentId === parent.id && n.id !== (type === 'edit' ? document.getElementById('editId').value : ''))
+                                .filter(n => n.parentId === parent.id && n.id !== (type === 'edit' ? document.getElementById('editId').value : '') && n.id !== 'root')
                                 .map(n => ({ ...n, isCurrent: false }));
                             
-                            displayItems.push({
-                                id: id,
-                                trigger: trigger,
-                                title: title,
-                                price: price,
-                                isCurrent: true
-                            });
+                            if (id !== 'root') {
+                                displayItems.push({
+                                    id: id,
+                                    trigger: trigger,
+                                    title: title,
+                                    price: price,
+                                    isCurrent: true
+                                });
+                            }
 
                             // Ordenar por trigger (numérico si es posible)
                             displayItems.sort((a, b) => {
@@ -780,11 +821,14 @@ class Dashboard {
                             
                             // 1. Mensaje del Padre (Contexto)
                             let parentHtml = '';
-                            if (parent) {
-                                let parentContent = parent.message || '';
-                                if (parent.id === 'root' && (!parentContent || parentContent === '')) {
-                                    parentContent = 'Hola';
-                                }
+                            if (parent && id !== 'root') {
+                                let parentContent = (parent.message || '')
+                                    .replace('##PEDIDO##', '')
+                                    .replace('##CANTIDAD##', '')
+                                    .replace('##FINALIZAR##', '')
+                                    .replace('##DATOS##', '')
+                                    .replace('_Este es el nodo de inicio, su mensaje no se muestra directamente en el bot._', '')
+                                    .trim();
 
                                 // Usar los mismos displayItems ordenados para la lista de opciones
                                 let optionsList = '';
@@ -799,7 +843,7 @@ class Dashboard {
                                 });
 
                                 if (optionsList) {
-                                    parentContent += '\\n\\n' + optionsList;
+                                    parentContent += (parentContent ? '\\n\\n' : '') + optionsList;
                                 }
 
                                 if (parentContent) {
@@ -811,7 +855,14 @@ class Dashboard {
                             const userHtml = \`<div class="wa-bubble-user">\${trigger}</div>\`;
 
                             // 3. Respuesta Actual (Lo que se está editando)
-                            let chatContent = (message || '_Sin mensaje configurado_').replace('##PEDIDO##', '').replace('##CANTIDAD##', '').replace('##FINALIZAR##', '').trim();
+                            let chatContent = (message || '_Sin mensaje configurado_')
+                                .replace('##PEDIDO##', '')
+                                .replace('##CANTIDAD##', '')
+                                .replace('##FINALIZAR##', '')
+                                .replace('##DATOS##', '')
+                                .replace('_Este es el nodo de inicio, su mensaje no se muestra directamente en el bot._', '')
+                                .trim();
+                            
                             const subOptions = menuData.filter(n => n.parentId === id);
                             if (subOptions.length > 0) {
                                 chatContent += '\\n\\n';
@@ -819,7 +870,9 @@ class Dashboard {
                                     const optPrice = opt.price ? ' ($' + opt.price + ')' : '';
                                     chatContent += \`*\${opt.trigger}*. \${opt.title}\${optPrice}\\n\`;
                                 });
-                                chatContent += \`\\n---\\n*v*. Volver atrás\\n*0*. Menú Principal\`;
+                                if (id !== 'root') {
+                                    chatContent += \`\\n---\\n*v*. Volver atrás\\n*0*. Menú Principal\`;
+                                }
                             }
                             const botHtml = \`<div class="wa-bubble">\${chatContent.replace(/\\n/g, '<br>')}</div>\`;
 
@@ -921,7 +974,7 @@ class Dashboard {
                     });
                     await sheets.spreadsheets.values.clear({
                         spreadsheetId: service.spreadsheetId,
-                        range: `${service.range.split('!')[0]}!A${index}:G${index}`,
+                        range: `${service.range.split('!')[0]}!A${index}:H${index}`,
                     });
                     service.clearCache();
                 }
@@ -945,7 +998,8 @@ class Dashboard {
                 trigger,
                 title,
                 message,
-                price
+                price,
+                strictTrigger
             } = req.body;
 
             try {
@@ -955,11 +1009,11 @@ class Dashboard {
                 });
                 await sheets.spreadsheets.values.update({
                     spreadsheetId: service.spreadsheetId,
-                    range: `${service.range.split('!')[0]}!A${index}:G${index}`,
+                    range: `${service.range.split('!')[0]}!A${index}:H${index}`,
                     valueInputOption: 'USER_ENTERED',
                     requestBody: {
                         values: [
-                            [botId, id || '', parentId || '', title || '', message || '', trigger || '', price || '']
+                            [botId, id || '', parentId || '', title || '', message || '', trigger || '', price || '', strictTrigger || 'false']
                         ]
                     }
                 });
@@ -1014,11 +1068,11 @@ class Dashboard {
 
                 await sheets.spreadsheets.values.update({
                     spreadsheetId: service.spreadsheetId,
-                    range: `${sheetName}!A${nextRow}:G${nextRow}`,
+                    range: `${sheetName}!A${nextRow}:H${nextRow}`,
                     valueInputOption: 'USER_ENTERED',
                     requestBody: {
                         values: [
-                            [botId, id || '', parentId || '', title || '', message || '', trigger || '', price || '']
+                            [botId, id || '', parentId || '', title || '', message || '', trigger || '', price || '', 'false']
                         ]
                     }
                 });
