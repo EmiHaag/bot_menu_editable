@@ -23,23 +23,47 @@ const userService = require('./services/userService');
 
 const app = express();
 const port = process.env.PORT || 8000;
-const AUTH_SESSIONS_DIR = process.env.AUTH_SESSIONS_DIR || path.join(__dirname, '..', 'auth_sessions');
+const AUTH_SESSIONS_DIR = path.resolve(
+    process.env.AUTH_SESSIONS_DIR || 
+    (process.platform !== 'win32' && fs.existsSync('/data') 
+        ? '/data/auth_sessions' 
+        : path.join(process.cwd(), 'auth_sessions'))
+);
+
+console.log(`[System] Auth sessions directory: ${AUTH_SESSIONS_DIR}`);
+
+// Asegurar que la carpeta de sesiones existe desde el inicio
+try {
+    if (!fs.existsSync(AUTH_SESSIONS_DIR)) {
+        console.log(`[System] Creating directory: ${AUTH_SESSIONS_DIR}`);
+        fs.mkdirSync(AUTH_SESSIONS_DIR, { recursive: true });
+    }
+
+    // Asegurar que la carpeta de sesiones web existe
+    const WEB_SESSIONS_DIR = path.join(AUTH_SESSIONS_DIR, 'web_sessions');
+    if (!fs.existsSync(WEB_SESSIONS_DIR)) {
+        console.log(`[System] Creating directory: ${WEB_SESSIONS_DIR}`);
+        fs.mkdirSync(WEB_SESSIONS_DIR, { recursive: true });
+    }
+} catch (err) {
+    console.error(`[System] Error creating session directories: ${err.message}`);
+}
 
 // Configuración de Sesiones
 app.use(session({
     store: new FileStore({
         path: path.join(AUTH_SESSIONS_DIR, 'web_sessions'),
-        ttl: 600, // 10 minutos
-        reapInterval: 3600, // Limpiar sesiones expiradas cada hora
-        logFn: () => {} // Silenciar logs de la librería
+        ttl: 3600, // 1 hora para evitar cierres de sesión rápidos
+        reapInterval: 3600,
+        logFn: () => {}
     }),
     secret: process.env.SESSION_SECRET || 'bot-menu-secret',
     resave: false,
     saveUninitialized: false,
     rolling: true,
     cookie: {
-        maxAge: 10 * 60 * 1000
-    } // 10 minutos
+        maxAge: 60 * 60 * 1000 // 1 hora
+    }
 }));
 
 app.use(express.urlencoded({
@@ -270,6 +294,16 @@ async function startBot(botConfig, forceStart = false) {
     };
 
     try {
+        // Asegurar que la carpeta base de sesiones existe antes de cada inicio
+        if (!fs.existsSync(AUTH_SESSIONS_DIR)) {
+            fs.mkdirSync(AUTH_SESSIONS_DIR, { recursive: true });
+        }
+        
+        // También asegurar que la carpeta específica de este bot existe
+        if (!fs.existsSync(authFolder)) {
+            fs.mkdirSync(authFolder, { recursive: true });
+        }
+
         const googleSheetsService = new GoogleSheetsService({
             clientId: id,
             spreadsheetId,
@@ -362,6 +396,16 @@ async function startBot(botConfig, forceStart = false) {
                 } else {
                     console.log(`[${id}] Logged out. session deleted.`);
                     botQRs[id].status = 'logged_out';
+                    
+                    // Borrar carpeta de sesión si fue un logout explícito (401)
+                    if (fs.existsSync(authFolder)) {
+                        try {
+                            fs.rmSync(authFolder, { recursive: true, force: true });
+                            console.log(`[${id}] Auth folder deleted due to logout.`);
+                        } catch (err) {
+                            console.error(`[${id}] Error deleting auth folder on logout: ${err.message}`);
+                        }
+                    }
                 }
             } else if (connection === 'open') {
                 console.log(`[${id}] ✅ Connection opened successfully!`);
@@ -788,12 +832,6 @@ async function main() {
     // Iniciar bots dinámicamente desde Sheets
     const activeClients = await userService.getUsers(); // Obtener todos para inicializar config
     console.log(`[System] Loading ${activeClients.length} potential clients...`);
-
-    if (!fs.existsSync(AUTH_SESSIONS_DIR)) {
-        fs.mkdirSync(AUTH_SESSIONS_DIR, {
-            recursive: true
-        });
-    }
 
     for (const client of activeClients) {
         if (client.idCliente === 'admin') continue;
