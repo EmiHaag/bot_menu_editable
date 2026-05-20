@@ -411,6 +411,58 @@ class Dashboard {
                             height: 35px;
                             border-radius: 20px;
                         }
+
+                        /* Tooltip Styles */
+                        .info-icon {
+                            display: inline-flex;
+                            align-items: center;
+                            justify-content: center;
+                            width: 16px;
+                            height: 16px;
+                            background: #e9ecef;
+                            color: #6c757d;
+                            border-radius: 50%;
+                            font-size: 11px;
+                            font-weight: bold;
+                            cursor: help;
+                            margin-left: 5px;
+                            position: relative;
+                        }
+                        .tooltip {
+                            visibility: hidden;
+                            width: 250px;
+                            background-color: #333;
+                            color: #fff;
+                            text-align: center;
+                            border-radius: 6px;
+                            padding: 10px;
+                            position: absolute;
+                            z-index: 101;
+                            bottom: 125%;
+                            left: 50%;
+                            margin-left: -125px;
+                            opacity: 0;
+                            transition: opacity 0.3s;
+                            font-weight: normal;
+                            font-size: 12px;
+                            line-height: 1.4;
+                            pointer-events: none;
+                            box-shadow: 0 5px 15px rgba(0,0,0,0.2);
+                        }
+                        .tooltip::after {
+                            content: "";
+                            position: absolute;
+                            top: 100%;
+                            left: 50%;
+                            margin-left: -5px;
+                            border-width: 5px;
+                            border-style: solid;
+                            border-color: #333 transparent transparent transparent;
+                        }
+                        .info-icon:hover .tooltip {
+                            visibility: visible;
+                            opacity: 1;
+                        }
                     </style>
                     <script src="/js/robot-logo.js"></script>
                 </head>
@@ -490,7 +542,12 @@ class Dashboard {
                                             <input type="text" id="addTitle" name="title" placeholder="ej: Hablar con Soporte" required oninput="updatePreview('add')">
                                         </div>
                                         <div class="form-group">
-                                            <label>Mensaje (Respuesta):</label>
+                                            <label style="display: flex; align-items: center;">
+                                                Mensaje (Respuesta):
+                                                <span class="info-icon">i
+                                                    <span class="tooltip" id="addMessageTooltip">Esta será la respuesta cuando el usuario escriba el disparador. Si deseas agregar un submenú aquí cierra esta ventana y agrega un "hijo" a esta respuesta.</span>
+                                                </span>
+                                            </label>
                                             <textarea id="addMessage" name="message" rows="3" placeholder="Mensaje que enviará el bot..." oninput="updatePreview('add')"></textarea>
                                         </div>
                                         <div class="form-group" style="display: flex; gap: 10px; margin-bottom: 20px;">
@@ -555,7 +612,7 @@ class Dashboard {
                                         
                                         <div class="form-group" id="strictTriggerGroup" style="display: none; background: #f0fdf4; padding: 15px; border-radius: 6px; border: 1px solid #bbf7d0; margin-bottom: 20px;">
                                             <div style="display: flex; align-items: center; gap: 12px;">
-                                                <input type="checkbox" id="editStrictTrigger" name="strictTrigger" value="true" style="width: 22px; height: 22px; cursor: pointer;">
+                                                <input type="checkbox" id="editStrictTrigger" name="strictTrigger" value="true" style="width: 22px; height: 22px; cursor: pointer;" onchange="updatePreview('edit')">
                                                 <div>
                                                     <label for="editStrictTrigger" style="margin-bottom: 2px; cursor: pointer; color: #166534; font-size: 14px; font-weight: 700;">Activar bot solo con disparador exacto</label>
                                                     <p style="margin: 0; font-size: 12px; color: #15803d;">Si está marcado, el bot solo responderá si el usuario escribe exactamente el disparador inicial. Si no, responderá a cualquier palabra.</p>
@@ -578,7 +635,12 @@ class Dashboard {
                                             <input type="text" id="editTitle" name="title" required oninput="updatePreview('edit')">
                                         </div>
                                         <div class="form-group">
-                                            <label>Mensaje (Respuesta):</label>
+                                            <label style="display: flex; align-items: center;">
+                                                Mensaje (Respuesta):
+                                                <span class="info-icon">i
+                                                    <span class="tooltip" id="editMessageTooltip">Esta será la respuesta cuando el usuario escriba el disparador. Si deseas agregar un submenú aquí, en el mensaje agrega 'Elige una opción:' y luego cierra esta ventana y agrega un "hijo" a esta respuesta.</span>
+                                                </span>
+                                            </label>
                                             <textarea id="editMessage" name="message" rows="4" oninput="updatePreview('edit')"></textarea>
                                         </div>
                                         <div class="form-group" id="editTagsGroup" style="display: flex; gap: 10px; margin-bottom: 20px;">
@@ -726,7 +788,7 @@ class Dashboard {
                             if (node.id === 'root') {
                                 strictGroup.style.display = 'block';
                                 strictCheckbox.checked = node.strictTrigger === 'true';
-                                editTriggerGroup.style.display = 'none';
+                                editTriggerGroup.style.display = 'flex'; // Cambiado de none a flex
                                 editTitleGroup.style.display = 'none';
                                 editTagsGroup.style.display = 'none';
                                 titleInput.readOnly = true;
@@ -815,6 +877,24 @@ class Dashboard {
 
                             const preview = document.getElementById(type + 'Preview');
                             preview.innerHTML = \`\${headerText}[ \${parent.title} ]\\n\${itemsHtml}\`;
+
+                            // --- Tooltip Dynamic Update ---
+                            const tooltip = document.getElementById(type + 'MessageTooltip');
+                            if (tooltip) {
+                                const triggerVal = trigger || '?';
+                                let triggerText = \`"\${triggerVal}"\`;
+                                
+                                if (id === 'root') {
+                                    const isStrict = document.getElementById('editStrictTrigger').checked;
+                                    if (isStrict) {
+                                        triggerText = \`exactamente "\${triggerVal}"\`;
+                                    } else {
+                                        triggerText = \`cualquier palabra (o "\${triggerVal}")\`;
+                                    }
+                                }
+                                
+                                tooltip.innerText = \`Esta será la respuesta cuando el usuario escriba \${triggerText}. Si deseas agregar un submenú aquí, agrega al mensaje 'Elige una opción:' y luego cierra esta ventana y agrega un "hijo" a esta respuesta.\`;
+                            }
 
                             // --- WhatsApp Chat Preview ---
                             const chatBody = document.getElementById(type + 'ChatBody');
