@@ -46,7 +46,7 @@ class GoogleSheetsService {
                 message: row[4] || '',
                 trigger: row[5] || '',
                 price: row[6] || '',
-                strictTrigger: row[7] || 'false',
+                strictTrigger: String(row[7] || 'false').toLowerCase(),
                 rowIndex: index + 2 
             }));
 
