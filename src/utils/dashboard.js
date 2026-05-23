@@ -55,28 +55,34 @@ class Dashboard {
 
         // Ruta para refrescar caché
         router.get('/refresh', async (req, res) => {
-            const {
-                service,
-                botId
-            } = await getServiceInfo(req);
-            if (service) service.clearCache();
-            res.redirect(`/?botId=${botId}`);
+            try {
+                const {
+                    service,
+                    botId
+                } = await getServiceInfo(req);
+                if (service) service.clearCache();
+                res.redirect(`/?botId=${encodeURIComponent(botId)}`);
+            } catch (error) {
+                console.error('Error al refrescar:', error);
+                res.status(500).send('Error al refrescar la caché.');
+            }
         });
 
         // Vista Principal
         router.get('/', async (req, res) => {
-            const {
-                service,
-                botId,
-                isAdmin
-            } = await getServiceInfo(req);
+            try {
+                const {
+                    service,
+                    botId,
+                    isAdmin
+                } = await getServiceInfo(req);
 
-            if (!service) {
-                return res.status(404).send('Bot no encontrado.');
-            }
+                if (!service) {
+                    return res.status(404).send('Bot no encontrado.');
+                }
 
-            const menuData = await service.getMenuData();
-            const activeClients = await userService.getActiveClients();
+                const menuData = await service.getMenuData();
+                const activeClients = await userService.getActiveClients();
 
             let botSelector = '';
             if (isAdmin) {
@@ -738,16 +744,21 @@ class Dashboard {
 
                         function openAddModal(idx) {
                             const parent = menuData[idx] || { title: 'Raíz', id: 'root' };
-                            const parentId = parent.id;
+                            const parentId = parent.id || 'root';
                             currentParent = parent;
+                            
+                            // Asegurar que el parentId sea el ID real del nodo seleccionado
                             document.getElementById('addParentId').value = parentId;
                             
                             const childrenCount = menuData.filter(n => n.parentId === parentId).length;
                             const nextNumber = childrenCount + 1;
 
                             // Sugerencia de ID: nombre_padre + _opcion + X
+                            // Si el padre es root, el prefijo es 'menu'
                             const prefix = parentId === 'root' ? 'menu' : parentId;
-                            document.getElementById('addId').value = '\${prefix}_opcion\${nextNumber}';
+                            const newId = prefix + '_opcion' + nextNumber;
+                            
+                            document.getElementById('addId').value = newId;
 
                             // Sugerencia de Trigger: X
                             document.getElementById('addTrigger').value = nextNumber;
@@ -980,7 +991,7 @@ class Dashboard {
                             }
 
                             confirmBtn.onclick = function() {
-                                window.location.href = '/delete/' + index + '?botId=' + botId + '&nodeId=' + nodeId;
+                                window.location.href = '/delete/' + index + '?botId=' + encodeURIComponent(botId) + '&nodeId=' + encodeURIComponent(nodeId);
                             };
 
                             document.getElementById('deleteConfirmModal').style.display = "block";
@@ -1034,17 +1045,22 @@ class Dashboard {
                 </body>
                 </html>
             `);
+            } catch (error) {
+                console.error('Error en vista principal:', error);
+                res.status(500).send('Error al cargar el dashboard.');
+            }
         });
 
         // Ruta para Borrar
         router.get('/delete/:index', async (req, res) => {
-            const {
-                service,
-                botId
-            } = await getServiceInfo(req);
-            const index = req.params.index;
-            const nodeId = req.query.nodeId;
             try {
+                const {
+                    service,
+                    botId
+                } = await getServiceInfo(req);
+                const index = req.params.index;
+                const nodeId = req.query.nodeId;
+                
                 if (nodeId) {
                     await service.deleteNodeAndChildren(nodeId);
                 } else {
@@ -1058,7 +1074,7 @@ class Dashboard {
                     });
                     service.clearCache();
                 }
-                res.redirect(`/?botId=${botId}`);
+                res.redirect(`/?botId=${encodeURIComponent(botId)}`);
             } catch (error) {
                 console.error('Error al borrar en Sheets:', error);
                 res.status(500).send('Error al borrar la fila.');
@@ -1067,22 +1083,22 @@ class Dashboard {
 
         // Ruta para Guardar
         router.post('/save', async (req, res) => {
-            const {
-                service,
-                botId
-            } = await getServiceInfo(req);
-            const {
-                index,
-                id,
-                parentId,
-                trigger,
-                title,
-                message,
-                price,
-                strictTrigger
-            } = req.body;
-
             try {
+                const {
+                    service,
+                    botId
+                } = await getServiceInfo(req);
+                const {
+                    index,
+                    id,
+                    parentId,
+                    trigger,
+                    title,
+                    message,
+                    price,
+                    strictTrigger
+                } = req.body;
+
                 const sheets = google.sheets({
                     version: 'v4',
                     auth: service.auth
@@ -1098,7 +1114,7 @@ class Dashboard {
                     }
                 });
                 service.clearCache();
-                res.redirect(`/?botId=${botId}`);
+                res.redirect(`/?botId=${encodeURIComponent(botId)}`);
             } catch (error) {
                 console.error('Error al guardar en Sheets:', error);
                 res.status(500).send('Error al guardar los datos.');
@@ -1107,25 +1123,30 @@ class Dashboard {
 
         // Ruta para Agregar
         router.post('/add', async (req, res) => {
-            const {
-                service,
-                botId
-            } = await getServiceInfo(req);
-            const {
-                id,
-                parentId,
-                trigger,
-                title,
-                message,
-                price
-            } = req.body;
-
             try {
+                const {
+                    service,
+                    botId
+                } = await getServiceInfo(req);
+                const {
+                    id,
+                    parentId,
+                    trigger,
+                    title,
+                    message,
+                    price
+                } = req.body;
+
                 const sheets = google.sheets({
                     version: 'v4',
                     auth: service.auth
                 });
                 const sheetName = service.range.split('!')[0];
+
+                if (id === parentId && id !== 'root') {
+                    console.error('[Dashboard] Error: ID y ParentID no pueden ser iguales:', id);
+                    return res.status(400).send('Error: Un nodo no puede ser su propio padre.');
+                }
 
                 const response = await sheets.spreadsheets.values.get({
                     spreadsheetId: service.spreadsheetId,
@@ -1158,7 +1179,7 @@ class Dashboard {
                 });
 
                 service.clearCache();
-                res.redirect(`/?botId=${botId}`);
+                res.redirect(`/?botId=${encodeURIComponent(botId)}`);
             } catch (error) {
                 console.error('Error al agregar a Sheets:', error);
                 res.status(500).send('Error al agregar los datos.');

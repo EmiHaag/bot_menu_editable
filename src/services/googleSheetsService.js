@@ -50,11 +50,13 @@ class GoogleSheetsService {
                 rowIndex: index + 2 
             }));
 
-            // Filtramos por CLIENT_ID
+            // Filtramos por CLIENT_ID y aseguramos que el nodo tenga al menos un ID
             let filteredMenu = allMenu.filter(node => {
+                const hasId = node.id && node.id.trim() !== '';
                 const isDirectMatch = String(node.idClient).trim() === String(this.clientId).trim();
                 const isDefaultFallback = this.clientId === 'default' && (!node.idClient || node.idClient === '');
-                return isDirectMatch || isDefaultFallback;
+                
+                return hasId && (isDirectMatch || isDefaultFallback);
             });
 
             // Si no hay datos para este cliente y no es el default, inicializamos con un nodo root
@@ -121,12 +123,14 @@ class GoogleSheetsService {
     }
 
     async deleteNodeAndChildren(nodeId) {
+        console.log(`[Sheets] Intentando borrar nodo y sus hijos: ${nodeId}`);
         const menu = await this.getMenuData();
         const toDelete = new Set();
 
         const findChildren = (id) => {
             const children = menu.filter(node => node.parentId === id);
             children.forEach(child => {
+                console.log(`[Sheets] Marcando hijo para borrar: ${child.id} (Fila ${child.rowIndex})`);
                 toDelete.add(child.rowIndex);
                 findChildren(child.id);
             });
@@ -134,27 +138,34 @@ class GoogleSheetsService {
 
         const targetNode = menu.find(node => node.id === nodeId);
         if (targetNode) {
+            console.log(`[Sheets] Nodo objetivo encontrado: ${nodeId} (Fila ${targetNode.rowIndex})`);
             toDelete.add(targetNode.rowIndex);
             findChildren(nodeId);
+        } else {
+            console.warn(`[Sheets] Nodo no encontrado: ${nodeId}`);
         }
 
         if (toDelete.size > 0) {
+            console.log(`[Sheets] Borrando ${toDelete.size} filas en Sheets...`);
             const sheets = google.sheets({ version: 'v4', auth: this.auth });
             const sheetName = this.range.split('!')[0];
-            
-            const promises = Array.from(toDelete).map(rowIndex => 
-                sheets.spreadsheets.values.clear({
+
+            const promises = Array.from(toDelete).map(rowIndex => {
+                console.log(`[Sheets] Limpiando fila: ${sheetName}!A${rowIndex}:H${rowIndex}`);
+                return sheets.spreadsheets.values.clear({
                     spreadsheetId: this.spreadsheetId,
                     range: `${sheetName}!A${rowIndex}:H${rowIndex}`,
-                })
-            );
+                });
+            });
 
             await Promise.all(promises);
+            console.log(`[Sheets] Borrado completado con éxito.`);
             this.clearCache();
-            }
-            }
-
-            clearCache() {
+        } else {
+            console.log(`[Sheets] Nada que borrar.`);
+        }
+    }
+    clearCache() {
         cache.del(`menu_data_${this.clientId}`);
     }
 }
