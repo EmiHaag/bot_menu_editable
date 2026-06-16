@@ -7,20 +7,29 @@ const {
     google
 } = require('googleapis');
 
+const GoogleDriveService = require('../services/googleDriveService');
+
 class Dashboard {
     constructor() {
         this.services = {};
     }
 
-    async initService(botId) {
-        if (!this.services[botId]) {
-            this.services[botId] = new GoogleSheetsService({
+    async initService(botId, spreadsheetId) {
+        // Si no se provee spreadsheetId, intentamos obtenerlo del usuario
+        if (!spreadsheetId) {
+            const user = await userService.getUsers().then(users => users.find(u => u.idCliente === botId));
+            spreadsheetId = user ? user.spreadsheetId : process.env.SPREADSHEET_ID;
+        }
+
+        const cacheKey = `${botId}_${spreadsheetId}`;
+        if (!this.services[cacheKey]) {
+            this.services[cacheKey] = new GoogleSheetsService({
                 clientId: botId,
-                spreadsheetId: process.env.SPREADSHEET_ID,
+                spreadsheetId: spreadsheetId,
                 credentials: process.env.CREDENTIALS_JSON
             });
         }
-        return this.services[botId];
+        return this.services[cacheKey];
     }
 
     setupRoutes() {
@@ -39,19 +48,209 @@ class Dashboard {
             // Si no es admin, forzar su propio botId
             if (loggedUser.idCliente !== 'admin') {
                 botId = loggedUser.idCliente;
-            } else if (!botId) {
-                // Si es admin y no hay botId en query, buscar el primero disponible
-                const activeClients = await userService.getActiveClients();
-                botId = activeClients.length > 0 ? activeClients[0].idCliente : 'default';
+                const service = await this.initService(botId, loggedUser.spreadsheetId);
+                return { service, botId, isAdmin: false };
+            } else {
+                // Es admin
+                if (!botId) {
+                    const activeClients = await userService.getActiveClients();
+                    botId = activeClients.length > 0 ? activeClients[0].idCliente : 'default';
+                }
+                
+                const allUsers = await userService.getUsers();
+                const targetUser = allUsers.find(u => u.idCliente === botId);
+                const service = await this.initService(botId, targetUser ? targetUser.spreadsheetId : process.env.SPREADSHEET_ID);
+                return {
+                    service,
+                    botId,
+                    isAdmin: true
+                };
             }
-
-            const service = await this.initService(botId);
-            return {
-                service,
-                botId,
-                isAdmin: loggedUser.idCliente === 'admin'
-            };
         };
+
+        // --- RUTAS DE ADMINISTRACIÓN DE CLIENTES ---
+        
+        router.get('/admin', async (req, res) => {
+            if (req.user.idCliente !== 'admin') return res.status(403).send('Acceso denegado');
+            
+            try {
+                const clients = await userService.getUsers();
+                const filteredClients = clients.filter(c => c.idCliente !== 'admin');
+                
+                let rowsHtml = filteredClients.map(client => `
+                    <tr>
+                        <td>${client.idCliente}</td>
+                        <td>${client.nombreCliente}</td>
+                        <td>${client.user}</td>
+                        <td>${client.activo ? '<span style="color: green">Activo</span>' : '<span style="color: red">Inactivo</span>'}</td>
+                        <td><small>${client.spreadsheetId}</small></td>
+                        <td>
+                            <button onclick="deleteClient('${client.idCliente}')" class="btn-action btn-red">Borrar</button>
+                            <a href="/?botId=${client.idCliente}" class="btn-action">Ver Menú</a>
+                        </td>
+                    </tr>
+                `).join('');
+
+                res.send(`
+                    <html>
+                    <head>
+                        <title>Panel de Administración - Bots</title>
+                        <style>
+                            :root {
+                                --primary-color: #00bc7d;
+                                --bg-white: #ffffff;
+                                --bg-box: #fbfbfb;
+                                --border-color: #e7e3e4;
+                                --text-main: #333;
+                                --error-color: #dc3545;
+                            }
+                            body { font-family: 'Segoe UI', sans-serif; margin: 40px; background: var(--bg-white); }
+                            .header { display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid var(--border-color); padding-bottom: 20px; }
+                            table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+                            th, td { padding: 12px; border: 1px solid var(--border-color); text-align: left; }
+                            th { background: var(--bg-box); }
+                            .btn { padding: 10px 20px; text-decoration: none; border-radius: 6px; cursor: pointer; font-weight: bold; }
+                            .btn-green { background: var(--primary-color); color: white; border: none; }
+                            .btn-red { background: var(--error-color); color: white; border: none; }
+                            .btn-action { padding: 5px 10px; border-radius: 4px; text-decoration: none; border: 1px solid #ccc; font-size: 12px; color: #333; }
+                            .modal { display: none; position: fixed; z-index: 100; left: 0; top: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.4); }
+                            .modal-content { background: white; margin: 10% auto; padding: 30px; width: 400px; border-radius: 12px; }
+                            .form-group { margin-bottom: 15px; }
+                            .form-group label { display: block; margin-bottom: 5px; font-weight: bold; }
+                            .form-group input { width: 100%; padding: 10px; border: 1px solid var(--border-color); border-radius: 6px; box-sizing: border-box; }
+                        </style>
+                        <script src="/js/robot-logo.js"></script>
+                    </head>
+                    <body>
+                        <div class="header">
+                            <div style="display: flex; align-items: center; gap: 15px;">
+                                <canvas id="botLogoAdmin" width="200" height="200" style="width: 50px; height: 50px;"></canvas>
+                                <h2>Administración de Clientes</h2>
+                            </div>
+                            <div>
+                                <button onclick="document.getElementById('addClientModal').style.display='block'" class="btn btn-green">+ Nuevo Cliente</button>
+                                <a href="/" class="btn" style="border: 1px solid #ccc">Volver al Editor</a>
+                            </div>
+                        </div>
+
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>ID Cliente</th>
+                                    <th>Nombre</th>
+                                    <th>Usuario</th>
+                                    <th>Estado</th>
+                                    <th>Spreadsheet ID</th>
+                                    <th>Acciones</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${rowsHtml}
+                            </tbody>
+                        </table>
+
+                        <div id="addClientModal" class="modal">
+                            <div class="modal-content">
+                                <h3>Crear Nuevo Cliente</h3>
+                                <form action="/admin/create-client" method="POST">
+                                    <div class="form-group">
+                                        <label>ID Cliente (ej: pizzeriajuan):</label>
+                                        <input type="text" name="idCliente" required>
+                                    </div>
+                                    <div class="form-group">
+                                        <label>Nombre del Negocio:</label>
+                                        <input type="text" name="nombreCliente" required>
+                                    </div>
+                                    <div class="form-group">
+                                        <label>Usuario Login:</label>
+                                        <input type="text" name="user" required>
+                                    </div>
+                                    <div class="form-group">
+                                        <label>Contraseña Login:</label>
+                                        <input type="password" name="password" required>
+                                    </div>
+                                    <div style="display: flex; gap: 10px;">
+                                        <button type="submit" class="btn btn-green" style="flex: 1">Crear</button>
+                                        <button type="button" onclick="document.getElementById('addClientModal').style.display='none'" class="btn" style="flex: 1; border: 1px solid #ccc">Cancelar</button>
+                                    </div>
+                                </form>
+                            </div>
+                        </div>
+
+                        <script>
+                            drawRobot('botLogoAdmin');
+                            function deleteClient(id) {
+                                if (confirm('¿Seguro que deseas borrar al cliente ' + id + '? Se eliminará su acceso.')) {
+                                    window.location.href = '/admin/delete-client/' + id;
+                                }
+                            }
+                        </script>
+                    </body>
+                    </html>
+                `);
+            } catch (error) {
+                console.error('Error admin panel:', error);
+                res.status(500).send('Error loading admin panel');
+            }
+        });
+
+        router.post('/admin/create-client', async (req, res) => {
+            if (req.user.idCliente !== 'admin') return res.status(403).send('Acceso denegado');
+            const { idCliente, nombreCliente, user, password } = req.body;
+
+            try {
+                // 1. Obtener o crear carpeta 'bots'
+                const folderId = await GoogleDriveService.getOrCreateFolder('bots');
+
+                // 2. Crear Spreadsheet para el cliente con sus datos de login
+                const spreadsheetId = await GoogleDriveService.createClientSpreadsheet({
+                    idCliente,
+                    nombreCliente,
+                    user,
+                    password
+                }, folderId);
+
+                // 3. Agregar a la lista de usuarios maestra
+                await userService.addUser({
+                    idCliente,
+                    nombreCliente,
+                    user,
+                    password,
+                    spreadsheetId
+                });
+
+                res.redirect('/admin?success=1');
+            } catch (error) {
+                console.error('Error creating client:', error);
+                res.status(500).send('Error al crear el cliente: ' + error.message);
+            }
+        });
+
+        router.get('/admin/delete-client/:id', async (req, res) => {
+            if (req.user.idCliente !== 'admin') return res.status(403).send('Acceso denegado');
+            const id = req.params.id;
+
+            try {
+                // Obtener datos del usuario antes de borrarlo para tener su spreadsheetId
+                const users = await userService.getUsers();
+                const client = users.find(u => u.idCliente === id);
+                
+                // 1. Borrar de la lista de usuarios maestra
+                await userService.deleteUser(id);
+
+                // 2. Si tenía un spreadsheet propio, mandarlo a la papelera
+                if (client && client.spreadsheetId && client.spreadsheetId !== process.env.SPREADSHEET_ID) {
+                    await GoogleDriveService.deleteFile(client.spreadsheetId);
+                }
+
+                res.redirect('/admin?deleted=1');
+            } catch (error) {
+                console.error('Error deleting client:', error);
+                res.status(500).send('Error al borrar el cliente');
+            }
+        });
+
+        // --- FIN RUTAS ADMINISTRACIÓN ---
 
         // Ruta para refrescar caché
         router.get('/refresh', async (req, res) => {
@@ -480,6 +679,7 @@ class Dashboard {
                         </div>
                         <div class="toolbar">
                             ${botSelector}
+                            ${isAdmin ? '<a href="/admin" class="btn btn-blue" style="background: #007bff; color: white;">Panel Admin</a>' : ''}
                             <button onclick="showVisual()" class="btn btn-purple">Visualizar</button>
                             <a href="/qr" class="btn btn-green">WhatsApp QR</a>
                             <a href="/refresh?botId=${botId}" class="btn btn-orange">Refrescar</a>
@@ -1064,15 +1264,7 @@ class Dashboard {
                 if (nodeId) {
                     await service.deleteNodeAndChildren(nodeId);
                 } else {
-                    const sheets = google.sheets({
-                        version: 'v4',
-                        auth: service.auth
-                    });
-                    await sheets.spreadsheets.values.clear({
-                        spreadsheetId: service.spreadsheetId,
-                        range: `${service.range.split('!')[0]}!A${index}:H${index}`,
-                    });
-                    service.clearCache();
+                    await service.deleteRow(index);
                 }
                 res.redirect(`/?botId=${encodeURIComponent(botId)}`);
             } catch (error) {
@@ -1099,21 +1291,15 @@ class Dashboard {
                     strictTrigger
                 } = req.body;
 
-                const sheets = google.sheets({
-                    version: 'v4',
-                    auth: service.auth
+                await service.updateNode(index, {
+                    id,
+                    parentId,
+                    title,
+                    message,
+                    trigger,
+                    price,
+                    strictTrigger
                 });
-                await sheets.spreadsheets.values.update({
-                    spreadsheetId: service.spreadsheetId,
-                    range: `${service.range.split('!')[0]}!A${index}:H${index}`,
-                    valueInputOption: 'USER_ENTERED',
-                    requestBody: {
-                        values: [
-                            [botId, id || '', parentId || '', title || '', message || '', trigger || '', price || '', strictTrigger || 'false']
-                        ]
-                    }
-                });
-                service.clearCache();
                 res.redirect(`/?botId=${encodeURIComponent(botId)}`);
             } catch (error) {
                 console.error('Error al guardar en Sheets:', error);
@@ -1137,48 +1323,15 @@ class Dashboard {
                     price
                 } = req.body;
 
-                const sheets = google.sheets({
-                    version: 'v4',
-                    auth: service.auth
-                });
-                const sheetName = service.range.split('!')[0];
-
-                if (id === parentId && id !== 'root') {
-                    console.error('[Dashboard] Error: ID y ParentID no pueden ser iguales:', id);
-                    return res.status(400).send('Error: Un nodo no puede ser su propio padre.');
-                }
-
-                const response = await sheets.spreadsheets.values.get({
-                    spreadsheetId: service.spreadsheetId,
-                    range: `${sheetName}!A:A`,
+                await service.addNode({
+                    id,
+                    parentId,
+                    trigger,
+                    title,
+                    message,
+                    price
                 });
 
-                const rows = response.data.values || [];
-                let nextRow = rows.length + 1;
-
-                for (let i = 1; i < rows.length; i++) {
-                    if (!rows[i] || rows[i].length === 0 || rows[i][0] === '') {
-                        nextRow = i + 1;
-                        break;
-                    }
-                }
-
-                if (nextRow > rows.length) nextRow = rows.length + 1;
-                if (rows.length === 0) nextRow = 2;
-                if (rows.length === 1 && rows[0][0]) nextRow = 2;
-
-                await sheets.spreadsheets.values.update({
-                    spreadsheetId: service.spreadsheetId,
-                    range: `${sheetName}!A${nextRow}:H${nextRow}`,
-                    valueInputOption: 'USER_ENTERED',
-                    requestBody: {
-                        values: [
-                            [botId, id || '', parentId || '', title || '', message || '', trigger || '', price || '', 'false']
-                        ]
-                    }
-                });
-
-                service.clearCache();
                 res.redirect(`/?botId=${encodeURIComponent(botId)}`);
             } catch (error) {
                 console.error('Error al agregar a Sheets:', error);

@@ -1,28 +1,19 @@
 const { google } = require('googleapis');
 const NodeCache = require('node-cache');
+const GoogleAuthBase = require('./googleAuthBase');
 
 const cache = new NodeCache({ stdTTL: 300 }); // 5 minutes cache
 
-class GoogleSheetsService {
+class GoogleSheetsService extends GoogleAuthBase {
     constructor(config) {
+        super();
         this.spreadsheetId = config.spreadsheetId;
         this.clientId = config.clientId; 
         this.range = config.range || 'Menu!A2:H'; // A:ID_client, B:ID, C:ParentID, D:Title, E:Message, F:Trigger, G:Price, H:StrictTrigger
-        
-        let credentials;
-        try {
-            credentials = typeof config.credentials === 'string' 
-                ? JSON.parse(config.credentials) 
-                : config.credentials;
-        } catch (e) {
-            console.error('Error parsing credentials:', e.message);
-            throw new Error('Invalid credentials provided to GoogleSheetsService');
-        }
+    }
 
-        this.auth = new google.auth.GoogleAuth({
-            credentials,
-            scopes: ['https://www.googleapis.com/auth/spreadsheets'],
-        });
+    get sheets() {
+        return google.sheets({ version: 'v4', auth: this.getAuthClient() });
     }
 
     async getMenuData() {
@@ -31,7 +22,7 @@ class GoogleSheetsService {
         if (cachedData) return cachedData;
 
         try {
-            const sheets = google.sheets({ version: 'v4', auth: this.auth });
+            const sheets = this.sheets;
             const response = await sheets.spreadsheets.values.get({
                 spreadsheetId: this.spreadsheetId,
                 range: this.range,
@@ -78,7 +69,7 @@ class GoogleSheetsService {
 
     async initializeClientSheet() {
         try {
-            const sheets = google.sheets({ version: 'v4', auth: this.auth });
+            const sheets = this.sheets;
             const sheetName = this.range.split('!')[0];
             
             // Buscar la primera fila vacía en la columna A
@@ -147,7 +138,7 @@ class GoogleSheetsService {
 
         if (toDelete.size > 0) {
             console.log(`[Sheets] Borrando ${toDelete.size} filas en Sheets...`);
-            const sheets = google.sheets({ version: 'v4', auth: this.auth });
+            const sheets = this.sheets;
             const sheetName = this.range.split('!')[0];
 
             const promises = Array.from(toDelete).map(rowIndex => {
@@ -165,6 +156,96 @@ class GoogleSheetsService {
             console.log(`[Sheets] Nada que borrar.`);
         }
     }
+
+    async updateNode(index, nodeData) {
+        try {
+            const sheets = this.sheets;
+            const sheetName = this.range.split('!')[0];
+            const { id, parentId, title, message, trigger, price, strictTrigger } = nodeData;
+
+            await sheets.spreadsheets.values.update({
+                spreadsheetId: this.spreadsheetId,
+                range: `${sheetName}!A${index}:H${index}`,
+                valueInputOption: 'USER_ENTERED',
+                requestBody: {
+                    values: [
+                        [this.clientId, id || '', parentId || '', title || '', message || '', trigger || '', price || '', strictTrigger || 'false']
+                    ]
+                }
+            });
+            this.clearCache();
+            return true;
+        } catch (error) {
+            console.error('[GoogleSheetsService] Error in updateNode:', error);
+            throw error;
+        }
+    }
+
+    async addNode(nodeData) {
+        try {
+            const sheets = this.sheets;
+            const sheetName = this.range.split('!')[0];
+            const { id, parentId, title, message, trigger, price } = nodeData;
+
+            if (id === parentId && id !== 'root') {
+                throw new Error('Un nodo no puede ser su propio padre.');
+            }
+
+            const response = await sheets.spreadsheets.values.get({
+                spreadsheetId: this.spreadsheetId,
+                range: `${sheetName}!A:A`,
+            });
+
+            const rows = response.data.values || [];
+            let nextRow = rows.length + 1;
+
+            // Buscar huecos en las filas
+            for (let i = 1; i < rows.length; i++) {
+                if (!rows[i] || rows[i].length === 0 || rows[i][0] === '') {
+                    nextRow = i + 1;
+                    break;
+                }
+            }
+
+            if (nextRow > rows.length) nextRow = rows.length + 1;
+            if (rows.length === 0) nextRow = 2;
+            if (rows.length === 1 && rows[0][0]) nextRow = 2;
+
+            await sheets.spreadsheets.values.update({
+                spreadsheetId: this.spreadsheetId,
+                range: `${sheetName}!A${nextRow}:H${nextRow}`,
+                valueInputOption: 'USER_ENTERED',
+                requestBody: {
+                    values: [
+                        [this.clientId, id || '', parentId || '', title || '', message || '', trigger || '', price || '', 'false']
+                    ]
+                }
+            });
+
+            this.clearCache();
+            return true;
+        } catch (error) {
+            console.error('[GoogleSheetsService] Error in addNode:', error);
+            throw error;
+        }
+    }
+
+    async deleteRow(index) {
+        try {
+            const sheets = this.sheets;
+            const sheetName = this.range.split('!')[0];
+            await sheets.spreadsheets.values.clear({
+                spreadsheetId: this.spreadsheetId,
+                range: `${sheetName}!A${index}:H${index}`,
+            });
+            this.clearCache();
+            return true;
+        } catch (error) {
+            console.error('[GoogleSheetsService] Error in deleteRow:', error);
+            throw error;
+        }
+    }
+
     clearCache() {
         cache.del(`menu_data_${this.clientId}`);
     }

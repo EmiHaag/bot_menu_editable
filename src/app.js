@@ -250,10 +250,10 @@ function initializeBotEntry(client) {
     if (botQRs[client.idCliente]) return botQRs[client.idCliente];
     if (client.idCliente === 'admin') return null;
 
-    const authFolder = path.join(AUTH_SESSIONS_DIR, `auth_info_${client.idCliente}`);
+    const authFolder = path.resolve(AUTH_SESSIONS_DIR, `auth_info_${client.idCliente}`);
     const botConfig = {
         id: client.idCliente,
-        spreadsheetId: process.env.SPREADSHEET_ID,
+        spreadsheetId: client.spreadsheetId || process.env.SPREADSHEET_ID,
         credentials: process.env.CREDENTIALS_JSON,
         authFolder: authFolder
     };
