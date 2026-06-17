@@ -743,7 +743,7 @@ class Dashboard {
                                                 <input type="text" id="addPrice" name="price" placeholder="ej: 1500" oninput="updatePreview('add')">
                                             </div>
                                         </div>
-                                        <div class="form-group">
+                                        <div class="form-group" id="addTitleGroup">
                                             <label>Título (En el menú):</label>
                                             <input type="text" id="addTitle" name="title" placeholder="ej: Hablar con Soporte" required oninput="updatePreview('add')">
                                         </div>
@@ -912,6 +912,27 @@ class Dashboard {
                         let currentParent = null;
 
                         drawRobot('botLogoDash');
+
+                        function updateTitleState(type, isData) {
+                            const idEl = document.getElementById(type + 'Id');
+                            const isRoot = idEl && idEl.value === 'root';
+                            if (isRoot) return;
+
+                            const titleEl = document.getElementById(type + 'Title');
+                            const titleGroup = document.getElementById(type + 'TitleGroup');
+                            
+                            if (isData) {
+                                titleEl.value = "Titulo por defecto";
+                                // Usamos un campo oculto temporal o simplemente nos aseguramos de que el valor se envíe
+                                // El atributo disabled previene que se envíe en el form POST, así que usaremos readonly y hidden
+                                titleEl.readOnly = true;
+                                titleGroup.style.display = "none";
+                            } else {
+                                titleEl.readOnly = false;
+                                titleGroup.style.display = "block";
+                                if (titleEl.value === "Titulo por defecto") titleEl.value = "";
+                            }
+                        }
                         
                         function buildTree(parentId) {
                             const children = menuData.filter(n => n.parentId === parentId);
@@ -965,6 +986,8 @@ class Dashboard {
                             document.getElementById('addPrice').value = '';
 
                             document.getElementById('addModal').style.display = "block";
+                            document.getElementById('addIsData').checked = false;
+                            updateTitleState('add', false);
                             updatePreview('add');
                         }
 
@@ -984,8 +1007,6 @@ class Dashboard {
                             document.getElementById('editTitle').value = node.title;
                             document.getElementById('editMessage').value = node.message || '';
                             document.getElementById('editPrice').value = node.price || '';
-                            document.getElementById('editIsOrder').checked = isOrder;
-                            document.getElementById('editIsQty').checked = isQty;
                             document.getElementById('editIsFinal').checked = isFinal;
                             document.getElementById('editIsData').checked = isData;
 
@@ -999,7 +1020,7 @@ class Dashboard {
                             if (node.id === 'root') {
                                 strictGroup.style.display = 'block';
                                 strictCheckbox.checked = node.strictTrigger === 'true';
-                                editTriggerGroup.style.display = 'flex'; // Cambiado de none a flex
+                                editTriggerGroup.style.display = 'flex'; 
                                 editTitleGroup.style.display = 'none';
                                 editTagsGroup.style.display = 'none';
                                 titleInput.readOnly = true;
@@ -1013,6 +1034,9 @@ class Dashboard {
                                 titleInput.readOnly = false;
                                 titleInput.style.background = 'var(--bg-box)';
                             }
+
+                            // Aplicamos el estado del título basado en si es DATOS después de la lógica de root
+                            updateTitleState('edit', isData);
 
                             const parentInput = document.getElementById('editParentId');
                             if (node.id === 'root') {
@@ -1239,6 +1263,7 @@ class Dashboard {
                                 messageEl.value = currentVal;
                             }
                             
+                            updateTitleState(type, isDataCheckbox.checked);
                             updatePreview(type);
                         }
                     </script>

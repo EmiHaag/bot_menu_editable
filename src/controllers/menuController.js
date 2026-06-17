@@ -28,34 +28,61 @@ class MenuController {
     }
 
     /**
-     * Procesa cada mensaje entrante del usuario
+     * Procesa cada mensaje entrante del usuario siguiendo esta jerarquía lógica:
+     * 1. ¿Esperando Datos? -> 2. ¿Esperando Cantidad? -> 3. Comandos Globales -> 4. Opciones de Menú
+     * 
+     * DIAGRAMA DE FLUJO:
+     * [Inicio] -> ¿waitingNodeId? --(SÍ)--> [Procesar Dato] -> ¿Hijos? --(NO)--> [Fin + Root]
+     *    |            | (NO)
+     *    |            v
+     *    |      ¿pendingItem? --(SÍ)--> [Añadir Cantidad] -> [Menú Padre]
+     *    |            | (NO)
+     *    |            v
+     *    |      ¿Comando Global? --(SÍ)--> [Ejecutar 0, v, vaciar]
+     *    |            | (NO)
+     *    |            v
+     *    +------> [Buscar Opción] --(SÍ)--> ¿Tiene Submenús? --(NO)--> [Mensaje Final]
+     *                               (NO)        | (SÍ)
+     *                                |          v
+     *                          [Error/Root]   [Enviar Menú]
      */
     async handleIncomingMessage(sock, jid, text) {
         const currentStateId = this.stateService.getUserState(jid); // Dónde está el usuario ahora
         const input = text.trim().toLowerCase(); // Texto del usuario limpio
 
-        // 1. ¿EL BOT ESTÁ ESPERANDO DATOS LIBRES? (Ej: Nombre, Dirección) sin un trigger especifico.
+        // PRIORIDAD 1: ¿EL BOT ESTÁ ESPERANDO DATOS LIBRES? (Ej: Nombre, Dirección)
         const waitingNodeId = this.stateService.getWaitingForData(jid);
         if (waitingNodeId) {
-            console.log("esta esperando datos.. #40");
+            //console.log(`[Estado] Procesando datos recibidos para el nodo: ${waitingNodeId}`);
+            const waitingNode = await this.googleSheetsService.getNodeById(waitingNodeId);
             const children = await this.googleSheetsService.getNodesByParent(waitingNodeId);
             this.stateService.clearWaitingForData(jid);
 
             if (children.length > 0) {
-                // Si hay un siguiente paso tras recibir datos, vamos a él
-                await this.sendMenu(sock, jid, children[0].id);
+                // Si hay un siguiente paso tras recibir datos, procesamos el primer hijo
+                //console.log(`[Estado] Usuario ${jid} envió datos. Motivo: Flujo multi-paso detectado. Avanzando al siguiente nodo.`);
+                await this.processNode(sock, jid, children[0]);
                 return;
             } else {
-                // Confirmación simple si no hay más pasos
-                await sock.sendMessage(jid, { text: '✅ Datos recibidos.' });
+                // Si no hay más hijos, es el final del formulario.
+                if (waitingNode && waitingNode.message && waitingNode.message.includes('##FINALIZAR##')) {
+                    //console.log(`[Estado] Limpiando pedido de ${jid}. Motivo: Tag ##FINALIZAR## procesado tras recibir datos.`);
+                    this.stateService.clearUserOrder(jid);
+                }
+
+                await sock.sendMessage(jid, { text: '✅ Datos recibidos correctamente.' });
+                //console.log(`[Estado] Redirigiendo ${jid} a 'root'. Motivo: Fin de flujo de datos en nodo hoja.`);
+                await this.sendMenu(sock, jid, 'root');
                 return;
             }
         }
 
-        // 2. ¿EL BOT ESTÁ ESPERANDO UNA CANTIDAD NUMÉRICA?
+        // PRIORIDAD 2: ¿EL BOT ESTÁ ESPERANDO UNA CANTIDAD NUMÉRICA?
+        // Se activa cuando el usuario eligió un producto con el tag ##CANTIDAD##
         const pendingItem = this.stateService.getPendingQuantityItem(jid);
         if (pendingItem && !isNaN(input) && parseInt(input) > 0) {
             const quantity = parseInt(input);
+            //console.log(`[Estado] Usuario ${jid} añadió cantidad: ${quantity} x ${pendingItem}`);
             this.stateService.addItemToOrder(jid, `${quantity} x ${pendingItem}`);
             this.stateService.clearPendingQuantityItem(jid);
 
@@ -68,21 +95,23 @@ class MenuController {
                 text: `✅ Añadido: ${quantity} x ${pendingItem}`
             });
 
-            // Regresa al menú padre para que el usuario pueda seguir comprando
+            // Regresa al menú padre para que el usuario pueda seguir comprando cómodamente
             await this.sendMenu(sock, jid, parentId);
             return;
         }
 
         
 
-        // 3. COMANDOS GLOBALES (Inicio y Reset)
+        // PRIORIDAD 3: COMANDOS GLOBALES (Navegación básica y reset)
         if (input === '0' || input === 'inicio') {
+            ////console.log(`[Estado] Usuario ${jid} solicitó volver al inicio.`);
             await this.sendMenu(sock, jid, 'root');
             return;
         }
 
-        // 4. GESTIÓN DEL CARRITO (Vaciar)
+        // GESTIÓN DEL CARRITO: Comando manual para limpiar todo el pedido
         if (input === 'vaciar' || input === 'limpiar' || input === 'borrar pedido') {
+            //console.log(`[Estado] Usuario ${jid} vació su carrito manualmente.`);
             this.stateService.clearUserOrder(jid);
             await this.sendPresenceTyping(sock, jid);
             await sock.sendMessage(jid, {
@@ -92,21 +121,23 @@ class MenuController {
             return;
         }
 
-        // 5. NAVEGACIÓN HACIA ATRÁS
+        // NAVEGACIÓN HACIA ATRÁS (Sube un nivel en la jerarquía del Excel)
         if (input === 'v' || input === 'atras' || input === 'atrás') {
+            const currentNode = await this.googleSheetsService.getNodeById(currentStateId);
+            const parentId = currentNode ? currentNode.parentId : 'root';
+            console.log(`//[Estado] Usuario ${jid} volvió atrás. De ${currentStateId} a ${parentId}`);
             if (currentStateId === 'root') {
                 await this.sendMenu(sock, jid, 'root');
             } else {
-                const currentNode = await this.googleSheetsService.getNodeById(currentStateId);
-                await this.sendMenu(sock, jid, currentNode ? currentNode.parentId : 'root');
+                await this.sendMenu(sock, jid, parentId);
             }
             return;
         }
 
-        // 6. BUSCAR SI EL INPUT COINCIDE CON UNA OPCIÓN DEL MENÚ ACTUAL
+        // PRIORIDAD 4: BUSCAR SI EL INPUT ES UNA OPCIÓN DEL MENÚ ACTUAL
         const options = await this.googleSheetsService.getNodesByParent(currentStateId);
         
-        // Filtrar opciones "Finalizar" si el carrito está vacío
+        // Regla de negocio: Ocultar opciones de "Finalizar" si no hay nada en el carrito
         const order = this.stateService.getUserOrder(jid);
         const availableOptions = options.filter(node => {
             if (node.message && node.message.includes('##FINALIZAR##')) {
@@ -119,44 +150,7 @@ class MenuController {
         const selectedOption = availableOptions.find(opt => opt.trigger.toLowerCase() === input);
 
         if (selectedOption) {
-            // PROCESAR TAGS ESPECIALES EN EL MENSAJE
-            if (selectedOption.message) {
-                if (selectedOption.message.includes('##CANTIDAD##')) {
-                    this.stateService.setPendingQuantityItem(jid, selectedOption.title);
-                } else if (selectedOption.message.includes('##PEDIDO##')) {
-                    this.stateService.addItemToOrder(jid, `1 x ${selectedOption.title}`);
-                } else if (selectedOption.message.includes('##DATOS##')) {
-                    console.log("esta esperando datos.. #126");
-                    this.stateService.setWaitingForData(jid, selectedOption.id);
-                }
-            }
-
-            const subOptions = await this.googleSheetsService.getNodesByParent(selectedOption.id);
-
-            //ACA SE OMITE EL SUBMENU SI ESTA ESPERANDO DATOS O CANTIDAD PARA QUE NO CONFUNDA AL USUARIO
-            if (subOptions.length > 0 && !selectedOption.message.includes('##DATOS##') ) {               
-                // Si la opción tiene sub-menús, los mostramos
-                await this.sendMenu(sock, jid, selectedOption.id);
-            } else {
-                console.log("no hay submenus, se procesa el mensaje final.. #138");
-                // Si es un mensaje final, procesamos el texto y añadimos navegación
-                let finalMessage = await this.replaceOrderSummary(selectedOption.message, jid);
-
-                finalMessage += `\n\n_Escribe *v* para volver atrás._\n`;
-                finalMessage += `_Escribe *0* para volver al inicio._`;
-
-                await this.sendPresenceTyping(sock, jid);
-                await sock.sendMessage(jid, {
-                    text: finalMessage
-                });
-
-                // Si era el paso final (Finalizar), vaciamos el carrito del usuario
-                if (selectedOption.message && selectedOption.message.includes('##FINALIZAR##')) {
-                    this.stateService.clearUserOrder(jid);
-                }
-
-                this.stateService.setUserState(jid, selectedOption.id);
-            }
+            await this.processNode(sock, jid, selectedOption);
         } else {
             // 7. MANEJO DE ENTRADAS NO VÁLIDAS O PRIMER CONTACTO
             if (currentStateId === 'root' && !selectedOption) {
@@ -231,7 +225,66 @@ class MenuController {
         await sock.sendMessage(jid, {
             text: menuText
         });
+        console.log(`//[Estado] Usuario ${jid} movido al menú: ${parentId}`);
         this.stateService.setUserState(jid, parentId);
+    }
+
+    /**
+     * Procesa un nodo de forma integral: tags, submenús o mensajes finales.
+     * Esta función unifica la lógica para evitar errores de navegación.
+     */
+    async processNode(sock, jid, node) {
+        const nodeTags = [];
+        if (node.message) {
+            if (node.message.includes('##CANTIDAD##')) nodeTags.push('CANTIDAD');
+            if (node.message.includes('##PEDIDO##')) nodeTags.push('PEDIDO');
+            if (node.message.includes('##DATOS##')) nodeTags.push('DATOS');
+            if (node.message.includes('##FINALIZAR##')) nodeTags.push('FINALIZAR');
+        }
+        console.log(`//[Estado] Procesando nodo ${node.id} (${node.title}). Tags: [${nodeTags.join(', ')}]`);
+
+        // Ejecutar acciones según Tags
+        if (nodeTags.includes('CANTIDAD')) {
+            console.log(`//[Estado] Activando espera de CANTIDAD para ${jid}`);
+            this.stateService.setPendingQuantityItem(jid, node.title);
+        }
+        if (nodeTags.includes('PEDIDO')) {
+            console.log(`//[Estado] Añadiendo 1 unidad de ${node.title} al carrito de ${jid}`);
+            this.stateService.addItemToOrder(jid, `1 x ${node.title}`);
+        }
+        if (nodeTags.includes('DATOS')) {
+            console.log(`//[Estado] Activando espera de DATOS para ${jid} en nodo ${node.id}`);
+            this.stateService.setWaitingForData(jid, node.id);
+        }
+
+        const subOptions = await this.googleSheetsService.getNodesByParent(node.id);
+
+        // Si tiene hijos y NO pide datos, mostramos el menú de opciones (botones)
+        if (subOptions.length > 0 && !nodeTags.includes('DATOS')) {
+            console.log(`//[Estado] Movimiento: Submenús detectados (${subOptions.length}). Enviando menú de: ${node.id}`);
+            await this.sendMenu(sock, jid, node.id);
+        } else {
+            // Es un nodo de espera de datos o un mensaje final (hoja)
+            const isDataNode = nodeTags.includes('DATOS');
+            const hasMoreSteps = subOptions.length > 0;
+            const reason = isDataNode ? `Esperando datos ${hasMoreSteps ? '(paso intermedio)' : '(paso final)'}` : 'Nodo hoja';
+
+            console.log(`//[Estado] Movimiento: Mensaje final/datos. Motivo: ${reason}.`);
+
+            let finalMessage = await this.replaceOrderSummary(node.message, jid);
+            finalMessage += `\n\n_Escribe *v* para volver atrás._\n_Escribe *0* para volver al inicio._`;
+
+            await this.sendPresenceTyping(sock, jid);
+            await sock.sendMessage(jid, { text: finalMessage });
+
+            // Proceso de limpieza para Finalizar (solo si no hay datos pendientes)
+            if (nodeTags.includes('FINALIZAR') && !isDataNode) {
+                console.log(`//[Estado] Limpiando pedido de ${jid} (Finalización inmediata).`);
+                this.stateService.clearUserOrder(jid);
+            }
+
+            this.stateService.setUserState(jid, node.id);
+        }
     }
 
     /**

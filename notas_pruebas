@@ -1,11 +1,70 @@
-Gracias por comunicarte con la oficina de Sistemas. Recorda que brindamos atención solo por mensaje, no llamadas ni mensajes de audio.
-"¿Desde que área te estas comunicando? 
-*A) Municipalidad ( Palacios)
- B) Hospital 
- C) Otro*
-"
+1 INICIO: Llega Mensaje (input)
+    2            |
+    3            v
+    4 ¿El bot está esperando DATOS? <------------------ [PRIORIDAD 1]
+    5 (waitingNodeId activo)
+    6            |
+    7     [SÍ] --+--> ¿Tiene hijos el nodo de datos?
+    8            |           |
+    9            |     [SÍ] -+--> Enviar Menú del primer hijo.
+   10            |           |
+   11            |     [NO] -+--> ¿Tiene ##FINALIZAR##? --> [SÍ] --> Vaciar Carrito
+   12                        |                                [NO] --> (Nada)
+   13                        +--> Enviar "Datos recibidos"
+   14                        +--> Enviar Menú Principal (root)
+   15                        +--> FIN
+   16            |
+   17     [NO] --+--> ¿El bot está esperando CANTIDAD? <--- [PRIORIDAD 2]
+   18                |
+   19         [SÍ] --+--> ¿Es un número válido?
+   20                |           |
+   21                |     [SÍ] -+--> Añadir al carrito (Cant x Item)
+   22                |           +--> Enviar "Añadido"
+   23                |           +--> Enviar Menú Anterior (Padre)
+   24                |           +--> FIN
+   25                |
+   26         [NO] --+--> ¿Es un COMANDO GLOBAL? (0, v, vaciar)
+   27                    |
+   28             [SÍ] --+--> Ejecutar (Inicio, Atrás o Limpiar Carrito)
+   29                    +--> FIN
+   30                    |
+   31             [NO] --+--> BUSCAR OPCIÓN EN EL MENÚ ACTUAL
+   32                        |
+   33                        +--> ¿El input coincide con un "Trigger" (1, 2, A, etc)?
+   34                        |           |
+   35                 [NO] --+           +--> [SÍ]: ¿Tiene TAGS el nodo elegido?
+   36                 |                  |      |-- ##PEDIDO##   --> Suma 1 al carrito
+   37                 |                  |      |-- ##CANTIDAD## --> Activa espera cantidad
+   38                 |                  |      |-- ##DATOS##    --> Activa espera datos
+   39                 |                  |
+   40                 |                  +--> ¿Tiene sub-menús (hijos)?
+   41                 |                  |           |
+   42                 |                  |     [SÍ] -+--> Enviar Menú (ID seleccionado)
+   43                 |                  |           +--> FIN
+   44                 |                  |
+   45                 |                  |     [NO] -+--> PROCESAR NODO FINAL (#138)
+   46                 |                  |           +--> Generar Resumen de Pedido
+   47                 |                  |           +--> ¿##FINALIZAR## y NO ##DATOS##?
+   48                 |                  |           |      [SÍ] --> Vaciar Carrito
+   49                 |                  |           +--> Enviar Mensaje Final + Footer (v/0)
+   50                 |                  |           +--> Guardar Estado actual
+   51                 |                  |           +--> FIN
+   52                 |
+   53                 +--> ¿Es el primer mensaje (Estado root)?
+   54                            |
+   55                      [SÍ] -+--> Enviar Menú Principal
+   56                            |
+   57                      [NO] -+--> Enviar "Opción no válida"
+   58                            +--> Re-mostrar Menú Actual
+   59                            +--> FIN
 
-No dejar editar el disparador al usuario, crea confusion
+  Puntos clave de la lógica:
 
-opcion el editor necesita que el usuario le de una respuesta random como "direccion" el bot le da mensaje por default
-se da opcion de "pedido". Agregar opcion para que el bot no responda nada 
+   1. Jerarquía de Estados: El bot siempre revisa primero si estás en medio de un proceso técnico (DATOS o CANTIDAD) antes de intentar
+      entender si pulsaste un botón del menú.
+   2. Doble Validación de Finalizar: 
+       * Si el nodo tiene ##FINALIZAR## pero no pide datos, el carrito se vacía inmediatamente al mostrar el mensaje.
+       * Si el nodo tiene ##FINALIZAR## y pide ##DATOS##, el carrito se vacía recién cuando el usuario responde con el dato solicitado.
+   3. Filtro de Seguridad: Las opciones marcadas con ##FINALIZAR## son invisibles y no responden si el usuario tiene el carrito vacío.
+   4. Recuperación Automática: Si el usuario llega a un nodo "hoja" (el final del camino) a través de un pedido de datos, el bot lo "empuja"
+      de vuelta al menú principal para que no se quede bloqueado.
