@@ -1,44 +1,58 @@
+/**
+ * MenuController: El "cerebro" del bot.
+ * Gestiona la lógica de navegación, el estado del usuario y la interacción con WhatsApp.
+ */
 class MenuController {
     constructor(googleSheetsService, stateService) {
-        this.googleSheetsService = googleSheetsService;
-        this.stateService = stateService;
+        this.googleSheetsService = googleSheetsService; // Servicio para leer datos de Google Sheets
+        this.stateService = stateService;             // Servicio para gestionar estados y carritos de usuarios
     }
 
+    /**
+     * Utilidad para crear pausas (ms)
+     */
     async delay(ms) {
         return new Promise(resolve => setTimeout(resolve, ms));
     }
 
+    /**
+     * Simula el comportamiento humano: "Escribiendo..." y esperas estratégicas
+     */
     async sendPresenceTyping(sock, jid) {
         await sock.sendPresenceUpdate('paused', jid);
-        await this.delay(process.env.TIEMPO_ESPERA_RESPUESTA); //  segundos adicionales de espera antes de enviar
+        // Espera inicial configurada en .env
+        await this.delay(process.env.TIEMPO_ESPERA_RESPUESTA); 
         await sock.sendPresenceUpdate('composing', jid);
-        await this.delay(process.env.TIEMPO_BOT_ESTA_ESCRIBIENDO); //segundos de simulación de escritura
+        // Simulación de tiempo de escritura configurada en .env
+        await this.delay(process.env.TIEMPO_BOT_ESTA_ESCRIBIENDO); 
     }
 
+    /**
+     * Procesa cada mensaje entrante del usuario
+     */
     async handleIncomingMessage(sock, jid, text) {
-        const currentStateId = this.stateService.getUserState(jid);
-        const input = text.trim().toLowerCase();
+        const currentStateId = this.stateService.getUserState(jid); // Dónde está el usuario ahora
+        const input = text.trim().toLowerCase(); // Texto del usuario limpio
 
-        // Check if we are waiting for free-form data (e.g. Address, Name)
+        // 1. ¿EL BOT ESTÁ ESPERANDO DATOS LIBRES? (Ej: Nombre, Dirección) sin un trigger especifico.
         const waitingNodeId = this.stateService.getWaitingForData(jid);
         if (waitingNodeId) {
-            // Any input is accepted. We move to the first child of this node.
+            console.log("esta esperando datos.. #40");
             const children = await this.googleSheetsService.getNodesByParent(waitingNodeId);
             this.stateService.clearWaitingForData(jid);
 
             if (children.length > 0) {
-                // Transition to the first child
+                // Si hay un siguiente paso tras recibir datos, vamos a él
                 await this.sendMenu(sock, jid, children[0].id);
                 return;
             } else {
-                // No children? We acknowledge but stay here. 
-                // The user can still use 'v' or '0' thanks to the footer in the message they just replied to.
+                // Confirmación simple si no hay más pasos
                 await sock.sendMessage(jid, { text: '✅ Datos recibidos.' });
                 return;
             }
         }
 
-        // Check if we are waiting for a quantity
+        // 2. ¿EL BOT ESTÁ ESPERANDO UNA CANTIDAD NUMÉRICA?
         const pendingItem = this.stateService.getPendingQuantityItem(jid);
         if (pendingItem && !isNaN(input) && parseInt(input) > 0) {
             const quantity = parseInt(input);
@@ -47,8 +61,6 @@ class MenuController {
 
             await this.sendPresenceTyping(sock, jid);
 
-            // Instead of re-showing the current "How many?" menu, 
-            // we show the confirmation and either the parent menu or a clean summary.
             const currentNode = await this.googleSheetsService.getNodeById(currentStateId);
             const parentId = currentNode ? currentNode.parentId : 'root';
 
@@ -56,17 +68,20 @@ class MenuController {
                 text: `✅ Añadido: ${quantity} x ${pendingItem}`
             });
 
-            // Redirect to parent menu to continue browsing
+            // Regresa al menú padre para que el usuario pueda seguir comprando
             await this.sendMenu(sock, jid, parentId);
             return;
         }
-        // Handle global reset or back commands
+
+        
+
+        // 3. COMANDOS GLOBALES (Inicio y Reset)
         if (input === '0' || input === 'inicio') {
             await this.sendMenu(sock, jid, 'root');
             return;
         }
 
-        // Handle clear order command
+        // 4. GESTIÓN DEL CARRITO (Vaciar)
         if (input === 'vaciar' || input === 'limpiar' || input === 'borrar pedido') {
             this.stateService.clearUserOrder(jid);
             await this.sendPresenceTyping(sock, jid);
@@ -77,7 +92,7 @@ class MenuController {
             return;
         }
 
-        // Handle "back" command
+        // 5. NAVEGACIÓN HACIA ATRÁS
         if (input === 'v' || input === 'atras' || input === 'atrás') {
             if (currentStateId === 'root') {
                 await this.sendMenu(sock, jid, 'root');
@@ -88,10 +103,10 @@ class MenuController {
             return;
         }
 
-        // Get current children to see if input matches a trigger
+        // 6. BUSCAR SI EL INPUT COINCIDE CON UNA OPCIÓN DEL MENÚ ACTUAL
         const options = await this.googleSheetsService.getNodesByParent(currentStateId);
         
-        // Filter out "Finalizar" options if cart is empty
+        // Filtrar opciones "Finalizar" si el carrito está vacío
         const order = this.stateService.getUserOrder(jid);
         const availableOptions = options.filter(node => {
             if (node.message && node.message.includes('##FINALIZAR##')) {
@@ -100,46 +115,50 @@ class MenuController {
             return true;
         });
 
+        
         const selectedOption = availableOptions.find(opt => opt.trigger.toLowerCase() === input);
 
         if (selectedOption) {
-            // Check for order tags in message
+            // PROCESAR TAGS ESPECIALES EN EL MENSAJE
             if (selectedOption.message) {
                 if (selectedOption.message.includes('##CANTIDAD##')) {
                     this.stateService.setPendingQuantityItem(jid, selectedOption.title);
                 } else if (selectedOption.message.includes('##PEDIDO##')) {
                     this.stateService.addItemToOrder(jid, `1 x ${selectedOption.title}`);
                 } else if (selectedOption.message.includes('##DATOS##')) {
+                    console.log("esta esperando datos.. #126");
                     this.stateService.setWaitingForData(jid, selectedOption.id);
                 }
             }
 
             const subOptions = await this.googleSheetsService.getNodesByParent(selectedOption.id);
 
-            if (subOptions.length > 0) {
+            //ACA SE OMITE EL SUBMENU SI ESTA ESPERANDO DATOS O CANTIDAD PARA QUE NO CONFUNDA AL USUARIO
+            if (subOptions.length > 0 && !selectedOption.message.includes('##DATOS##') ) {               
+                // Si la opción tiene sub-menús, los mostramos
                 await this.sendMenu(sock, jid, selectedOption.id);
             } else {
-                // Final message with navigation options
+                console.log("no hay submenus, se procesa el mensaje final.. #138");
+                // Si es un mensaje final, procesamos el texto y añadimos navegación
                 let finalMessage = await this.replaceOrderSummary(selectedOption.message, jid);
 
                 finalMessage += `\n\n_Escribe *v* para volver atrás._\n`;
                 finalMessage += `_Escribe *0* para volver al inicio._`;
 
-                await this.sendPresenceTyping(sock, jid); // Escritura + Espera antes de enviar
+                await this.sendPresenceTyping(sock, jid);
                 await sock.sendMessage(jid, {
                     text: finalMessage
                 });
 
-                // Handle order finalization
+                // Si era el paso final (Finalizar), vaciamos el carrito del usuario
                 if (selectedOption.message && selectedOption.message.includes('##FINALIZAR##')) {
                     this.stateService.clearUserOrder(jid);
                 }
 
-                // Guardar el estado actual incluso si es un mensaje final
                 this.stateService.setUserState(jid, selectedOption.id);
             }
         } else {
-            // Invalid input or first interaction
+            // 7. MANEJO DE ENTRADAS NO VÁLIDAS O PRIMER CONTACTO
             if (currentStateId === 'root' && !selectedOption) {
                 const rootNode = await this.googleSheetsService.getNodeById('root');
                 const isStrict = rootNode && rootNode.strictTrigger === 'true';
@@ -149,25 +168,26 @@ class MenuController {
                     if (input === rootTrigger) {
                         await this.sendMenu(sock, jid, 'root');
                     }
-                    // Si es estricto y no coincide el disparador, se ignora el mensaje
                 } else {
                     await this.sendMenu(sock, jid, 'root');
                 }
             } else {
-                await this.sendPresenceTyping(sock, jid); // Escritura + Espera antes de enviar
+                await this.sendPresenceTyping(sock, jid);
                 await sock.sendMessage(jid, {
                     text: 'Opción no válida.'
                 });
-                await this.sendMenu(sock, jid, currentStateId); // Re-show menu options
+                await this.sendMenu(sock, jid, currentStateId); // Re-mostrar opciones
             }
         }
     }
 
+    /**
+     * Construye y envía el cuerpo del menú con sus opciones y footer
+     */
     async sendMenu(sock, jid, parentId) {
         const nodes = await this.googleSheetsService.getNodesByParent(parentId);
         const order = this.stateService.getUserOrder(jid);
 
-        // Try to find a node with ID 'root' for the main greeting, else use default
         let currentNode = await this.googleSheetsService.getNodeById(parentId);
 
         if (!currentNode) {
@@ -176,9 +196,10 @@ class MenuController {
             };
         }
 
+        // Construcción del texto del menú + Resumen de pedido si existe
         let menuText = await this.replaceOrderSummary(currentNode.message, jid) + '\n\n';
         
-        // Filter Finalizar items
+        // Filtrar nodos de finalización (solo visibles si hay pedido)
         const visibleNodes = nodes.filter(node => {
             if (node.message && node.message.includes('##FINALIZAR##')) {
                 return order.length > 0;
@@ -186,15 +207,15 @@ class MenuController {
             return true;
         });
 
+        // Listar opciones con precios
         visibleNodes.forEach(node => {
             const priceText = node.price ? ` ($${node.price})` : '';
             menuText += `*${node.trigger}*. ${node.title}${priceText}\n`;
         });
 
-        // Consistent Navigation Footer
+        // FOOTER DE NAVEGACIÓN CONSISTENTE
         menuText += `\n---\n`;
 
-        // Add "Vaciar pedido" only in the root menu if there are items
         if (parentId === 'root') {
             if (order.length > 0) {
                 menuText += `*vaciar*. Vaciar pedido\n`;
@@ -206,17 +227,20 @@ class MenuController {
         }
         menuText += `*0*. Menú Principal`;
 
-        await this.sendPresenceTyping(sock, jid); // Escritura + Espera antes de enviar
+        await this.sendPresenceTyping(sock, jid);
         await sock.sendMessage(jid, {
             text: menuText
         });
         this.stateService.setUserState(jid, parentId);
     }
 
+    /**
+     * Limpia tags internos y genera el resumen visual del pedido (items + total)
+     */
     async replaceOrderSummary(text, jid) {
         if (!text) return '';
 
-        // Remove internal tags from the message
+        // Eliminar tags internos para que no se muestren al cliente
         let cleanText = text
             .replace('##PEDIDO##', '')
             .replace('##CANTIDAD##', '')
@@ -227,7 +251,7 @@ class MenuController {
         const order = this.stateService.getUserOrder(jid);
         if (order.length === 0) return cleanText;
 
-        // Calculate Total Price
+        // CÁLCULO DE TOTALES BASADO EN PRECIOS DEL EXCEL
         const menu = await this.googleSheetsService.getMenuData();
         let total = 0;
         let hasPrices = false;
@@ -250,6 +274,7 @@ class MenuController {
             return itemStr;
         });
 
+        // Crear bloque visual de resumen
         let summary = `\n\n🛍️ *Tu pedido:* \n${detailedOrder.join('\n')}`;
         
         if (hasPrices) {
