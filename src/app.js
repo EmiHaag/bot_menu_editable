@@ -6,7 +6,8 @@ const {
     useMultiFileAuthState,
     DisconnectReason,
     fetchLatestBaileysVersion,
-    downloadMediaMessage
+    downloadMediaMessage,
+    extractMessageContent
 } = require('@whiskeysockets/baileys');
 const {
     Boom
@@ -427,31 +428,37 @@ async function startBot(botConfig, forceStart = false) {
                 for (const msg of m.messages) {
                     if (!msg.key.fromMe && msg.message) {
                         const jid = msg.key.remoteJid;
+                        const content = extractMessageContent(msg.message) || msg.message;
                         const text = msg.message.conversation ||
                             msg.message.extendedTextMessage?.text ||
                             msg.message.buttonsResponseMessage?.selectedButtonId ||
                             msg.message.listResponseMessage?.singleSelectReply?.selectedRowId;
 
-                        const image = msg.message.imageMessage;
-                        const document = msg.message.documentMessage;
+                        const image = content.imageMessage;
+                        const document = content.documentMessage;
 
                         if (image || document) {
                             const media = image || document;
-                            const filename = image
-                                ? (image.caption || 'imagen.jpg')
-                                : (document.fileName || 'documento.pdf');
+                            const caption = image?.caption || document?.caption || '';
+                            const filename = image ? 'imagen.jpg' : (document.fileName || 'documento.pdf');
                             const waitingFile = stateService.getWaitingForFile(jid);
+                            console.log(`[${id}] Media from ${jid}: type=${image?'image':'document'}, waitingFile=${waitingFile}, caption="${caption}"`);
 
                             if (waitingFile) {
-                                const buffer = await downloadMediaMessage(msg);
-                                await menuController.handleIncomingMessage(sock, jid, '', {
-                                    type: image ? 'image' : 'document',
-                                    buffer,
-                                    filename,
-                                    mimetype: media.mimetype
-                                });
-                            } else if (image?.caption || document?.caption) {
-                                await menuController.handleIncomingMessage(sock, jid, image?.caption || document?.caption);
+                                try {
+                                    const buffer = await downloadMediaMessage(msg);
+                                    await menuController.handleIncomingMessage(sock, jid, caption, {
+                                        type: image ? 'image' : 'document',
+                                        buffer,
+                                        filename,
+                                        mimetype: media.mimetype
+                                    });
+                                } catch (err) {
+                                    console.error(`[${id}] Error descargando archivo de ${jid}:`, err);
+                                    await menuController.handleIncomingMessage(sock, jid, caption);
+                                }
+                            } else if (caption) {
+                                await menuController.handleIncomingMessage(sock, jid, caption);
                             }
                         } else if (text) {
                             console.log(`[${id}] Message from ${jid}: ${text}`);

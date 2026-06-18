@@ -53,6 +53,7 @@ class MenuController {
 
         // PRIORIDAD 0: ¿EL BOT ESTÁ ESPERANDO UN ARCHIVO?
         const waitingFileNodeId = this.stateService.getWaitingForFile(jid);
+        console.log(`//[ARCHIVO] waitingFileNodeId=${waitingFileNodeId}, media=${!!media}, text="${text}"`);
         if (waitingFileNodeId && media) {
             const waitingNode = await this.googleSheetsService.getNodeById(waitingFileNodeId);
             const children = await this.googleSheetsService.getNodesByParent(waitingFileNodeId);
@@ -64,8 +65,8 @@ class MenuController {
                 if (waitingNode && waitingNode.message && waitingNode.message.includes('##FINALIZAR##')) {
                     this.stateService.clearUserOrder(jid);
                 }
-                await sock.sendMessage(jid, { text: '✅ Archivo recibido correctamente.' });
-                await this.sendMenu(sock, jid, 'root');
+                await sock.sendMessage(jid, { text: '✅ Archivo recibido correctamente.\n\n_Escribe *0* para volver al inicio._' });
+                this.stateService.setUserState(jid, 'root');
             }
             return;
         }
@@ -92,9 +93,8 @@ class MenuController {
                     this.stateService.clearUserOrder(jid);
                 }
 
-                await sock.sendMessage(jid, { text: '✅ Datos recibidos correctamente.' });
-                //console.log(`[Estado] Redirigiendo ${jid} a 'root'. Motivo: Fin de flujo de datos en nodo hoja.`);
-                await this.sendMenu(sock, jid, 'root');
+                await sock.sendMessage(jid, { text: '✅ Datos recibidos correctamente.\n\n_Escribe *0* para volver al inicio._' });
+                this.stateService.setUserState(jid, 'root');
                 return;
             }
         }
@@ -309,7 +309,7 @@ class MenuController {
             return;
         }
 
-        // 3. Nodo hoja: mensaje final (solo ofrece volver al inicio)
+        // 3. Nodo hoja: muestra su mensaje + ofrece volver al inicio
         let finalMessage = await this.replaceOrderSummary(node.message, jid);
         finalMessage += `\n\n_Escribe *0* para volver al inicio._`;
         await this.sendPresenceTyping(sock, jid);
