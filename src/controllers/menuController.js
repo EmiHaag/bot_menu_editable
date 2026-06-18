@@ -46,26 +46,48 @@ class MenuController {
      *                                |          v
      *                          [Error/Root]   [Enviar Menú]
      */
-    async handleIncomingMessage(sock, jid, text) {
-        const currentStateId = this.stateService.getUserState(jid); // Dónde está el usuario ahora
-        const input = text.trim().toLowerCase(); // Texto del usuario limpio
+    async handleIncomingMessage(sock, jid, text, media = null) {
+        const currentStateId = this.stateService.getUserState(jid);
+        console.log(`//[Estado] Usuario ${jid} envió mensaje: "${text}". Estado actual: ${currentStateId} #50`);
+        const input = text.trim().toLowerCase();
+
+        // PRIORIDAD 0: ¿EL BOT ESTÁ ESPERANDO UN ARCHIVO?
+        const waitingFileNodeId = this.stateService.getWaitingForFile(jid);
+        if (waitingFileNodeId && media) {
+            const waitingNode = await this.googleSheetsService.getNodeById(waitingFileNodeId);
+            const children = await this.googleSheetsService.getNodesByParent(waitingFileNodeId);
+            this.stateService.clearWaitingForFile(jid);
+
+            if (children.length > 0) {
+                await this.processNode(sock, jid, children[0]);
+            } else {
+                if (waitingNode && waitingNode.message && waitingNode.message.includes('##FINALIZAR##')) {
+                    this.stateService.clearUserOrder(jid);
+                }
+                await sock.sendMessage(jid, { text: '✅ Archivo recibido correctamente.' });
+                await this.sendMenu(sock, jid, 'root');
+            }
+            return;
+        }
 
         // PRIORIDAD 1: ¿EL BOT ESTÁ ESPERANDO DATOS LIBRES? (Ej: Nombre, Dirección)
         const waitingNodeId = this.stateService.getWaitingForData(jid);
+        //console.log("prioridad 1: esperando datos libres ?? #55");
         if (waitingNodeId) {
-            //console.log(`[Estado] Procesando datos recibidos para el nodo: ${waitingNodeId}`);
+            console.log("El bot esta esperando datos libres #57");
             const waitingNode = await this.googleSheetsService.getNodeById(waitingNodeId);
             const children = await this.googleSheetsService.getNodesByParent(waitingNodeId);
             this.stateService.clearWaitingForData(jid);
 
             if (children.length > 0) {
                 // Si hay un siguiente paso tras recibir datos, procesamos el primer hijo
-                //console.log(`[Estado] Usuario ${jid} envió datos. Motivo: Flujo multi-paso detectado. Avanzando al siguiente nodo.`);
+                console.log("El nodo espera datos pero tiene hijos, procesando el primer hijo #64");
                 await this.processNode(sock, jid, children[0]);
                 return;
             } else {
                 // Si no hay más hijos, es el final del formulario.
                 if (waitingNode && waitingNode.message && waitingNode.message.includes('##FINALIZAR##')) {
+                    console.log("nodo no tiene mas hijos #70");
                     //console.log(`[Estado] Limpiando pedido de ${jid}. Motivo: Tag ##FINALIZAR## procesado tras recibir datos.`);
                     this.stateService.clearUserOrder(jid);
                 }
@@ -160,12 +182,15 @@ class MenuController {
                 if (isStrict) {
                     const rootTrigger = (rootNode && rootNode.trigger) ? rootNode.trigger.toLowerCase() : 'hola';
                     if (input === rootTrigger) {
+                        console.log("es strict root trigger #166");
                         await this.sendMenu(sock, jid, 'root');
                     }
                 } else {
+                    console.log("es strict root trigger #170");
                     await this.sendMenu(sock, jid, 'root');
                 }
             } else {
+                console.log("opcion no valida #174");
                 await this.sendPresenceTyping(sock, jid);
                 await sock.sendMessage(jid, {
                     text: 'Opción no válida.'
@@ -183,6 +208,7 @@ class MenuController {
         const order = this.stateService.getUserOrder(jid);
 
         let currentNode = await this.googleSheetsService.getNodeById(parentId);
+        console.log("nodo actual #192 ::", currentNode);
 
         if (!currentNode) {
             currentNode = {
@@ -192,6 +218,7 @@ class MenuController {
 
         // Construcción del texto del menú + Resumen de pedido si existe
         let menuText = await this.replaceOrderSummary(currentNode.message, jid) + '\n\n';
+        console.log("menuText #202:: ", menuText);
         
         // Filtrar nodos de finalización (solo visibles si hay pedido)
         const visibleNodes = nodes.filter(node => {
@@ -201,11 +228,12 @@ class MenuController {
             return true;
         });
 
-        // Listar opciones con precios
+        // Listar opciones de submenus con precios
         visibleNodes.forEach(node => {
             const priceText = node.price ? ` ($${node.price})` : '';
             menuText += `*${node.trigger}*. ${node.title}${priceText}\n`;
         });
+        console.log("menuText #216:: ", menuText);
 
         // FOOTER DE NAVEGACIÓN CONSISTENTE
         menuText += `\n---\n`;
@@ -239,52 +267,59 @@ class MenuController {
             if (node.message.includes('##CANTIDAD##')) nodeTags.push('CANTIDAD');
             if (node.message.includes('##PEDIDO##')) nodeTags.push('PEDIDO');
             if (node.message.includes('##DATOS##')) nodeTags.push('DATOS');
+            if (node.message.includes('##ARCHIVO##')) nodeTags.push('ARCHIVO');
             if (node.message.includes('##FINALIZAR##')) nodeTags.push('FINALIZAR');
         }
-        console.log(`//[Estado] Procesando nodo ${node.id} (${node.title}). Tags: [${nodeTags.join(', ')}]`);
 
-        // Ejecutar acciones según Tags
+        // Tags que modifican estado pero no la navegación en sí
         if (nodeTags.includes('CANTIDAD')) {
-            console.log(`//[Estado] Activando espera de CANTIDAD para ${jid}`);
             this.stateService.setPendingQuantityItem(jid, node.title);
         }
         if (nodeTags.includes('PEDIDO')) {
-            console.log(`//[Estado] Añadiendo 1 unidad de ${node.title} al carrito de ${jid}`);
             this.stateService.addItemToOrder(jid, `1 x ${node.title}`);
-        }
-        if (nodeTags.includes('DATOS')) {
-            console.log(`//[Estado] Activando espera de DATOS para ${jid} en nodo ${node.id}`);
-            this.stateService.setWaitingForData(jid, node.id);
         }
 
         const subOptions = await this.googleSheetsService.getNodesByParent(node.id);
 
-        // Si tiene hijos y NO pide datos, mostramos el menú de opciones (botones)
-        if (subOptions.length > 0 && !nodeTags.includes('DATOS')) {
-            console.log(`//[Estado] Movimiento: Submenús detectados (${subOptions.length}). Enviando menú de: ${node.id}`);
-            await this.sendMenu(sock, jid, node.id);
-        } else {
-            // Es un nodo de espera de datos o un mensaje final (hoja)
-            const isDataNode = nodeTags.includes('DATOS');
-            const hasMoreSteps = subOptions.length > 0;
-            const reason = isDataNode ? `Esperando datos ${hasMoreSteps ? '(paso intermedio)' : '(paso final)'}` : 'Nodo hoja';
-
-            console.log(`//[Estado] Movimiento: Mensaje final/datos. Motivo: ${reason}.`);
-
-            let finalMessage = await this.replaceOrderSummary(node.message, jid);
-            finalMessage += `\n\n_Escribe *v* para volver atrás._\n_Escribe *0* para volver al inicio._`;
-
+        // 1. DATOS: mostrar prompt siempre, esperar respuesta del usuario
+        if (nodeTags.includes('DATOS')) {
+            let msg = await this.replaceOrderSummary(node.message, jid);
+            msg += `\n\n_Escribe *v* para volver atrás._\n_Escribe *0* para volver al inicio._`;
             await this.sendPresenceTyping(sock, jid);
-            await sock.sendMessage(jid, { text: finalMessage });
-
-            // Proceso de limpieza para Finalizar (solo si no hay datos pendientes)
-            if (nodeTags.includes('FINALIZAR') && !isDataNode) {
-                console.log(`//[Estado] Limpiando pedido de ${jid} (Finalización inmediata).`);
-                this.stateService.clearUserOrder(jid);
-            }
-
+            await sock.sendMessage(jid, { text: msg });
+            this.stateService.setWaitingForData(jid, node.id);
             this.stateService.setUserState(jid, node.id);
+            return;
         }
+
+        // 1b. ARCHIVO: mostrar prompt, esperar que el usuario envíe un archivo/imagen
+        if (nodeTags.includes('ARCHIVO')) {
+            let msg = await this.replaceOrderSummary(node.message, jid);
+            msg += `\n\n_Escribe *v* para volver atrás._\n_Escribe *0* para volver al inicio._`;
+            await this.sendPresenceTyping(sock, jid);
+            await sock.sendMessage(jid, { text: msg });
+            this.stateService.setWaitingForFile(jid, node.id);
+            this.stateService.setUserState(jid, node.id);
+            return;
+        }
+
+        // 2. Tiene hijos: mostrar submenú
+        if (subOptions.length > 0) {
+            await this.sendMenu(sock, jid, node.id);
+            return;
+        }
+
+        // 3. Nodo hoja: mensaje final (solo ofrece volver al inicio)
+        let finalMessage = await this.replaceOrderSummary(node.message, jid);
+        finalMessage += `\n\n_Escribe *0* para volver al inicio._`;
+        await this.sendPresenceTyping(sock, jid);
+        await sock.sendMessage(jid, { text: finalMessage });
+
+        if (nodeTags.includes('FINALIZAR')) {
+            this.stateService.clearUserOrder(jid);
+        }
+
+        this.stateService.setUserState(jid, node.id);
     }
 
     /**
@@ -299,6 +334,7 @@ class MenuController {
             .replace('##CANTIDAD##', '')
             .replace('##FINALIZAR##', '')
             .replace('##DATOS##', '')
+            .replace('##ARCHIVO##', '')
             .trim();
 
         const order = this.stateService.getUserOrder(jid);

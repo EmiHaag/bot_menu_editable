@@ -61,6 +61,18 @@ class StateService {
     clearWaitingForData(jid) {
         this.cache.del(this._getKey(jid) + ':waiting_data');
     }
+
+    setWaitingForFile(jid, nodeId) {
+        this.cache.set(this._getKey(jid) + ':waiting_file', nodeId, 600);
+    }
+
+    getWaitingForFile(jid) {
+        return this.cache.get(this._getKey(jid) + ':waiting_file');
+    }
+
+    clearWaitingForFile(jid) {
+        this.cache.del(this._getKey(jid) + ':waiting_file');
+    }
 }
 
 module.exports = StateService;

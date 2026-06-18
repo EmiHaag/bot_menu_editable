@@ -5,7 +5,8 @@ const {
     default: makeWASocket,
     useMultiFileAuthState,
     DisconnectReason,
-    fetchLatestBaileysVersion
+    fetchLatestBaileysVersion,
+    downloadMediaMessage
 } = require('@whiskeysockets/baileys');
 const {
     Boom
@@ -431,7 +432,28 @@ async function startBot(botConfig, forceStart = false) {
                             msg.message.buttonsResponseMessage?.selectedButtonId ||
                             msg.message.listResponseMessage?.singleSelectReply?.selectedRowId;
 
-                        if (text) {
+                        const image = msg.message.imageMessage;
+                        const document = msg.message.documentMessage;
+
+                        if (image || document) {
+                            const media = image || document;
+                            const filename = image
+                                ? (image.caption || 'imagen.jpg')
+                                : (document.fileName || 'documento.pdf');
+                            const waitingFile = stateService.getWaitingForFile(jid);
+
+                            if (waitingFile) {
+                                const buffer = await downloadMediaMessage(msg);
+                                await menuController.handleIncomingMessage(sock, jid, '', {
+                                    type: image ? 'image' : 'document',
+                                    buffer,
+                                    filename,
+                                    mimetype: media.mimetype
+                                });
+                            } else if (image?.caption || document?.caption) {
+                                await menuController.handleIncomingMessage(sock, jid, image?.caption || document?.caption);
+                            }
+                        } else if (text) {
                             console.log(`[${id}] Message from ${jid}: ${text}`);
                             await menuController.handleIncomingMessage(sock, jid, text);
                         }

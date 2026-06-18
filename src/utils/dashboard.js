@@ -312,11 +312,13 @@ class Dashboard {
                 const isQty = node.message && node.message.includes('##CANTIDAD##');
                 const isFinal = node.message && node.message.includes('##FINALIZAR##');
                 const isData = node.message && node.message.includes('##DATOS##');
+                const isArchivo = node.message && node.message.includes('##ARCHIVO##');
                 const cleanMessage = (node.message || "")
                     .replace('##PEDIDO##', '')
                     .replace('##CANTIDAD##', '')
                     .replace('##FINALIZAR##', '')
                     .replace('##DATOS##', '')
+                    .replace('##ARCHIVO##', '')
                     .trim();
 
                 return `
@@ -329,6 +331,7 @@ class Dashboard {
                     <td style="text-align: center;">${isQty ? '<span style="color: var(--info-color);">🔢</span>' : '⚪'}</td>
                     <td style="text-align: center;">${isFinal ? '<span style="color: var(--secondary-color);">🏁</span>' : '⚪'}</td>
                     <td style="text-align: center;">${isData ? '<span style="color: var(--warning-color);">📝</span>' : '⚪'}</td>
+                    <td style="text-align: center;">${isArchivo ? '<span style="color: var(--info-color);">📎</span>' : '⚪'}</td>
                     <td>
                         <div style="display: flex; gap: 5px;">
                             <button type="button" onclick="openEditModal(${idx})" class="btn-action btn-orange">Editar</button>
@@ -773,6 +776,10 @@ class Dashboard {
                                                 <input type="checkbox" id="addIsData" onchange="toggleOrderTag('add', '##DATOS##')" style="width: 20px; height: 20px; cursor: pointer;">
                                                 <label for="addIsData" style="margin-bottom: 0; cursor: pointer; font-size: 13px;">Capturar dato y continuar</label>
                                             </div>
+                                            <div style="flex: 1; display: flex; align-items: center; gap: 10px; background: #e8f5e9; padding: 10px; border-radius: 6px; border: 1px dashed #66bb6a;">
+                                                <input type="checkbox" id="addIsArchivo" onchange="toggleOrderTag('add', '##ARCHIVO##')" style="width: 20px; height: 20px; cursor: pointer;">
+                                                <label for="addIsArchivo" style="margin-bottom: 0; cursor: pointer; font-size: 13px;">Solicitar archivo</label>
+                                            </div>
                                         </div>
                                         <button type="submit" class="btn btn-green" style="width: 100%;">Crear Nodo Hijo</button>
                                     </form>
@@ -866,6 +873,10 @@ class Dashboard {
                                                 <input type="checkbox" id="editIsData" onchange="toggleOrderTag('edit', '##DATOS##')" style="width: 20px; height: 20px; cursor: pointer;">
                                                 <label for="editIsData" style="margin-bottom: 0; cursor: pointer; color: #856404; font-size: 13px;">¿Capturar dato?</label>
                                             </div>
+                                            <div style="flex: 1; display: flex; align-items: center; gap: 10px; background: #e8f5e9; padding: 10px; border-radius: 6px; border: 1px dashed #66bb6a;">
+                                                <input type="checkbox" id="editIsArchivo" onchange="toggleOrderTag('edit', '##ARCHIVO##')" style="width: 20px; height: 20px; cursor: pointer;">
+                                                <label for="editIsArchivo" style="margin-bottom: 0; cursor: pointer; color: #2e7d32; font-size: 13px;">¿Solicitar archivo?</label>
+                                            </div>
                                         </div>
                                         <button type="submit" class="btn btn-green" style="width: 100%;">Guardar Cambios</button>
                                     </form>
@@ -917,21 +928,6 @@ class Dashboard {
                             const idEl = document.getElementById(type + 'Id');
                             const isRoot = idEl && idEl.value === 'root';
                             if (isRoot) return;
-
-                            const titleEl = document.getElementById(type + 'Title');
-                            const titleGroup = document.getElementById(type + 'TitleGroup');
-                            
-                            if (isData) {
-                                titleEl.value = "Titulo por defecto";
-                                // Usamos un campo oculto temporal o simplemente nos aseguramos de que el valor se envíe
-                                // El atributo disabled previene que se envíe en el form POST, así que usaremos readonly y hidden
-                                titleEl.readOnly = true;
-                                titleGroup.style.display = "none";
-                            } else {
-                                titleEl.readOnly = false;
-                                titleGroup.style.display = "block";
-                                if (titleEl.value === "Titulo por defecto") titleEl.value = "";
-                            }
                         }
                         
                         function buildTree(parentId) {
@@ -987,7 +983,7 @@ class Dashboard {
 
                             document.getElementById('addModal').style.display = "block";
                             document.getElementById('addIsData').checked = false;
-                            updateTitleState('add', false);
+                            document.getElementById('addIsArchivo').checked = false;
                             updatePreview('add');
                         }
 
@@ -999,6 +995,7 @@ class Dashboard {
                             const isQty = node.message && node.message.includes('##CANTIDAD##');
                             const isFinal = node.message && node.message.includes('##FINALIZAR##');
                             const isData = node.message && node.message.includes('##DATOS##');
+                            const isArchivo = node.message && node.message.includes('##ARCHIVO##');
 
                             document.getElementById('editIndex').value = node.rowIndex;
                             document.getElementById('editId').value = node.id;
@@ -1009,6 +1006,7 @@ class Dashboard {
                             document.getElementById('editPrice').value = node.price || '';
                             document.getElementById('editIsFinal').checked = isFinal;
                             document.getElementById('editIsData').checked = isData;
+                            document.getElementById('editIsArchivo').checked = isArchivo;
 
                             const strictGroup = document.getElementById('strictTriggerGroup');
                             const strictCheckbox = document.getElementById('editStrictTrigger');
@@ -1142,6 +1140,7 @@ class Dashboard {
                                     .replace('##CANTIDAD##', '')
                                     .replace('##FINALIZAR##', '')
                                     .replace('##DATOS##', '')
+                                    .replace('##ARCHIVO##', '')
                                     .replace('_Este es el nodo de inicio, su mensaje no se muestra directamente en el bot._', '')
                                     .trim();
 
@@ -1175,6 +1174,7 @@ class Dashboard {
                                 .replace('##CANTIDAD##', '')
                                 .replace('##FINALIZAR##', '')
                                 .replace('##DATOS##', '')
+                                .replace('##ARCHIVO##', '')
                                 .replace('_Este es el nodo de inicio, su mensaje no se muestra directamente en el bot._', '')
                                 .trim();
                             
@@ -1231,39 +1231,50 @@ class Dashboard {
                             const isQtyCheckbox = document.getElementById(type === 'edit' ? 'editIsQty' : 'addIsQty');
                             const isFinalCheckbox = document.getElementById(type === 'edit' ? 'editIsFinal' : 'addIsFinal');
                             const isDataCheckbox = document.getElementById(type === 'edit' ? 'editIsData' : 'addIsData');
+                            const isArchivoCheckbox = document.getElementById(type === 'edit' ? 'editIsArchivo' : 'addIsArchivo');
                             
                             let currentVal = messageEl.value
                                 .replace('##PEDIDO##', '')
                                 .replace('##CANTIDAD##', '')
                                 .replace('##FINALIZAR##', '')
                                 .replace('##DATOS##', '')
+                                .replace('##ARCHIVO##', '')
                                 .trim();
                             
                             if (tag === '##PEDIDO##' && isOrderCheckbox.checked) {
                                 isQtyCheckbox.checked = false;
                                 isFinalCheckbox.checked = false;
                                 isDataCheckbox.checked = false;
+                                isArchivoCheckbox.checked = false;
                                 messageEl.value = currentVal + (currentVal ? '\\n\\n' : '') + '##PEDIDO##';
                             } else if (tag === '##CANTIDAD##' && isQtyCheckbox.checked) {
                                 isOrderCheckbox.checked = false;
                                 isFinalCheckbox.checked = false;
                                 isDataCheckbox.checked = false;
+                                isArchivoCheckbox.checked = false;
                                 messageEl.value = currentVal + (currentVal ? '\\n\\n' : '') + '##CANTIDAD##';
                             } else if (tag === '##FINALIZAR##' && isFinalCheckbox.checked) {
                                 isOrderCheckbox.checked = false;
                                 isQtyCheckbox.checked = false;
                                 isDataCheckbox.checked = false;
+                                isArchivoCheckbox.checked = false;
                                 messageEl.value = currentVal + (currentVal ? '\\n\\n' : '') + '##FINALIZAR##';
                             } else if (tag === '##DATOS##' && isDataCheckbox.checked) {
                                 isOrderCheckbox.checked = false;
                                 isQtyCheckbox.checked = false;
                                 isFinalCheckbox.checked = false;
+                                isArchivoCheckbox.checked = false;
                                 messageEl.value = currentVal + (currentVal ? '\\n\\n' : '') + '##DATOS##';
+                            } else if (tag === '##ARCHIVO##' && isArchivoCheckbox.checked) {
+                                isOrderCheckbox.checked = false;
+                                isQtyCheckbox.checked = false;
+                                isFinalCheckbox.checked = false;
+                                isDataCheckbox.checked = false;
+                                messageEl.value = currentVal + (currentVal ? '\\n\\n' : '') + '##ARCHIVO##';
                             } else {
                                 messageEl.value = currentVal;
                             }
                             
-                            updateTitleState(type, isDataCheckbox.checked);
                             updatePreview(type);
                         }
                     </script>
