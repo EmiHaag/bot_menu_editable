@@ -536,8 +536,8 @@ class Dashboard {
 
                         /* WhatsApp Preview Styles */
                         .modal-body-wrapper { display: flex; gap: 30px; align-items: flex-start; }
-                        .form-column { flex: 1; }
-                        .chat-column { width: 320px; position: sticky; top: 0; }
+                        .form-column { flex: 0 0 65%; }
+                        .chat-column { flex: 0 0 35%; position: sticky; top: 0; }
                         
                         .whatsapp-container {
                             background: #e5ddd5;
@@ -721,7 +721,7 @@ class Dashboard {
 
                     <!-- Add Child Modal -->
                     <div id="addModal" class="modal">
-                        <div class="modal-content" style="width: 800px;">
+                        <div class="modal-content" style="width: 90%; max-width: 1100px;">
                             <span onclick="closeModal('addModal')" style="float:right; cursor:pointer; font-size:24px;">&times;</span>
                             <h2>Agregar Nuevo Hijo</h2>
                             
@@ -806,7 +806,7 @@ class Dashboard {
 
                     <!-- Edit Modal -->
                     <div id="editModal" class="modal">
-                        <div class="modal-content" style="width: 800px;">
+                        <div class="modal-content" style="width: 90%; max-width: 1100px;">
                             <span onclick="closeModal('editModal')" style="float:right; cursor:pointer; font-size:24px;">&times;</span>
                             <h2>Editar Nodo</h2>
                             
@@ -1169,6 +1169,7 @@ class Dashboard {
                             const userHtml = \`<div class="wa-bubble-user">\${trigger}</div>\`;
 
                             // 3. Respuesta Actual (Lo que se está editando)
+                            const hasDataTag = message.includes('##DATOS##') || message.includes('##ARCHIVO##');
                             let chatContent = (message || '_Sin mensaje configurado_')
                                 .replace('##PEDIDO##', '')
                                 .replace('##CANTIDAD##', '')
@@ -1179,7 +1180,7 @@ class Dashboard {
                                 .trim();
                             
                             const subOptions = menuData.filter(n => n.parentId === id);
-                            if (subOptions.length > 0) {
+                            if (subOptions.length > 0 && !hasDataTag) {
                                 chatContent += '\\n\\n';
                                 subOptions.forEach(opt => {
                                     const optPrice = opt.price ? ' ($' + opt.price + ')' : '';
