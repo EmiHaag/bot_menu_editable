@@ -48,12 +48,12 @@ class MenuController {
      */
     async handleIncomingMessage(sock, jid, text, media = null) {
         const currentStateId = this.stateService.getUserState(jid);
-        console.log(`//[Estado] Usuario ${jid} envió mensaje: "${text}". Estado actual: ${currentStateId} #50`);
+        ////console.log(`//[Estado] Usuario ${jid} envió mensaje: "${text}". Estado actual: ${currentStateId} #50`);
         const input = text.trim().toLowerCase();
 
         // PRIORIDAD 0: ¿EL BOT ESTÁ ESPERANDO UN ARCHIVO?
         const waitingFileNodeId = this.stateService.getWaitingForFile(jid);
-        console.log(`//[ARCHIVO] waitingFileNodeId=${waitingFileNodeId}, media=${!!media}, text="${text}"`);
+        ////console.log(`//[ARCHIVO] waitingFileNodeId=${waitingFileNodeId}, media=${!!media}, text="${text}"`);
         if (waitingFileNodeId && media) {
             const waitingNode = await this.googleSheetsService.getNodeById(waitingFileNodeId);
             const children = await this.googleSheetsService.getNodesByParent(waitingFileNodeId);
@@ -73,23 +73,23 @@ class MenuController {
 
         // PRIORIDAD 1: ¿EL BOT ESTÁ ESPERANDO DATOS LIBRES? (Ej: Nombre, Dirección)
         const waitingNodeId = this.stateService.getWaitingForData(jid);
-        //console.log("prioridad 1: esperando datos libres ?? #55");
+        ////console.log("prioridad 1: esperando datos libres ?? #55");
         if (waitingNodeId) {
-            console.log("El bot esta esperando datos libres #57");
+            //console.log("El bot esta esperando datos libres #57");
             const waitingNode = await this.googleSheetsService.getNodeById(waitingNodeId);
             const children = await this.googleSheetsService.getNodesByParent(waitingNodeId);
             this.stateService.clearWaitingForData(jid);
 
             if (children.length > 0) {
                 // Si hay un siguiente paso tras recibir datos, procesamos el primer hijo
-                console.log("El nodo espera datos pero tiene hijos, procesando el primer hijo #64");
+                //console.log("El nodo espera datos pero tiene hijos, procesando el primer hijo #64");
                 await this.processNode(sock, jid, children[0]);
                 return;
             } else {
                 // Si no hay más hijos, es el final del formulario.
                 if (waitingNode && waitingNode.message && waitingNode.message.includes('##FINALIZAR##')) {
-                    console.log("nodo no tiene mas hijos #70");
-                    //console.log(`[Estado] Limpiando pedido de ${jid}. Motivo: Tag ##FINALIZAR## procesado tras recibir datos.`);
+                    //console.log("nodo no tiene mas hijos #70");
+                    ////console.log(`[Estado] Limpiando pedido de ${jid}. Motivo: Tag ##FINALIZAR## procesado tras recibir datos.`);
                     this.stateService.clearUserOrder(jid);
                 }
 
@@ -104,7 +104,7 @@ class MenuController {
         const pendingItem = this.stateService.getPendingQuantityItem(jid);
         if (pendingItem && !isNaN(input) && parseInt(input) > 0) {
             const quantity = parseInt(input);
-            //console.log(`[Estado] Usuario ${jid} añadió cantidad: ${quantity} x ${pendingItem}`);
+            ////console.log(`[Estado] Usuario ${jid} añadió cantidad: ${quantity} x ${pendingItem}`);
             this.stateService.addItemToOrder(jid, `${quantity} x ${pendingItem}`);
             this.stateService.clearPendingQuantityItem(jid);
 
@@ -126,14 +126,14 @@ class MenuController {
 
         // PRIORIDAD 3: COMANDOS GLOBALES (Navegación básica y reset)
         if (input === '0' || input === 'inicio') {
-            ////console.log(`[Estado] Usuario ${jid} solicitó volver al inicio.`);
+            //////console.log(`[Estado] Usuario ${jid} solicitó volver al inicio.`);
             await this.sendMenu(sock, jid, 'root');
             return;
         }
 
         // GESTIÓN DEL CARRITO: Comando manual para limpiar todo el pedido
         if (input === 'vaciar' || input === 'limpiar' || input === 'borrar pedido') {
-            //console.log(`[Estado] Usuario ${jid} vació su carrito manualmente.`);
+            ////console.log(`[Estado] Usuario ${jid} vació su carrito manualmente.`);
             this.stateService.clearUserOrder(jid);
             await this.sendPresenceTyping(sock, jid);
             await sock.sendMessage(jid, {
@@ -147,7 +147,7 @@ class MenuController {
         if (input === 'v' || input === 'atras' || input === 'atrás') {
             const currentNode = await this.googleSheetsService.getNodeById(currentStateId);
             const parentId = currentNode ? currentNode.parentId : 'root';
-            console.log(`//[Estado] Usuario ${jid} volvió atrás. De ${currentStateId} a ${parentId}`);
+            //console.log(`//[Estado] Usuario ${jid} volvió atrás. De ${currentStateId} a ${parentId}`);
             if (currentStateId === 'root') {
                 await this.sendMenu(sock, jid, 'root');
             } else {
@@ -182,15 +182,15 @@ class MenuController {
                 if (isStrict) {
                     const rootTrigger = (rootNode && rootNode.trigger) ? rootNode.trigger.toLowerCase() : 'hola';
                     if (input === rootTrigger) {
-                        console.log("es strict root trigger #166");
+                        //console.log("es strict root trigger #166");
                         await this.sendMenu(sock, jid, 'root');
                     }
                 } else {
-                    console.log("es strict root trigger #170");
+                    //console.log("es strict root trigger #170");
                     await this.sendMenu(sock, jid, 'root');
                 }
             } else {
-                console.log("opcion no valida #174");
+                //console.log("opcion no valida #174");
                 await this.sendPresenceTyping(sock, jid);
                 await sock.sendMessage(jid, {
                     text: 'Opción no válida.'
@@ -208,7 +208,7 @@ class MenuController {
         const order = this.stateService.getUserOrder(jid);
 
         let currentNode = await this.googleSheetsService.getNodeById(parentId);
-        console.log("nodo actual #192 ::", currentNode);
+        //console.log("nodo actual #192 ::", currentNode);
 
         if (!currentNode) {
             currentNode = {
@@ -218,7 +218,7 @@ class MenuController {
 
         // Construcción del texto del menú + Resumen de pedido si existe
         let menuText = await this.replaceOrderSummary(currentNode.message, jid) + '\n\n';
-        console.log("menuText #202:: ", menuText);
+        //console.log("menuText #202:: ", menuText);
         
         // Filtrar nodos de finalización (solo visibles si hay pedido)
         const visibleNodes = nodes.filter(node => {
@@ -233,7 +233,7 @@ class MenuController {
             const priceText = node.price ? ` ($${node.price})` : '';
             menuText += `*${node.trigger}*. ${node.title}${priceText}\n`;
         });
-        console.log("menuText #216:: ", menuText);
+        //console.log("menuText #216:: ", menuText);
 
         // FOOTER DE NAVEGACIÓN CONSISTENTE
         menuText += `\n---\n`;
@@ -253,7 +253,7 @@ class MenuController {
         await sock.sendMessage(jid, {
             text: menuText
         });
-        console.log(`//[Estado] Usuario ${jid} movido al menú: ${parentId}`);
+        //console.log(`//[Estado] Usuario ${jid} movido al menú: ${parentId}`);
         this.stateService.setUserState(jid, parentId);
     }
 

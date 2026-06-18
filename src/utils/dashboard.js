@@ -8,6 +8,7 @@ const {
 } = require('googleapis');
 
 const GoogleDriveService = require('../services/googleDriveService');
+const { helpGuideCSS, helpGuideHTML, helpGuideJS } = require('./helpGuide');
 
 class Dashboard {
     constructor() {
@@ -671,6 +672,8 @@ class Dashboard {
                             visibility: visible;
                             opacity: 1;
                         }
+
+${helpGuideCSS}
                     </style>
                     <script src="/js/robot-logo.js"></script>
                 </head>
@@ -690,7 +693,9 @@ class Dashboard {
                             <a href="/logout" class="btn btn-red">Salir</a>
                         </div>
                     </div>
-                    
+
+${helpGuideHTML}
+
                     <table>
                         <thead>
                             <tr>
@@ -922,6 +927,7 @@ class Dashboard {
                         const botId = "${botId}";
                         let currentParent = null;
 
+${helpGuideJS}
                         drawRobot('botLogoDash');
 
                         function updateTitleState(type, isData) {
