@@ -13,7 +13,7 @@ try {
 }
 
 const RATE_LIMIT_MSG =
-  '⏳ El asistente está saturado por el momento. Esperá unos segundos y volvé a preguntar. También podés consultar la guía en el panel izquierdo.';
+  '⏳ El asistente está saturado por el momento. Esperá unos minutos y volvé a preguntar. También podés consultar la guía en el panel izquierdo.';
 
 async function askGemini(userMessage) {
   const MAX_RETRIES = 3; // Intentos máximos antes de rendirse

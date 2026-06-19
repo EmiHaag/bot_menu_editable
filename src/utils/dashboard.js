@@ -408,6 +408,28 @@ class Dashboard {
 
                         .toolbar { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
                         .toolbar select, .toolbar label { font-size: 14px; white-space: nowrap; }
+                        .status-box {
+                            display: inline-flex;
+                            align-items: center;
+                            gap: 6px;
+                            margin-top: 4px;
+                            padding: 3px 10px;
+                            border: 1px solid var(--border-color);
+                            border-radius: 20px;
+                            font-size: 11px;
+                            color: var(--text-muted);
+                            background: var(--bg-box);
+                        }
+                        .status-dot {
+                            display: inline-block;
+                            width: 8px;
+                            height: 8px;
+                            border-radius: 50%;
+                            transition: background 0.3s;
+                        }
+                        .status-dot.on { background: #22c55e; box-shadow: 0 0 4px rgba(34,197,94,0.5); }
+                        .status-dot.off { background: #9ca3af; box-shadow: 0 0 4px rgba(156,163,175,0.3); }
+                        .status-dot.error { background: #ef4444; box-shadow: 0 0 4px rgba(239,68,68,0.5); }
                         
                         .btn { 
                             padding: 10px 18px; 
@@ -841,7 +863,10 @@ ${helpGuideCSS}
                     <div class="header">
                         <div style="display: flex; align-items: center; gap: 15px;">
                             <canvas id="botLogoDash" width="200" height="200" style="width: 50px; height: 50px;"></canvas>
-                            <h2>Editor de Menú de WhatsApp</h2>
+                            <div>
+                                <h2 style="margin:0;">Editor de Menú de WhatsApp</h2>
+                                <div class="status-box" id="statusBox"><span class="status-dot off" id="statusDot"></span> <span id="statusLabel">Verificando...</span></div>
+                            </div>
                         </div>
                         <div class="toolbar">
                             ${botSelector}
@@ -1137,6 +1162,35 @@ ${helpGuideJS}
                         drawRobot('botLogoDash');
                         drawRobot('botLogoSupport');
                         drawRobot('botLogoSupportHeader');
+
+                        function checkBotStatus() {
+                            const dot = document.getElementById('statusDot');
+                            const label = document.getElementById('statusLabel');
+                            if (!dot || !label) return;
+                            fetch('/api/bot/status/${botId}')
+                                .then(r => r.json())
+                                .then(data => {
+                                    const labels = {
+                                        connected: 'Conectado',
+                                        waiting_start: 'Sin iniciar',
+                                        starting: 'Iniciando',
+                                        connecting: 'Conectando',
+                                        qr_ready: 'Esperando QR',
+                                        disconnected: 'Desconectado',
+                                        logged_out: 'Sesión cerrada',
+                                        stopped_inactivity: 'Detenido',
+                                        timeout_qr: 'QR expiró',
+                                        error: 'Error'
+                                    };
+                                    const cls = data.status === 'connected' ? 'on' :
+                                        data.status === 'error' || data.status === 'logged_out' || data.status === 'timeout_qr' ? 'error' : 'off';
+                                    dot.className = 'status-dot ' + cls;
+                                    label.textContent = labels[data.status] || data.status;
+                                })
+                                .catch(function(){ dot.className = 'status-dot off'; label.textContent = 'Sin conexión'; });
+                        }
+                        checkBotStatus();
+                        setInterval(checkBotStatus, 10000);
 
                         function updateTitleState(type, isData) {
                             const idEl = document.getElementById(type + 'Id');

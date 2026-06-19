@@ -185,7 +185,7 @@ const helpGuideHTML = `
                                     <div class="step-num">1</div>
                                     <div class="step-text">
                                         <strong>Creá la opción principal</strong>
-                                        En la tabla, buscá el nodo <strong>Raíz</strong> y hacé clic en <strong>"+ Hijo"</strong>.
+                                        En la tabla, buscá el nodo <strong>Raíz</strong> y hacé clic en <strong>+ Hijo</strong>.
                                     </div>
                                 </div>
                                 <div class="step">
