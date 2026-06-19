@@ -1455,7 +1455,7 @@ ${helpGuideJS}
                                 });
                                 const data = await res.json();
                                 document.getElementById('typingIndicator')?.remove();
-                                body.innerHTML += '<div class="sb-bubble bot">' + escapeHtml(data.response) + '</div>';
+                                body.innerHTML += '<div class="sb-bubble bot">' + data.response + '</div>';
                             } catch (err) {
                                 document.getElementById('typingIndicator')?.remove();
                                 body.innerHTML += '<div class="sb-bubble bot">Error de conexión. Verificá que el servidor esté funcionando.</div>';
