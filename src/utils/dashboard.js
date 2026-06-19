@@ -689,7 +689,7 @@ ${helpGuideCSS}
                             border: none;
                             cursor: pointer;
                             font-size: 24px;
-                            z-index: 95;
+                            z-index: 120;
                             box-shadow: 0 4px 15px rgba(124,58,237,0.4);
                             transition: transform 0.2s;
                             display: flex;
@@ -708,7 +708,7 @@ ${helpGuideCSS}
                             border-radius: 16px;
                             box-shadow: 0 10px 40px rgba(0,0,0,0.15);
                             border: 1px solid var(--border-color);
-                            z-index: 94;
+                            z-index: 119;
                             display: none;
                             flex-direction: column;
                             overflow: hidden;
@@ -1428,15 +1428,56 @@ ${helpGuideJS}
                             sendSupportMessage();
                         }
 
+                        function getCurrentRowContext() {
+                            const editModal = document.getElementById('editModal');
+                            if (!editModal || editModal.style.display === 'none') return '';
+
+                            const id = document.getElementById('editId').value;
+                            const trigger = document.getElementById('editTrigger').value;
+                            const title = document.getElementById('editTitle').value;
+                            const price = document.getElementById('editPrice').value;
+                            const message = document.getElementById('editMessage').value;
+                            const isOrder = document.getElementById('editIsOrder').checked;
+                            const isQty = document.getElementById('editIsQty').checked;
+                            const isFinal = document.getElementById('editIsFinal').checked;
+                            const isData = document.getElementById('editIsData').checked;
+                            const isArchivo = document.getElementById('editIsArchivo').checked;
+
+                            const tags = [];
+                            if (isOrder) tags.push('##PEDIDO##');
+                            if (isQty) tags.push('##CANTIDAD##');
+                            if (isFinal) tags.push('##FINALIZAR##');
+                            if (isData) tags.push('##DATOS##');
+                            if (isArchivo) tags.push('##ARCHIVO##');
+
+                            const parentId = document.getElementById('editParentId').value;
+                            const parent = menuData.find(n => n.id === parentId);
+                            const parentStr = parent ? parent.title + ' (' + parent.id + ')' : 'Raiz';
+
+                            const parts = [];
+                            parts.push('--- NODO EN EDICION ---');
+                            parts.push('ID: ' + id);
+                            parts.push('Trigger: ' + trigger);
+                            parts.push('Titulo: ' + title);
+                            parts.push('Precio: ' + (price || 'sin precio'));
+                            parts.push('Mensaje: ' + (message || '(vacio)'));
+                            parts.push('Tags: ' + (tags.length ? tags.join(', ') : 'ninguno'));
+                            parts.push('Padre: ' + parentStr);
+
+                            return parts.join('\\n');
+                        }
+
                         async function sendSupportMessage() {
                             const input = document.getElementById('supportInput');
                             const msg = input.value.trim();
                             if (!msg) return;
 
+                            const context = getCurrentRowContext();
+
                             const body = document.getElementById('supportBody');
                             const sendBtn = document.getElementById('supportSendBtn');
 
-                            body.innerHTML += '<div class="sb-bubble user">' + escapeHtml(msg) + '</div>';
+                            body.innerHTML += '<div class="sb-bubble user">' + escapeHtml(msg) + (context ? '<div style="font-size:11px;opacity:0.6;margin-top:4px;">incluye contexto del nodo</div>' : '') + '</div>';
                             input.value = '';
                             sendBtn.disabled = true;
 
@@ -1451,14 +1492,14 @@ ${helpGuideJS}
                                 const res = await fetch('/api/support/ask', {
                                     method: 'POST',
                                     headers: { 'Content-Type': 'application/json' },
-                                    body: JSON.stringify({ message: msg })
+                                    body: JSON.stringify({ message: msg, context: context })
                                 });
                                 const data = await res.json();
                                 document.getElementById('typingIndicator')?.remove();
                                 body.innerHTML += '<div class="sb-bubble bot">' + data.response + '</div>';
                             } catch (err) {
                                 document.getElementById('typingIndicator')?.remove();
-                                body.innerHTML += '<div class="sb-bubble bot">Error de conexión. Verificá que el servidor esté funcionando.</div>';
+                                body.innerHTML += '<div class="sb-bubble bot">Error de conexion. Verifica que el servidor este funcionando.</div>';
                             }
 
                             body.scrollTop = body.scrollHeight;
@@ -1624,13 +1665,18 @@ ${helpGuideJS}
         // POST /api/support/ask — Bot de soporte interno del editor
         router.post('/api/support/ask', async (req, res) => {
             try {
-                const { message } = req.body;
+                const { message, context } = req.body;
 
                 if (!message || typeof message !== 'string' || message.trim().length === 0) {
                     return res.status(400).json({ response: 'Escribí una pregunta válida.' });
                 }
 
-                const response = await askGemini(message.trim());
+                let fullMessage = message.trim();
+                if (context && typeof context === 'string' && context.trim()) {
+                    fullMessage = '[CONTEXTO - Nodo en edicion]:\n' + context.trim() + '\n\n[CONSULTA]:\n' + fullMessage;
+                }
+
+                const response = await askGemini(fullMessage);
                 res.json({ response });
             } catch (error) {
                 console.error('[SupportBot] Error en endpoint:', error.message);
