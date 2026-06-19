@@ -9,6 +9,7 @@ const {
 
 const GoogleDriveService = require('../services/googleDriveService');
 const { helpGuideCSS, helpGuideHTML, helpGuideJS } = require('./helpGuide');
+const { askGemini } = require('./geminiHelper');
 
 class Dashboard {
     constructor() {
@@ -674,6 +675,156 @@ class Dashboard {
                         }
 
 ${helpGuideCSS}
+
+                        /* Support Bot */
+                        .support-toggle {
+                            position: fixed;
+                            bottom: 20px;
+                            right: 20px;
+                            width: 56px;
+                            height: 56px;
+                            border-radius: 50%;
+                            background: #7c3aed;
+                            color: white;
+                            border: none;
+                            cursor: pointer;
+                            font-size: 24px;
+                            z-index: 95;
+                            box-shadow: 0 4px 15px rgba(124,58,237,0.4);
+                            transition: transform 0.2s;
+                            display: flex;
+                            align-items: center;
+                            justify-content: center;
+                        }
+                        .support-toggle:hover { transform: scale(1.1); }
+                        .support-toggle.open { transform: rotate(45deg); }
+                        .support-modal {
+                            position: fixed;
+                            bottom: 90px;
+                            right: 20px;
+                            width: 380px;
+                            height: 520px;
+                            background: var(--bg-white);
+                            border-radius: 16px;
+                            box-shadow: 0 10px 40px rgba(0,0,0,0.15);
+                            border: 1px solid var(--border-color);
+                            z-index: 94;
+                            display: none;
+                            flex-direction: column;
+                            overflow: hidden;
+                        }
+                        .support-modal.open { display: flex; }
+                        .support-header {
+                            background: #7c3aed;
+                            color: white;
+                            padding: 15px 20px;
+                            display: flex;
+                            align-items: center;
+                            gap: 10px;
+                        }
+                        .support-header h4 { margin: 0; font-size: 15px; flex: 1; }
+                        .support-header .sub { font-size: 11px; opacity: 0.8; }
+                        .support-body {
+                            flex: 1;
+                            padding: 15px;
+                            overflow-y: auto;
+                            display: flex;
+                            flex-direction: column;
+                            gap: 10px;
+                            background: #f8f9fa;
+                        }
+                        .support-body .sb-bubble {
+                            max-width: 85%;
+                            padding: 10px 14px;
+                            border-radius: 12px;
+                            font-size: 14px;
+                            line-height: 1.5;
+                            white-space: pre-wrap;
+                            word-wrap: break-word;
+                        }
+                        .support-body .sb-bubble.bot {
+                            background: white;
+                            align-self: flex-start;
+                            border-bottom-left-radius: 4px;
+                            box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+                            color: #333;
+                        }
+                        .support-body .sb-bubble.user {
+                            background: #7c3aed;
+                            color: white;
+                            align-self: flex-end;
+                            border-bottom-right-radius: 4px;
+                        }
+                        .support-body .typing {
+                            align-self: flex-start;
+                            display: flex;
+                            gap: 4px;
+                            padding: 12px 16px;
+                            background: white;
+                            border-radius: 12px;
+                            border-bottom-left-radius: 4px;
+                        }
+                        .support-body .typing span {
+                            width: 8px;
+                            height: 8px;
+                            background: #ccc;
+                            border-radius: 50%;
+                            animation: typing 1.4s infinite;
+                        }
+                        .support-body .typing span:nth-child(2) { animation-delay: 0.2s; }
+                        .support-body .typing span:nth-child(3) { animation-delay: 0.4s; }
+                        @keyframes typing { 0%,60%,100% { opacity: 0.3; transform: translateY(0); } 30% { opacity: 1; transform: translateY(-4px); } }
+                        .support-footer {
+                            padding: 10px 15px;
+                            border-top: 1px solid var(--border-color);
+                            display: flex;
+                            gap: 10px;
+                            background: white;
+                        }
+                        .support-footer input {
+                            flex: 1;
+                            padding: 10px 14px;
+                            border: 1px solid var(--border-color);
+                            border-radius: 24px;
+                            font-size: 14px;
+                            outline: none;
+                            transition: border-color 0.2s;
+                        }
+                        .support-footer input:focus { border-color: #7c3aed; }
+                        .support-footer button {
+                            width: 40px;
+                            height: 40px;
+                            border-radius: 50%;
+                            background: #7c3aed;
+                            color: white;
+                            border: none;
+                            cursor: pointer;
+                            font-size: 16px;
+                            display: flex;
+                            align-items: center;
+                            justify-content: center;
+                            transition: background 0.2s;
+                            flex-shrink: 0;
+                        }
+                        .support-footer button:hover { background: #6d28d9; }
+                        .support-footer button:disabled { background: #ccc; cursor: not-allowed; }
+                        .support-footer .suggestion-chips {
+                            display: flex;
+                            flex-wrap: wrap;
+                            gap: 6px;
+                            margin-bottom: 8px;
+                        }
+                        .support-footer .chip {
+                            padding: 5px 12px;
+                            background: #f3f0ff;
+                            color: #7c3aed;
+                            border: 1px solid #ddd6fe;
+                            border-radius: 16px;
+                            font-size: 12px;
+                            cursor: pointer;
+                            transition: all 0.2s;
+                        }
+                        .support-footer .chip:hover { background: #7c3aed; color: white; border-color: #7c3aed; }
                     </style>
                     <script src="/js/robot-logo.js"></script>
                 </head>
@@ -918,6 +1069,35 @@ ${helpGuideHTML}
                             <div style="display: flex; gap: 12px; justify-content: center;">
                                 <button type="button" onclick="closeModal('deleteConfirmModal')" class="btn" style="flex: 1; padding: 12px;">Cancelar</button>
                                 <button type="button" id="deleteConfirmBtn" class="btn btn-red" style="flex: 1; padding: 12px;">Eliminar</button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Support Bot -->
+                    <button class="support-toggle" id="supportToggle" onclick="toggleSupport()">💬</button>
+                    <div class="support-modal" id="supportModal">
+                        <div class="support-header">
+                            <div>🤖</div>
+                            <div>
+                                <h4>Asistente del Editor</h4>
+                                <div class="sub">Consultá cómo usar el editor</div>
+                            </div>
+                            <button onclick="toggleSupport()" style="background:none;border:none;color:white;font-size:20px;cursor:pointer;">&times;</button>
+                        </div>
+                        <div class="support-body" id="supportBody">
+                            <div class="sb-bubble bot">¡Hola! Soy el asistente del editor de menú. Haceme cualquier pregunta sobre cómo crear o modificar el menú de tu bot de WhatsApp. 😊</div>
+                        </div>
+                        <div class="support-footer">
+                            <div style="flex:1;display:flex;flex-direction:column;gap:6px;">
+                                <div class="suggestion-chips" id="suggestionChips">
+                                    <span class="chip" onclick="sendSuggestion(this)">¿Cómo crear submenús?</span>
+                                    <span class="chip" onclick="sendSuggestion(this)">¿Qué son los tags?</span>
+                                    <span class="chip" onclick="sendSuggestion(this)">¿Cómo pedir datos?</span>
+                                </div>
+                                <div style="display:flex;gap:8px;">
+                                    <input type="text" id="supportInput" placeholder="Escribí tu pregunta..." onkeydown="if(event.key==='Enter') sendSupportMessage()">
+                                    <button id="supportSendBtn" onclick="sendSupportMessage()">➤</button>
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -1232,6 +1412,65 @@ ${helpGuideJS}
                             document.getElementById(modalId).style.display = "none";
                         }
 
+                        // --- Support Bot ---
+                        function toggleSupport() {
+                            const modal = document.getElementById('supportModal');
+                            const toggle = document.getElementById('supportToggle');
+                            modal.classList.toggle('open');
+                            toggle.classList.toggle('open');
+                            if (modal.classList.contains('open')) {
+                                setTimeout(() => document.getElementById('supportInput').focus(), 300);
+                            }
+                        }
+
+                        function sendSuggestion(el) {
+                            document.getElementById('supportInput').value = el.textContent;
+                            sendSupportMessage();
+                        }
+
+                        async function sendSupportMessage() {
+                            const input = document.getElementById('supportInput');
+                            const msg = input.value.trim();
+                            if (!msg) return;
+
+                            const body = document.getElementById('supportBody');
+                            const sendBtn = document.getElementById('supportSendBtn');
+
+                            body.innerHTML += '<div class="sb-bubble user">' + escapeHtml(msg) + '</div>';
+                            input.value = '';
+                            sendBtn.disabled = true;
+
+                            const typing = document.createElement('div');
+                            typing.className = 'typing';
+                            typing.innerHTML = '<span></span><span></span><span></span>';
+                            typing.id = 'typingIndicator';
+                            body.appendChild(typing);
+                            body.scrollTop = body.scrollHeight;
+
+                            try {
+                                const res = await fetch('/api/support/ask', {
+                                    method: 'POST',
+                                    headers: { 'Content-Type': 'application/json' },
+                                    body: JSON.stringify({ message: msg })
+                                });
+                                const data = await res.json();
+                                document.getElementById('typingIndicator')?.remove();
+                                body.innerHTML += '<div class="sb-bubble bot">' + escapeHtml(data.response) + '</div>';
+                            } catch (err) {
+                                document.getElementById('typingIndicator')?.remove();
+                                body.innerHTML += '<div class="sb-bubble bot">Error de conexión. Verificá que el servidor esté funcionando.</div>';
+                            }
+
+                            body.scrollTop = body.scrollHeight;
+                            sendBtn.disabled = false;
+                        }
+
+                        function escapeHtml(text) {
+                            const div = document.createElement('div');
+                            div.textContent = text;
+                            return div.innerHTML;
+                        }
+
                         function toggleOrderTag(type, tag) {
                             const messageEl = document.getElementById(type + 'Message');
                             const isOrderCheckbox = document.getElementById(type === 'edit' ? 'editIsOrder' : 'addIsOrder');
@@ -1379,6 +1618,23 @@ ${helpGuideJS}
             } catch (error) {
                 console.error('Error al agregar a Sheets:', error);
                 res.status(500).send('Error al agregar los datos.');
+            }
+        });
+
+        // POST /api/support/ask — Bot de soporte interno del editor
+        router.post('/api/support/ask', async (req, res) => {
+            try {
+                const { message } = req.body;
+
+                if (!message || typeof message !== 'string' || message.trim().length === 0) {
+                    return res.status(400).json({ response: 'Escribí una pregunta válida.' });
+                }
+
+                const response = await askGemini(message.trim());
+                res.json({ response });
+            } catch (error) {
+                console.error('[SupportBot] Error en endpoint:', error.message);
+                res.status(500).json({ response: 'Error interno del servidor. Intentá de nuevo.' });
             }
         });
 

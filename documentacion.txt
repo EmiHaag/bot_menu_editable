@@ -1,0 +1,147 @@
+Guía del Editor
+
+Aprendé a crear el menú de tu bot paso a paso.
+
+¿Qué es cada columna de la tabla?
+
+Disparador: El número o letra que el usuario escribe para elegir esta opción (ej: 1, 2, 3).
+
+Título: El texto que ve el usuario en el menú (ej: Hamburguesa).
+
+Mensaje: Lo que responde el bot cuando el usuario elige esta opción.
+
+Precio: Opcional. Si lo ponés, se muestra al lado del título (ej: $1500).
+
+Pedido / Cant / Fin / Datos / Archivo: Son etiquetas que le dan comportamientos especiales al nodo. Se activan con los checkboxes al editar.
+
+¿Cómo crear submenús?
+
+Un submenú es una opción que lleva a más opciones. Por ejemplo: "Bebidas" → "Coca", "Sprite", "Agua".
+
+Paso 1
+
+Creá la opción principal.
+
+En la tabla, buscá el nodo Raíz y hacé clic en "+ Hijo".
+
+Paso 2
+
+Completá los datos.
+
+Poné un disparador (ej: 3), un título (ej: Bebidas) y en el mensaje escribí algo como:
+
+"Elegí tu bebida."
+
+Este mensaje se muestra cuando el usuario elige "Bebidas".
+
+Paso 3
+
+Agregale hijos.
+
+Buscá el nodo "Bebidas" y hacé clic en "+ Hijo" para agregar "Coca", "Sprite", etc.
+
+Tip: Si un nodo tiene hijos, al elegirlo se muestran los hijos como opciones. Si no tiene hijos, se muestra el mensaje final.
+
+¿Cómo pedir datos al usuario (nombre, dirección)?
+
+El bot puede pedirle al usuario que escriba texto libre.
+
+Paso 1
+
+Creá un nodo y activá "Capturar dato y continuar".
+
+Paso 2
+
+En el campo Mensaje escribí la pregunta.
+
+Ejemplo:
+
+"¿Cuál es tu nombre?"
+
+Paso 3
+
+Agregá un hijo para continuar.
+
+Si querés pedir más datos (por ejemplo, primero nombre y luego dirección), ese hijo también debe tener el mismo comportamiento activado.
+
+Ejemplo:
+
+Nombre → Dirección → Confirmar
+
+¿Cómo pedir un archivo o foto?
+
+El bot puede recibir imágenes o PDFs del usuario.
+
+Paso 1
+
+Activá "Solicitar archivo".
+
+Paso 2
+
+Escribí el mensaje.
+
+Ejemplo:
+
+"Envianos la foto de tu receta médica."
+
+Paso 3
+
+Agregá un hijo para continuar.
+
+Si no agregás un hijo, el bot confirma la recepción del archivo y vuelve al inicio.
+
+Tip: El usuario puede enviar el archivo con o sin comentario. El comentario también se recibe.
+
+¿Cómo crear un menú de pedidos?
+
+Podés armar un carrito de compras donde el usuario va agregando productos.
+
+Paso 1
+
+Activá "Crear pedido" en cada producto.
+
+Así los productos se agregan al carrito.
+
+Paso 2 (Opcional)
+
+Activá "Pedir cantidad".
+
+El bot preguntará:
+
+"¿Cuántos?"
+
+Paso 3
+
+Creá un nodo "Finalizar".
+
+Activá la opción "Finalizar" y escribí un mensaje como:
+
+"Gracias por tu pedido."
+
+Antes de finalizar, el bot mostrará el resumen con el total.
+
+Ejemplo:
+
+Menú Principal
+
+Hamburguesa
+Pizza
+Finalizar
+
+El usuario puede escribir vaciar para limpiar el carrito en cualquier momento.
+
+¿Cómo funciona el bot?
+1. El usuario escribe una opción
+
+Si coincide con un número o letra válida, el bot muestra el mensaje correspondiente.
+
+2. Comandos globales
+0: Volver al inicio.
+v: Volver atrás.
+vaciar: Vaciar el carrito.
+3. Etiquetas especiales
+PEDIDO: Agrega el producto al carrito.
+CANTIDAD: Pregunta cuántas unidades desea.
+DATOS: Espera que el usuario escriba un texto.
+ARCHIVO: Espera que el usuario envíe un archivo o imagen.
+FINALIZAR: Finaliza el pedido.
