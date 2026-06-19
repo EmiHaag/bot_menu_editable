@@ -365,7 +365,7 @@ class Dashboard {
 
                         body { 
                             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; 
-                            margin: 40px; 
+                            margin: 24px; 
                             background: var(--bg-white); 
                             color: var(--text-main);
                         }
@@ -374,7 +374,7 @@ class Dashboard {
                             display: flex; 
                             justify-content: space-between; 
                             align-items: center; 
-                            margin-bottom: 30px;
+                            margin-bottom: 16px;
                             padding-bottom: 20px;
                             border-bottom: 2px solid var(--border-color);
                         }
@@ -383,15 +383,16 @@ class Dashboard {
                             width: 100%; 
                             border-collapse: collapse; 
                             background: var(--bg-box); 
-                            margin-top: 20px; 
-                            box-shadow: 0 4px 6px rgba(0,0,0,0.02);
+                            margin-top: 12px; 
+                            box-shadow: 0 2px 4px rgba(0,0,0,0.02);
                             border: 1px solid var(--border-color);
-                            border-radius: 8px;
+                            border-radius: 6px;
                             overflow: hidden;
+                            font-size: 13px;
                         }
 
                         th, td { 
-                            padding: 15px; 
+                            padding: 8px 10px; 
                             border: 1px solid var(--border-color); 
                             text-align: left; 
                         }
@@ -401,11 +402,12 @@ class Dashboard {
                             color: var(--text-muted);
                             font-weight: 600;
                             text-transform: uppercase;
-                            font-size: 12px;
-                            letter-spacing: 0.5px;
+                            font-size: 11px;
+                            letter-spacing: 0.3px;
                         }
 
-                        .toolbar { display: flex; gap: 10px; align-items: center; }
+                        .toolbar { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+                        .toolbar select, .toolbar label { font-size: 14px; white-space: nowrap; }
                         
                         .btn { 
                             padding: 10px 18px; 
@@ -421,6 +423,9 @@ class Dashboard {
                             display: inline-flex;
                             align-items: center;
                             justify-content: center;
+                            white-space: nowrap;
+                            min-width: 100px;
+                            box-sizing: border-box;
                         }
 
                         .btn:hover { 
@@ -431,21 +436,20 @@ class Dashboard {
                         
                         /* Unified Action Buttons */
                         .btn-action { 
-                            padding: 8px 14px; 
+                            padding: 4px 8px; 
                             border: 1px solid var(--border-color); 
-                            border-radius: 4px; 
+                            border-radius: 3px; 
                             cursor: pointer; 
                             color: var(--text-muted); 
                             background: var(--bg-box);
-                            font-size: 13px; 
+                            font-size: 11px; 
                             font-weight: 600; 
-                            transition: all 0.2s; 
+                            transition: all 0.15s; 
                         }
                         .btn-action:hover { 
                             background: var(--primary-color); 
                             color: white; 
                             border-color: var(--primary-color);
-                            transform: translateY(-1px); 
                         }
 
                         /* Legacy color classes mapped to unified style */
@@ -681,23 +685,28 @@ ${helpGuideCSS}
                             position: fixed;
                             bottom: 20px;
                             right: 20px;
-                            width: 56px;
-                            height: 56px;
-                            border-radius: 50%;
-                            background: #7c3aed;
-                            color: white;
-                            border: none;
+                            background: white;
+                            border-radius: 16px;
+                            padding: 10px 14px 8px 14px;
+                            box-shadow: 0 4px 20px rgba(0,0,0,0.12);
+                            border: 1px solid var(--border-color);
                             cursor: pointer;
-                            font-size: 24px;
                             z-index: 120;
-                            box-shadow: 0 4px 15px rgba(124,58,237,0.4);
-                            transition: transform 0.2s;
                             display: flex;
+                            flex-direction: column;
                             align-items: center;
-                            justify-content: center;
+                            gap: 2px;
+                            transition: transform 0.2s, box-shadow 0.2s;
+                            user-select: none;
                         }
-                        .support-toggle:hover { transform: scale(1.1); }
-                        .support-toggle.open { transform: rotate(45deg); }
+                        .support-toggle:hover { transform: scale(1.05); box-shadow: 0 6px 25px rgba(0,0,0,0.15); }
+                        .support-toggle canvas { display: block; }
+                        .support-toggle .label {
+                            font-size: 11px;
+                            color: var(--primary-color);
+                            font-weight: 600;
+                            letter-spacing: 0.3px;
+                        }
                         .support-modal {
                             position: fixed;
                             bottom: 90px;
@@ -715,7 +724,7 @@ ${helpGuideCSS}
                         }
                         .support-modal.open { display: flex; }
                         .support-header {
-                            background: #7c3aed;
+                            background: var(--primary-color);
                             color: white;
                             padding: 15px 20px;
                             display: flex;
@@ -750,7 +759,7 @@ ${helpGuideCSS}
                             color: #333;
                         }
                         .support-body .sb-bubble.user {
-                            background: #7c3aed;
+                            background: var(--primary-color);
                             color: white;
                             align-self: flex-end;
                             border-bottom-right-radius: 4px;
@@ -790,12 +799,12 @@ ${helpGuideCSS}
                             outline: none;
                             transition: border-color 0.2s;
                         }
-                        .support-footer input:focus { border-color: #7c3aed; }
+                        .support-footer input:focus { border-color: var(--primary-color); }
                         .support-footer button {
                             width: 40px;
                             height: 40px;
                             border-radius: 50%;
-                            background: #7c3aed;
+                            background: var(--primary-color);
                             color: white;
                             border: none;
                             cursor: pointer;
@@ -817,14 +826,14 @@ ${helpGuideCSS}
                         .support-footer .chip {
                             padding: 5px 12px;
                             background: #f3f0ff;
-                            color: #7c3aed;
+                            color: var(--primary-color);
                             border: 1px solid #ddd6fe;
                             border-radius: 16px;
                             font-size: 12px;
                             cursor: pointer;
                             transition: all 0.2s;
                         }
-                        .support-footer .chip:hover { background: #7c3aed; color: white; border-color: #7c3aed; }
+                        .support-footer .chip:hover { background: var(--primary-color); color: white; border-color: var(--primary-color); }
                     </style>
                     <script src="/js/robot-logo.js"></script>
                 </head>
@@ -915,26 +924,33 @@ ${helpGuideHTML}
                                             </label>
                                             <textarea id="addMessage" name="message" rows="3" placeholder="Mensaje que enviará el bot..." oninput="updatePreview('add')"></textarea>
                                         </div>
-                                        <div class="form-group" style="display: flex; gap: 10px; margin-bottom: 20px;">
-                                            <div style="flex: 1; display: flex; align-items: center; gap: 10px; background: #f8f9fa; padding: 10px; border-radius: 6px; border: 1px dashed var(--border-color);">
-                                                <input type="checkbox" id="addIsOrder" onchange="toggleOrderTag('add', '##PEDIDO##')" style="width: 20px; height: 20px; cursor: pointer;">
-                                                <label for="addIsOrder" style="margin-bottom: 0; cursor: pointer; font-size: 13px;">¿Crear pedido?</label>
+                                        <div class="form-group" style="margin-bottom: 20px;">
+                                            <div style="border:1px solid var(--border-color);border-radius:8px;padding:12px 12px 8px 12px;margin-bottom:12px;">
+                                                <div style="font-size:12px;font-weight:700;color:var(--text-main);margin-bottom:8px;">Carrito de compras</div>
+                                                <div style="display:flex;gap:10px;">
+                                                    <div style="flex:1;display:flex;align-items:center;gap:10px;background:#f8f9fa;padding:10px;border-radius:6px;border:1px dashed var(--border-color);">
+                                                        <input type="checkbox" id="addIsOrder" onchange="toggleOrderTag('add', '##PEDIDO##')" style="width:16px;height:16px;cursor:pointer;">
+                                                        <label for="addIsOrder" style="margin-bottom:0;cursor:pointer;font-size:13px;">¿Crear pedido?</label>
+                                                    </div>
+                                                    <div style="flex:1;display:flex;align-items:center;gap:10px;background:#eefbff;padding:10px;border-radius:6px;border:1px dashed #bee5eb;">
+                                                        <input type="checkbox" id="addIsQty" onchange="toggleOrderTag('add', '##CANTIDAD##')" style="width:16px;height:16px;cursor:pointer;">
+                                                        <label for="addIsQty" style="margin-bottom:0;cursor:pointer;font-size:13px;">¿Pedir cantidad?</label>
+                                                    </div>
+                                                    <div style="flex:1;display:flex;align-items:center;gap:10px;background:#f3f0ff;padding:10px;border-radius:6px;border:1px dashed #d1d1ff;">
+                                                        <input type="checkbox" id="addIsFinal" onchange="toggleOrderTag('add', '##FINALIZAR##')" style="width:16px;height:16px;cursor:pointer;">
+                                                        <label for="addIsFinal" style="margin-bottom:0;cursor:pointer;font-size:13px;">¿Finalizar?</label>
+                                                    </div>
+                                                </div>
                                             </div>
-                                            <div style="flex: 1; display: flex; align-items: center; gap: 10px; background: #eefbff; padding: 10px; border-radius: 6px; border: 1px dashed #bee5eb;">
-                                                <input type="checkbox" id="addIsQty" onchange="toggleOrderTag('add', '##CANTIDAD##')" style="width: 20px; height: 20px; cursor: pointer;">
-                                                <label for="addIsQty" style="margin-bottom: 0; cursor: pointer; font-size: 13px;">¿Pedir cantidad?</label>
-                                            </div>
-                                            <div style="flex: 1; display: flex; align-items: center; gap: 10px; background: #f3f0ff; padding: 10px; border-radius: 6px; border: 1px dashed #d1d1ff;">
-                                                <input type="checkbox" id="addIsFinal" onchange="toggleOrderTag('add', '##FINALIZAR##')" style="width: 20px; height: 20px; cursor: pointer;">
-                                                <label for="addIsFinal" style="margin-bottom: 0; cursor: pointer; font-size: 13px;">¿Finalizar?</label>
-                                            </div>
-                                            <div style="flex: 1; display: flex; align-items: center; gap: 10px; background: #fff4e5; padding: 10px; border-radius: 6px; border: 1px dashed #ff9800;">
-                                                <input type="checkbox" id="addIsData" onchange="toggleOrderTag('add', '##DATOS##')" style="width: 20px; height: 20px; cursor: pointer;">
-                                                <label for="addIsData" style="margin-bottom: 0; cursor: pointer; font-size: 13px;">Capturar dato y continuar</label>
-                                            </div>
-                                            <div style="flex: 1; display: flex; align-items: center; gap: 10px; background: #e8f5e9; padding: 10px; border-radius: 6px; border: 1px dashed #66bb6a;">
-                                                <input type="checkbox" id="addIsArchivo" onchange="toggleOrderTag('add', '##ARCHIVO##')" style="width: 20px; height: 20px; cursor: pointer;">
-                                                <label for="addIsArchivo" style="margin-bottom: 0; cursor: pointer; font-size: 13px;">Solicitar archivo</label>
+                                            <div style="display:flex;gap:10px;margin-top:6px;">
+                                                <div style="flex:1;display:flex;align-items:center;gap:10px;background:#fff4e5;padding:10px;border-radius:6px;border:1px dashed #ff9800;">
+                                                    <input type="checkbox" id="addIsData" onchange="toggleOrderTag('add', '##DATOS##')" style="width:16px;height:16px;cursor:pointer;">
+                                                    <label for="addIsData" style="margin-bottom:0;cursor:pointer;font-size:13px;">Capturar dato y continuar</label>
+                                                </div>
+                                                <div style="flex:1;display:flex;align-items:center;gap:10px;background:#e8f5e9;padding:10px;border-radius:6px;border:1px dashed #66bb6a;">
+                                                    <input type="checkbox" id="addIsArchivo" onchange="toggleOrderTag('add', '##ARCHIVO##')" style="width:16px;height:16px;cursor:pointer;">
+                                                    <label for="addIsArchivo" style="margin-bottom:0;cursor:pointer;font-size:13px;">Solicitar archivo</label>
+                                                </div>
                                             </div>
                                         </div>
                                         <button type="submit" class="btn btn-green" style="width: 100%;">Crear Nodo Hijo</button>
@@ -1012,26 +1028,33 @@ ${helpGuideHTML}
                                             </label>
                                             <textarea id="editMessage" name="message" rows="4" oninput="updatePreview('edit')"></textarea>
                                         </div>
-                                        <div class="form-group" id="editTagsGroup" style="display: flex; gap: 10px; margin-bottom: 20px;">
-                                            <div style="flex: 1; display: flex; align-items: center; gap: 10px; background: #fff3cd; padding: 10px; border-radius: 6px; border: 1px dashed #ffc107;">
-                                                <input type="checkbox" id="editIsOrder" onchange="toggleOrderTag('edit', '##PEDIDO##')" style="width: 20px; height: 20px; cursor: pointer;">
-                                                <label for="editIsOrder" style="margin-bottom: 0; cursor: pointer; color: #856404; font-size: 13px;">¿Crear pedido?</label>
+                                        <div class="form-group" id="editTagsGroup" style="margin-bottom: 20px;">
+                                            <div style="border:1px solid var(--border-color);border-radius:8px;padding:12px 12px 8px 12px;margin:12px;">
+                                                <div style="font-size:12px;font-weight:700;color:var(--text-main);margin-bottom:8px;">Carrito de compras</div>
+                                                <div style="display:flex;gap:10px;">
+                                                    <div style="flex:1;display:flex;align-items:center;gap:10px;background:#fff3cd;padding:10px;border-radius:6px;border:1px dashed #ffc107;">
+                                                    <input type="checkbox" id="editIsOrder" onchange="toggleOrderTag('edit', '##PEDIDO##')" style="width:16px;height:16px;cursor:pointer;">
+                                                    <label for="editIsOrder" style="margin-bottom:0;cursor:pointer;color:#856404;font-size:13px;">¿Crear pedido?</label>
+                                                </div>
+                                                <div style="flex:1;display:flex;align-items:center;gap:10px;background:#eefbff;padding:10px;border-radius:6px;border:1px dashed #bee5eb;">
+                                                    <input type="checkbox" id="editIsQty" onchange="toggleOrderTag('edit', '##CANTIDAD##')" style="width:16px;height:16px;cursor:pointer;">
+                                                    <label for="editIsQty" style="margin-bottom:0;cursor:pointer;color:#0c5460;font-size:13px;">¿Pedir cantidad?</label>
+                                                </div>
+                                                <div style="flex:1;display:flex;align-items:center;gap:10px;background:#f3f0ff;padding:10px;border-radius:6px;border:1px dashed #d1d1ff;">
+                                                    <input type="checkbox" id="editIsFinal" onchange="toggleOrderTag('edit', '##FINALIZAR##')" style="width:16px;height:16px;cursor:pointer;">
+                                                    <label for="editIsFinal" style="margin-bottom:0;cursor:pointer;color:#5227cc;font-size:13px;">¿Finalizar?</label>
+                                                    </div>
+                                                </div>
                                             </div>
-                                            <div style="flex: 1; display: flex; align-items: center; gap: 10px; background: #eefbff; padding: 10px; border-radius: 6px; border: 1px dashed #bee5eb;">
-                                                <input type="checkbox" id="editIsQty" onchange="toggleOrderTag('edit', '##CANTIDAD##')" style="width: 20px; height: 20px; cursor: pointer;">
-                                                <label for="editIsQty" style="margin-bottom: 0; cursor: pointer; color: #0c5460; font-size: 13px;">¿Pedir cantidad?</label>
-                                            </div>
-                                            <div style="flex: 1; display: flex; align-items: center; gap: 10px; background: #f3f0ff; padding: 10px; border-radius: 6px; border: 1px dashed #d1d1ff;">
-                                                <input type="checkbox" id="editIsFinal" onchange="toggleOrderTag('edit', '##FINALIZAR##')" style="width: 20px; height: 20px; cursor: pointer;">
-                                                <label for="editIsFinal" style="margin-bottom: 0; cursor: pointer; color: #5227cc; font-size: 13px;">¿Finalizar?</label>
-                                            </div>
-                                            <div style="flex: 1; display: flex; align-items: center; gap: 10px; background: #fff4e5; padding: 10px; border-radius: 6px; border: 1px dashed #ff9800;">
-                                                <input type="checkbox" id="editIsData" onchange="toggleOrderTag('edit', '##DATOS##')" style="width: 20px; height: 20px; cursor: pointer;">
-                                                <label for="editIsData" style="margin-bottom: 0; cursor: pointer; color: #856404; font-size: 13px;">¿Capturar dato?</label>
-                                            </div>
-                                            <div style="flex: 1; display: flex; align-items: center; gap: 10px; background: #e8f5e9; padding: 10px; border-radius: 6px; border: 1px dashed #66bb6a;">
-                                                <input type="checkbox" id="editIsArchivo" onchange="toggleOrderTag('edit', '##ARCHIVO##')" style="width: 20px; height: 20px; cursor: pointer;">
-                                                <label for="editIsArchivo" style="margin-bottom: 0; cursor: pointer; color: #2e7d32; font-size: 13px;">¿Solicitar archivo?</label>
+                                            <div style="display:flex;gap:10px;margin-top:6px;">
+                                                <div style="flex:1;display:flex;align-items:center;gap:10px;background:#fff4e5;padding:10px;border-radius:6px;border:1px dashed #ff9800;">
+                                                    <input type="checkbox" id="editIsData" onchange="toggleOrderTag('edit', '##DATOS##')" style="width:16px;height:16px;cursor:pointer;">
+                                                    <label for="editIsData" style="margin-bottom:0;cursor:pointer;color:#856404;font-size:13px;">¿Capturar dato?</label>
+                                                </div>
+                                                <div style="flex:1;display:flex;align-items:center;gap:10px;background:#e8f5e9;padding:10px;border-radius:6px;border:1px dashed #66bb6a;">
+                                                    <input type="checkbox" id="editIsArchivo" onchange="toggleOrderTag('edit', '##ARCHIVO##')" style="width:16px;height:16px;cursor:pointer;">
+                                                    <label for="editIsArchivo" style="margin-bottom:0;cursor:pointer;color:#2e7d32;font-size:13px;">¿Solicitar archivo?</label>
+                                                </div>
                                             </div>
                                         </div>
                                         <button type="submit" class="btn btn-green" style="width: 100%;">Guardar Cambios</button>
@@ -1074,10 +1097,13 @@ ${helpGuideHTML}
                     </div>
 
                     <!-- Support Bot -->
-                    <button class="support-toggle" id="supportToggle" onclick="toggleSupport()">💬</button>
+                    <div class="support-toggle" id="supportToggle" onclick="toggleSupport()">
+                        <canvas id="botLogoSupport" width="200" height="200" style="width: 40px; height: 40px;"></canvas>
+                        <span class="label">te ayudo?</span>
+                    </div>
                     <div class="support-modal" id="supportModal">
                         <div class="support-header">
-                            <div>🤖</div>
+                            <canvas id="botLogoSupportHeader" width="200" height="200" style="width: 36px; height: 36px;"></canvas>
                             <div>
                                 <h4>Asistente del Editor</h4>
                                 <div class="sub">Consultá cómo usar el editor</div>
@@ -1109,6 +1135,8 @@ ${helpGuideHTML}
 
 ${helpGuideJS}
                         drawRobot('botLogoDash');
+                        drawRobot('botLogoSupport');
+                        drawRobot('botLogoSupportHeader');
 
                         function updateTitleState(type, isData) {
                             const idEl = document.getElementById(type + 'Id');

@@ -1,147 +1,69 @@
-Guía del Editor
+Guía del Editor: Creá el menú de tu bot paso a paso
+Bienvenido al editor de tu bot de WhatsApp. En esta guía vas a aprender cómo estructurar las opciones de tu tabla para armar flujos automáticos e interactivos.
 
-Aprendé a crear el menú de tu bot paso a paso.
+1. ¿Qué es cada columna de la tabla?
+Para diseñar tu bot, vas a interactuar con una tabla de nodos jerárquicos. Cada fila representa una opción y tiene los siguientes campos:
 
-¿Qué es cada columna de la tabla?
+Disparador: El número, letra o palabra corta que el usuario debe escribir en WhatsApp para elegir esa opción (ej: 1, 2, A, turno).
 
-Disparador: El número o letra que el usuario escribe para elegir esta opción (ej: 1, 2, 3).
+Título: El texto descriptivo que el usuario verá enlistado en el menú (ej: Hamburguesa, Pedir Turno).
 
-Título: El texto que ve el usuario en el menú (ej: Hamburguesa).
+Mensaje: La respuesta de texto que el bot enviará de forma automática cuando el usuario seleccione esta opción.
 
-Mensaje: Lo que responde el bot cuando el usuario elige esta opción.
+Precio (Opcional): Si vendés productos, al colocar el valor numérico aquí, el sistema lo mostrará automáticamente al lado del título (ej: $1500).
 
-Precio: Opcional. Si lo ponés, se muestra al lado del título (ej: $1500).
+Checkboxes de Comportamiento: Casillas especiales (Crear pedido, Pedir cantidad, Finalizar, Capturar dato y continuar, Solicitar archivo) que le dan superpoderes de automatización a la opción.
 
-Pedido / Cant / Fin / Datos / Archivo: Son etiquetas que le dan comportamientos especiales al nodo. Se activan con los checkboxes al editar.
+2. Reglas de Funcionamiento y Comandos Globales
+Antes de empezar a construir, tené en cuenta cómo se comporta el bot en producción:
 
-¿Cómo crear submenús?
+Evaluación de Opciones: Cuando el usuario escribe, el bot busca si coincide con un Disparador válido dentro del nivel actual del menú. Si coincide, ejecuta su acción.
 
-Un submenú es una opción que lleva a más opciones. Por ejemplo: "Bebidas" → "Coca", "Sprite", "Agua".
+Navegación del Historial: El sistema cuenta con comandos globales que el usuario puede ingresar en cualquier momento:
 
-Paso 1
+0: Vuelve inmediatamente al menú de inicio (Nodo Raíz).
 
-Creá la opción principal.
+v: Vuelve un paso atrás (al menú del nivel anterior).
 
-En la tabla, buscá el nodo Raíz y hacé clic en "+ Hijo".
+vaciar: Limpia por completo el carrito de compras (si está usando el módulo de pedidos).
 
-Paso 2
+3. Tutorial: ¿Cómo crear submenús (Niveles)?
+Un submenú es una opción que, al ser elegida, despliega una nueva lista de opciones.
+Ejemplo: Bebidas → Coca, Sprite, Agua.
 
-Completá los datos.
+Paso 1 (Crear la opción principal): Buscá el nodo principal (o el nodo Raíz si estás en el inicio) y hacé clic en el botón "+ Hijo".
 
-Poné un disparador (ej: 3), un título (ej: Bebidas) y en el mensaje escribí algo como:
+Paso 2 (Configurar el nodo padre): Completá los datos del formulario. Poné un disparador (ej: 3), un título (ej: Bebidas) y en el campo Mensaje escribí el texto de bienvenida al submenú (ej: "Elegí tu bebida favorita de la lista:").
 
-"Elegí tu bebida."
+Paso 3 (Agregar las opciones derivadas): Buscá en la tabla el nuevo nodo que creaste (Bebidas) y hacé clic en su propio botón "+ Hijo" para agregar las opciones hijas (Coca, Sprite, etc.).
 
-Este mensaje se muestra cuando el usuario elige "Bebidas".
+💡 Tip de Estructura: Si un nodo de la tabla tiene hijos, el bot mostrará su mensaje y automáticamente listará los títulos de sus hijos como opciones válidas. Si un nodo no tiene hijos, el bot enviará el mensaje y el flujo se detendrá ahí (nodo final).
 
-Paso 3
+4. Tutorial: ¿Cómo pedir datos al usuario (Texto libre)?
+Podés hacer que el bot pause el menú y espere a que el usuario escriba información en texto libre (como su nombre, dirección o DNI).
 
-Agregale hijos.
+Paso 1: Creá el nodo donde vas a hacer la pregunta y activá el checkbox "Capturar dato y continuar".
 
-Buscá el nodo "Bebidas" y hacé clic en "+ Hijo" para agregar "Coca", "Sprite", etc.
+Paso 2: En el campo Mensaje, escribí la pregunta exacta que querés hacerle. (Ejemplo: "¿Cuál es tu nombre completo?").
 
-Tip: Si un nodo tiene hijos, al elegirlo se muestran los hijos como opciones. Si no tiene hijos, se muestra el mensaje final.
+Paso 3 (Encadenar más preguntas): Si necesitás pedir más datos seguidos (ej: primero nombre y luego dirección), debés hacer clic en "+ Hijo" sobre el nodo de la primera pregunta. Creá un nodo hijo, activá también el checkbox "Capturar dato y continuar" y escribí la siguiente pregunta en el mensaje.
 
-¿Cómo pedir datos al usuario (nombre, dirección)?
+💡 Ejemplo de Flujo de Datos: Nodo Nombre (Capturar dato) → Hijo Dirección (Capturar dato) → Hijo Confirmación (Mensaje final).
 
-El bot puede pedirle al usuario que escriba texto libre.
+5. Tutorial: ¿Cómo solicitar un archivo o foto?
+Ideal para recibir comprobantes de pago, imágenes de recetas médicas o documentos en PDF.
 
-Paso 1
+Paso 1: Creá un nodo y activá el checkbox "Solicitar archivo".
 
-Creá un nodo y activá "Capturar dato y continuar".
+Paso 2: En el campo Mensaje, dale la instrucción al usuario de qué debe enviar. (Ejemplo: "Por favor, envianos la foto de tu comprobante de transferencia aquí").
 
-Paso 2
+Paso 3: Agregá un nodo Hijo para determinar qué hace el bot después de recibir el archivo. Si no agregás un hijo, el bot simplemente confirmará la recepción y devolverá al usuario al menú de inicio de forma automática.
 
-En el campo Mensaje escribí la pregunta.
+6. Tutorial: ¿Cómo crear un menú de compras (Carrito de Pedidos)?
+Podés transformar tu menú en una tienda virtual interactiva donde los clientes suman productos a un carrito y reciben el total facturado.
 
-Ejemplo:
+Paso 1 (Configurar Productos): Creá los nodos de tus productos rellenando el campo Precio y activando el checkbox "Crear pedido" en cada uno de ellos.
 
-"¿Cuál es tu nombre?"
+Paso 2 (Configurar Cantidades - Opcional): Si querés que el bot le pregunte al cliente cuántas unidades llevar de ese artículo, activá también el checkbox "Pedir cantidad" en el producto. El bot interceptará la compra preguntando automáticamente: "¿Cuántos deseas añadir?".
 
-Paso 3
-
-Agregá un hijo para continuar.
-
-Si querés pedir más datos (por ejemplo, primero nombre y luego dirección), ese hijo también debe tener el mismo comportamiento activado.
-
-Ejemplo:
-
-Nombre → Dirección → Confirmar
-
-¿Cómo pedir un archivo o foto?
-
-El bot puede recibir imágenes o PDFs del usuario.
-
-Paso 1
-
-Activá "Solicitar archivo".
-
-Paso 2
-
-Escribí el mensaje.
-
-Ejemplo:
-
-"Envianos la foto de tu receta médica."
-
-Paso 3
-
-Agregá un hijo para continuar.
-
-Si no agregás un hijo, el bot confirma la recepción del archivo y vuelve al inicio.
-
-Tip: El usuario puede enviar el archivo con o sin comentario. El comentario también se recibe.
-
-¿Cómo crear un menú de pedidos?
-
-Podés armar un carrito de compras donde el usuario va agregando productos.
-
-Paso 1
-
-Activá "Crear pedido" en cada producto.
-
-Así los productos se agregan al carrito.
-
-Paso 2 (Opcional)
-
-Activá "Pedir cantidad".
-
-El bot preguntará:
-
-"¿Cuántos?"
-
-Paso 3
-
-Creá un nodo "Finalizar".
-
-Activá la opción "Finalizar" y escribí un mensaje como:
-
-"Gracias por tu pedido."
-
-Antes de finalizar, el bot mostrará el resumen con el total.
-
-Ejemplo:
-
-Menú Principal
-
-Hamburguesa
-Pizza
-Finalizar
-
-El usuario puede escribir vaciar para limpiar el carrito en cualquier momento.
-
-¿Cómo funciona el bot?
-1. El usuario escribe una opción
-
-Si coincide con un número o letra válida, el bot muestra el mensaje correspondiente.
-
-2. Comandos globales
-0: Volver al inicio.
-v: Volver atrás.
-vaciar: Vaciar el carrito.
-3. Etiquetas especiales
-PEDIDO: Agrega el producto al carrito.
-CANTIDAD: Pregunta cuántas unidades desea.
-DATOS: Espera que el usuario escriba un texto.
-ARCHIVO: Espera que el usuario envíe un archivo o imagen.
-FINALIZAR: Finaliza el pedido.
+Paso 3 (Crear el cierre de compra): En el mismo nivel donde están tus productos, creá un nodo hermano llamado "Finalizar pedido" (o similar). Activá el checkbox "Finalizar" y escribí tu mensaje de despedida en el campo Mensaje (Ejemplo: "¡Gracias por tu compra! Estamos procesando tu pedido.").
