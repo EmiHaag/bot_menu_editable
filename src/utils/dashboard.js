@@ -1437,8 +1437,29 @@ ${helpGuideJS}
                         }
 
                         function closeModal(modalId) {
-                            document.getElementById(modalId).style.display = "none";
+                            const el = document.getElementById(modalId);
+                            if (el) el.style.display = "none";
                         }
+
+                        // Cerrar modal al hacer click fuera del contenido
+                        document.addEventListener('click', function(e) {
+                            document.querySelectorAll('.modal').forEach(function(m) {
+                                if (m.style.display === 'block' && e.target === m) {
+                                    m.style.display = 'none';
+                                }
+                            });
+                        });
+
+                        // Cerrar modal al presionar Escape
+                        document.addEventListener('keydown', function(e) {
+                            if (e.key === 'Escape') {
+                                document.querySelectorAll('.modal').forEach(function(m) {
+                                    if (m.style.display === 'block') {
+                                        m.style.display = 'none';
+                                    }
+                                });
+                            }
+                        });
 
                         // --- Support Bot ---
                         function toggleSupport() {

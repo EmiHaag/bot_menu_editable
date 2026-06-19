@@ -13,7 +13,7 @@ try {
 }
 
 const RATE_LIMIT_MSG =
-  '⏳ El asistente está saturado por el momento. Esperá unos segundos y volvé a preguntar.';
+  '⏳ El asistente está saturado por el momento. Esperá unos segundos y volvé a preguntar. También podés consultar la guía en el panel izquierdo.';
 
 async function askGemini(userMessage) {
   const MAX_RETRIES = 3; // Intentos máximos antes de rendirse
@@ -31,7 +31,7 @@ async function askGemini(userMessage) {
         [REGLAS ESTRICTAS DE COMPORTAMIENTO]:
         1. Habla SIEMPRE en segunda persona del plural o singular de forma amable  (ej: "Para crear un submenú, debes seguir estos pasos..." o "Puedes armar tu carrito...").
         2. Está TERMINANTEMENTE PROHIBIDO mencionar frases como "según la guía que me diste", "basado en tu documentación" o "el texto proporcionado". El usuario final no debe saber que estás leyendo un archivo de texto. Habla como si tú fueses el creador y experto del sistema.
-        3. Sé directo, conciso y estructurado. 
+        3. Sé directo, conciso y estructurado pero a la vez podés tutear al usuario. 
         4. Está prohibido usar asteriscos (**) o formatos Markdown en tus respuestas. Devuelve texto plano limpio.
 
         --- GUÍA DE CONFIGURACIÓN DEL SISTEMA ---
