@@ -1,18 +1,37 @@
 FROM node:20-slim
 
-# Instalamos git y agregamos dependencias para evitar errores con librerías nativas
-RUN apt-get update && apt-get install -y git && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y \
+    git \
+    ca-certificates \
+    fonts-liberation \
+    libasound2 \
+    libatk-bridge2.0-0 \
+    libatk1.0-0 \
+    libcups2 \
+    libdrm2 \
+    libgbm1 \
+    libnss3 \
+    libnspr4 \
+    libu2f-udev \
+    libvulkan1 \
+    libxcomposite1 \
+    libxdamage1 \
+    libxfixes3 \
+    libxkbcommon0 \
+    libxrandr2 \
+    xdg-utils \
+    --no-install-recommends \
+    && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
 COPY package*.json ./
-
-# Instalamos solo producción
 RUN npm install --omit=dev
 
 COPY . .
 
 EXPOSE 8000
 
-# Eliminamos la línea VOLUME ["/data"] ya que Koyeb se encarga del montaje
-CMD ["node", "src/app.js"]
+ENV AUTH_SESSIONS_DIR=/data/auth_sessions
+
+CMD ["node", "server.js"]

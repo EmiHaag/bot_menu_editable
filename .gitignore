@@ -1,8 +1,7 @@
+app/node_modules/
 node_modules/
 .env
 auth_sessions/
-auth_info_*/
-auth_info_baileys/
 package-lock.json
 *.log
 nodemon.json

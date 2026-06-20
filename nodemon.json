@@ -1,5 +1,5 @@
 {
-  "ignore": ["auth_sessions/*", "node_modules/*"],
-  "ext": "js,json",
-  "watch": ["src/", ".env"]
+  "watch": ["server.js", "app/", "public/"],
+  "ignore": ["auth_sessions/", "node_modules/", "app/auth_sessions/", "app/node_modules/"],
+  "ext": "js,json,html,css"
 }

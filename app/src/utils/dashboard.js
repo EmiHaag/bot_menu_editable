@@ -1,4 +1,6 @@
 require('dotenv').config();
+// Also try loading .env from parent directory (for monorepo local dev)
+require('dotenv').config({ path: require('path').join(__dirname, '..', '..', '..', '.env') });
 const express = require('express');
 const bodyParser = require('body-parser');
 const GoogleSheetsService = require('../services/googleSheetsService');
@@ -88,7 +90,7 @@ class Dashboard {
                         <td><small>${client.spreadsheetId}</small></td>
                         <td>
                             <button onclick="deleteClient('${client.idCliente}')" class="btn-action btn-red">Borrar</button>
-                            <a href="/?botId=${client.idCliente}" class="btn-action">Ver Menú</a>
+                            <a href="/app/?botId=${client.idCliente}" class="btn-action">Ver Menú</a>
                         </td>
                     </tr>
                 `).join('');
@@ -131,7 +133,7 @@ class Dashboard {
                             </div>
                             <div>
                                 <button onclick="document.getElementById('addClientModal').style.display='block'" class="btn btn-green">+ Nuevo Cliente</button>
-                                <a href="/" class="btn" style="border: 1px solid #ccc">Volver al Editor</a>
+                                <a href="/app/" class="btn" style="border: 1px solid #ccc">Volver al Editor</a>
                             </div>
                         </div>
 
@@ -154,7 +156,7 @@ class Dashboard {
                         <div id="addClientModal" class="modal">
                             <div class="modal-content">
                                 <h3>Crear Nuevo Cliente</h3>
-                                <form action="/admin/create-client" method="POST">
+                                <form action="/app/admin/create-client" method="POST">
                                     <div class="form-group">
                                         <label>ID Cliente (ej: pizzeriajuan):</label>
                                         <input type="text" name="idCliente" required>
@@ -183,7 +185,7 @@ class Dashboard {
                             drawRobot('botLogoAdmin');
                             function deleteClient(id) {
                                 if (confirm('¿Seguro que deseas borrar al cliente ' + id + '? Se eliminará su acceso.')) {
-                                    window.location.href = '/admin/delete-client/' + id;
+                                    window.location.href = '/app/admin/delete-client/' + id;
                                 }
                             }
                         </script>
@@ -221,7 +223,7 @@ class Dashboard {
                     spreadsheetId
                 });
 
-                res.redirect('/admin?success=1');
+                res.redirect('/app/admin?success=1');
             } catch (error) {
                 console.error('Error creating client:', error);
                 res.status(500).send('Error al crear el cliente: ' + error.message);
@@ -245,7 +247,7 @@ class Dashboard {
                     await GoogleDriveService.deleteFile(client.spreadsheetId);
                 }
 
-                res.redirect('/admin?deleted=1');
+                res.redirect('/app/admin?deleted=1');
             } catch (error) {
                 console.error('Error deleting client:', error);
                 res.status(500).send('Error al borrar el cliente');
@@ -262,7 +264,7 @@ class Dashboard {
                     botId
                 } = await getServiceInfo(req);
                 if (service) service.clearCache();
-                res.redirect(`/?botId=${encodeURIComponent(botId)}`);
+                res.redirect(`/app/?botId=${encodeURIComponent(botId)}`);
             } catch (error) {
                 console.error('Error al refrescar:', error);
                 res.status(500).send('Error al refrescar la caché.');
@@ -293,7 +295,7 @@ class Dashboard {
 
                 botSelector = `
                     <label>Bot:</label>
-                    <select onchange="window.location.href='/?botId=' + this.value">
+                    <select onchange="window.location.href='/app/?botId=' + this.value">
                         ${botOptions}
                     </select>
                 `;
@@ -870,12 +872,12 @@ ${helpGuideCSS}
                         </div>
                         <div class="toolbar">
                             ${botSelector}
-                            ${isAdmin ? '<a href="/admin" class="btn btn-blue" style="background: #007bff; color: white;">Panel Admin</a>' : ''}
+                            ${isAdmin ? '<a href="/app/admin" class="btn btn-blue" style="background: #007bff; color: white;">Panel Admin</a>' : ''}
                             <button onclick="showVisual()" class="btn btn-purple">Visualizar</button>
-                            <a href="/qr" class="btn btn-green">WhatsApp QR</a>
-                            <a href="/refresh?botId=${botId}" class="btn btn-orange">Refrescar</a>
+                            <a href="/app/qr" class="btn btn-green">WhatsApp QR</a>
+                            <a href="/app/refresh?botId=${botId}" class="btn btn-orange">Refrescar</a>
                             ${isAdmin ? `<a href="https://docs.google.com/spreadsheets/d/${service.spreadsheetId}" target="_blank" class="btn btn-blue">Abrir Sheet</a>` : ''}
-                            <a href="/logout" class="btn btn-red">Salir</a>
+                            <a href="/app/logout" class="btn btn-red">Salir</a>
                         </div>
                     </div>
 
@@ -922,7 +924,7 @@ ${helpGuideHTML}
                                         <div id="addPreview" style="font-family: monospace; white-space: pre-wrap; font-size: 13px; max-height: 120px; overflow-y: auto; overflow-x: hidden;"></div>
                                     </div>
 
-                                    <form action="/add" method="POST">
+                                    <form action="/app/add" method="POST">
                                         <input type="hidden" name="botId" value="${botId}">
                                         <input type="hidden" id="addParentId" name="parentId">
                                         <input type="hidden" id="addId" name="id">
@@ -1014,7 +1016,7 @@ ${helpGuideHTML}
                                         <div id="editPreview" style="font-family: monospace; white-space: pre-wrap; font-size: 13px; max-height: 120px; overflow-y: auto; overflow-x: hidden;"></div>
                                     </div>
 
-                                    <form action="/save" method="POST">
+                                    <form action="/app/save" method="POST">
                                         <input type="hidden" name="botId" value="${botId}">
                                         <input type="hidden" id="editIndex" name="index">
                                         <input type="hidden" id="editId" name="id">
@@ -1167,7 +1169,7 @@ ${helpGuideJS}
                             const dot = document.getElementById('statusDot');
                             const label = document.getElementById('statusLabel');
                             if (!dot || !label) return;
-                            fetch('/api/bot/status/${botId}')
+                            fetch('/app/api/bot/status/${botId}')
                                 .then(r => r.json())
                                 .then(data => {
                                     const labels = {
@@ -1484,7 +1486,7 @@ ${helpGuideJS}
                             }
 
                             confirmBtn.onclick = function() {
-                                window.location.href = '/delete/' + index + '?botId=' + encodeURIComponent(botId) + '&nodeId=' + encodeURIComponent(nodeId);
+                                window.location.href = '/app/delete/' + index + '?botId=' + encodeURIComponent(botId) + '&nodeId=' + encodeURIComponent(nodeId);
                             };
 
                             document.getElementById('deleteConfirmModal').style.display = "block";
@@ -1592,7 +1594,7 @@ ${helpGuideJS}
                             body.scrollTop = body.scrollHeight;
 
                             try {
-                                const res = await fetch('/api/support/ask', {
+                                const res = await fetch('/app/api/support/ask', {
                                     method: 'POST',
                                     headers: { 'Content-Type': 'application/json' },
                                     body: JSON.stringify({ message: msg, context: context })
@@ -1692,7 +1694,7 @@ ${helpGuideJS}
                 } else {
                     await service.deleteRow(index);
                 }
-                res.redirect(`/?botId=${encodeURIComponent(botId)}`);
+                res.redirect(`/app/?botId=${encodeURIComponent(botId)}`);
             } catch (error) {
                 console.error('Error al borrar en Sheets:', error);
                 res.status(500).send('Error al borrar la fila.');
@@ -1726,7 +1728,7 @@ ${helpGuideJS}
                     price,
                     strictTrigger
                 });
-                res.redirect(`/?botId=${encodeURIComponent(botId)}`);
+                res.redirect(`/app/?botId=${encodeURIComponent(botId)}`);
             } catch (error) {
                 console.error('Error al guardar en Sheets:', error);
                 res.status(500).send('Error al guardar los datos.');
@@ -1758,7 +1760,7 @@ ${helpGuideJS}
                     price
                 });
 
-                res.redirect(`/?botId=${encodeURIComponent(botId)}`);
+                res.redirect(`/app/?botId=${encodeURIComponent(botId)}`);
             } catch (error) {
                 console.error('Error al agregar a Sheets:', error);
                 res.status(500).send('Error al agregar los datos.');

@@ -1,5 +1,5 @@
 services:
-  bot-menu:
+  bot:
     build: .
     container_name: bot-menu-whatsapp
     restart: unless-stopped
@@ -8,5 +8,4 @@ services:
     env_file:
       - .env
     volumes:
-      - ./data/auth_sessions:/data/auth_sessions
-
+      - ./auth_sessions:/data/auth_sessions

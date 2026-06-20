@@ -1,4 +1,6 @@
 require('dotenv').config();
+// Also try loading .env from parent directory (for monorepo local dev)
+require('dotenv').config({ path: require('path').join(__dirname, '..', '..', '.env') });
 const fs = require('fs');
 const path = require('path');
 const {
@@ -15,16 +17,13 @@ const {
 const QRCode = require('qrcode');
 const pino = require('pino');
 const express = require('express');
-const session = require('express-session');
-const FileStore = require('session-file-store')(session);
 const GoogleSheetsService = require('./services/googleSheetsService');
 const StateService = require('./services/stateService');
 const MenuController = require('./controllers/menuController');
 const dashboard = require('./utils/dashboard');
 const userService = require('./services/userService');
 
-const app = express();
-const port = process.env.PORT || 8000;
+const appRouter = express.Router();
 const AUTH_SESSIONS_DIR = path.resolve(
     process.env.AUTH_SESSIONS_DIR || 
     (process.platform !== 'win32' && fs.existsSync('/data') 
@@ -51,37 +50,8 @@ try {
     console.error(`[System] Error creating session directories: ${err.message}`);
 }
 
-// Configuración de Sesiones
-app.use(session({
-    store: new FileStore({
-        path: path.join(AUTH_SESSIONS_DIR, 'web_sessions'),
-        ttl: 3600, // 1 hora para evitar cierres de sesión rápidos
-        reapInterval: 3600,
-        logFn: () => {}
-    }),
-    secret: process.env.SESSION_SECRET || 'bot-menu-secret',
-    resave: false,
-    saveUninitialized: false,
-    rolling: true,
-    cookie: {
-        maxAge: 60 * 60 * 1000 // 1 hora
-    }
-}));
-
-app.use(express.urlencoded({
-    extended: true
-}));
-
-// Servir archivos estáticos
-app.use(express.static(path.join(__dirname, 'public')));
-
-// Koyeb Health Check endpoint
-app.get('/health', (req, res) => {
-    res.status(200).send('OK');
-});
-
-// Ruta de Login (GET)
-app.get('/login', (req, res) => {
+// Ruta de Login (GET) - montada en /app
+appRouter.get('/login', (req, res) => {
     let errorMsg = '';
     if (req.query.error === '1') {
         errorMsg = '<div class="error-msg">Usuario o contraseña incorrectos</div>';
@@ -169,7 +139,7 @@ app.get('/login', (req, res) => {
                 <canvas id="botLogoLogin" width="200" height="200" style="position: absolute; top: -90px; left: 50%; transform: translateX(-50%); width: 140px; height: 140px; pointer-events: none; filter: drop-shadow(0 5px 15px rgba(0,0,0,0.1));"></canvas>
                 <h2>Editor de Menú de WhatsApp</h2>
                 ${errorMsg}
-                <form action="/login" method="POST">
+                <form action="/app/login" method="POST">
                     <div class="form-group">
                         <label for="username">Usuario</label>
                         <input type="text" id="username" name="username" required autofocus>
@@ -191,7 +161,7 @@ app.get('/login', (req, res) => {
 });
 
 // Ruta de Login (POST)
-app.post('/login', async (req, res) => {
+appRouter.post('/login', async (req, res) => {
     const {
         username,
         password
@@ -201,49 +171,44 @@ app.post('/login', async (req, res) => {
 
         // 1. Verificar si el usuario existe y la contraseña coincide
         if (!user || user.password !== password) {
-            return res.redirect('/login?error=1');
+            return res.redirect('/app/login?error=1');
         }
 
         // 2. Verificar si el usuario está activo
         if (!user.activo) {
-            return res.redirect('/login?error=2');
+            return res.redirect('/app/login?error=2');
         }
 
         // Si todo está bien, iniciar sesión
         req.session.user = user;
-        return res.redirect('/');
+        return res.redirect('/app/');
     } catch (error) {
         console.error('Login Error:', error);
-        res.redirect('/login?error=1');
+        res.redirect('/app/login?error=1');
     }
 });
 
 // Ruta de Logout
-app.get('/logout', (req, res) => {
+appRouter.get('/logout', (req, res) => {
     req.session.destroy((err) => {
         if (err) {
             console.error('Error destroying session:', err);
         }
         res.clearCookie('connect.sid'); // Nombre por defecto de la cookie de session
-        res.redirect('/login');
+        res.redirect('/app/login');
     });
 });
 
-// Middleware de Autenticación
-const authMiddleware = (req, res, next) => {
+// Middleware de Autenticación para rutas de /app
+appRouter.use((req, res, next) => {
+    if (req.path === '/login' || req.path === '/health') {
+        return next();
+    }
     if (req.session && req.session.user) {
         req.user = req.session.user;
         return next();
     }
-    res.redirect('/login');
-};
-
-// Aplicar middleware a todas las rutas excepto login y health
-app.use((req, res, next) => {
-    if (req.path === '/login' || req.path === '/health') {
-        return next();
-    }
-    authMiddleware(req, res, next);
+    res.redirect('/app/login');
 });
 
 const botQRs = {}; // Object to store status and data for each bot
@@ -478,7 +443,7 @@ async function startBot(botConfig, forceStart = false) {
 
 async function main() {
     // API: Obtener estado de un bot
-    app.get('/api/bot/status/:id', async (req, res) => {
+    appRouter.get('/api/bot/status/:id', async (req, res) => {
         const id = req.params.id;
         const loggedUser = req.user;
 
@@ -513,7 +478,7 @@ async function main() {
     });
 
     // API: Iniciar conexión de un bot
-    app.post('/api/bot/start/:id', async (req, res) => {
+    appRouter.post('/api/bot/start/:id', async (req, res) => {
         const id = req.params.id;
         const loggedUser = req.user;
 
@@ -543,7 +508,7 @@ async function main() {
     });
 
     // API: Detener conexión de un bot (por inactividad/visibilidad)
-    app.post('/api/bot/stop/:id', async (req, res) => {
+    appRouter.post('/api/bot/stop/:id', async (req, res) => {
         const id = req.params.id;
         const loggedUser = req.user;
 
@@ -583,10 +548,10 @@ async function main() {
     });
 
     // Integrated Dashboard routes
-    app.use('/', dashboard.setupRoutes());
+    appRouter.use('/', dashboard.setupRoutes());
 
     // Nueva ruta /qr dinámica
-    app.get('/qr', async (req, res) => {
+    appRouter.get('/qr', async (req, res) => {
         const loggedUser = req.user;
         
         // Ensure bot entries are initialized for the current user/clients
@@ -674,8 +639,8 @@ async function main() {
                         <h1>WhatsApp Status</h1>
                     </div>
                     <div style="display: flex; gap: 10px;">
-                        <a href="/" class="btn-back">Volver al Editor de Menú</a>
-                        <a href="/logout" class="btn-back btn-danger" style="color: white; background: var(--error-color); border: none;">Salir</a>
+                        <a href="/app/" class="btn-back">Volver al Editor de Menú</a>
+                        <a href="/app/logout" class="btn-back btn-danger" style="color: white; background: var(--error-color); border: none;">Salir</a>
                     </div>
                 </div>
                 <div class="container">
@@ -703,7 +668,7 @@ async function main() {
 
                     async function updateBotStatus(id) {
                         try {
-                            const res = await fetch('/api/bot/status/' + id);
+                            const res = await fetch('/app/api/bot/status/' + id);
                             if (!res.ok) return;
                             const data = await res.json();
                             
@@ -747,7 +712,7 @@ async function main() {
                     async function startBot(id) {
                         const btn = document.querySelector('#actions-' + id + ' button');
                         if (btn) btn.disabled = true;
-                        await fetch('/api/bot/start/' + id, { method: 'POST' });
+                        await fetch('/app/api/bot/start/' + id, { method: 'POST' });
                         updateBotStatus(id);
                     }
 
@@ -755,7 +720,7 @@ async function main() {
                         if (!confirm('¿Seguro que deseas borrar la sesión? Deberás escanear el QR nuevamente.')) return;
                         const btn = document.querySelector('#actions-' + id + ' button');
                         if (btn) btn.disabled = true;
-                        await fetch('/reconnect/' + id, { method: 'POST' });
+                        await fetch('/app/reconnect/' + id, { method: 'POST' });
                         updateBotStatus(id);
                     }
 
@@ -779,7 +744,7 @@ async function main() {
                         // Detener bots explícitamente al salir
                         for (const id of botIds) {
                             try {
-                                await fetch('/api/bot/stop/' + id, { method: 'POST' });
+                                await fetch('/app/api/bot/stop/' + id, { method: 'POST' });
                             } catch (e) {
                                 console.error('Error stopping ' + id, e);
                             }
@@ -806,7 +771,7 @@ async function main() {
     });
 
     // Endpoint para borrar sesión (reutilizado)
-    app.post('/reconnect/:botId', (req, res) => {
+    appRouter.post('/reconnect/:botId', (req, res) => {
         const loggedUser = req.user;
         const botId = req.params.botId;
 
@@ -850,12 +815,6 @@ async function main() {
                 error: 'Error'
             });
         }
-    });
-
-    app.listen(port, () => {
-        console.log(`🚀 Servidor unificado corriendo en http://localhost:${port}`);
-        console.log(`📊 Editor de Menú: http://localhost:${port}/`);
-        console.log(`📱 QR WhatsApp: http://localhost:${port}/qr`);
     });
 
     // Iniciar bots dinámicamente desde Sheets
@@ -923,4 +882,4 @@ async function main() {
     }, 30000);
 }
 
-main();
+module.exports = { appRouter, main };
