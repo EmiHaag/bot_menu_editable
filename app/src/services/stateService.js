@@ -50,6 +50,28 @@ class StateService {
         this.cache.del(this._getKey(jid) + ':pending_qty');
     }
 
+    setPendingOrderItem(jid, item) {
+        this.cache.set(this._getKey(jid) + ':pending_order', item, 600);
+    }
+
+    getPendingOrderItem(jid) {
+        return this.cache.get(this._getKey(jid) + ':pending_order');
+    }
+
+    clearPendingOrderItem(jid) {
+        this.cache.del(this._getKey(jid) + ':pending_order');
+    }
+
+    appendToLastOrderItem(jid, suffix) {
+        const key = this._getKey(jid) + ':order';
+        const currentOrder = this.cache.get(key) || [];
+        if (currentOrder.length > 0) {
+            const lastIndex = currentOrder.length - 1;
+            currentOrder[lastIndex] = currentOrder[lastIndex] + ` (${suffix})`;
+            this.cache.set(key, currentOrder);
+        }
+    }
+
     setWaitingForData(jid, nodeId) {
         this.cache.set(this._getKey(jid) + ':waiting_data', nodeId, 600);
     }

@@ -12,7 +12,7 @@ Mensaje: La respuesta de texto que el bot enviará de forma automática cuando e
 
 Precio (Opcional): Si vendés productos, al colocar el valor numérico aquí, el sistema lo mostrará automáticamente al lado del título (ej: $1500).
 
-Checkboxes de Comportamiento: Casillas especiales (Crear pedido, Pedir cantidad, Finalizar, Capturar dato y continuar, Solicitar archivo) que le dan superpoderes de automatización a la opción.
+Checkboxes "Carrito de compras": Casillas especiales dentro del grupo "Carrito de compras" que le dan comportamientos de automatización a la opción.
 
 2. Reglas de Funcionamiento y Comandos Globales
 Antes de empezar a construir, tené en cuenta cómo se comporta el bot en producción:
@@ -26,6 +26,8 @@ Navegación del Historial: El sistema cuenta con comandos globales que el usuari
 v: Vuelve un paso atrás (al menú del nivel anterior).
 
 vaciar: Limpia por completo el carrito de compras (si está usando el módulo de pedidos).
+
+p: (si el nodo tiene activado "Ir a pagar") Va al flujo de pago o confirmación del pedido.
 
 3. Tutorial: ¿Cómo crear submenús (Niveles)?
 Un submenú es una opción que, al ser elegida, despliega una nueva lista de opciones.
@@ -42,18 +44,18 @@ Paso 3 (Agregar las opciones derivadas): Buscá en la tabla el nuevo nodo que cr
 4. Tutorial: ¿Cómo pedir datos al usuario (Texto libre)?
 Podés hacer que el bot pause el menú y espere a que el usuario escriba información en texto libre (como su nombre, dirección o DNI).
 
-Paso 1: Creá el nodo donde vas a hacer la pregunta y activá el checkbox "Capturar dato y continuar".
+Paso 1: Creá el nodo donde vas a hacer la pregunta y activá el checkbox "Capturar dato y continuar" (color naranja).
 
 Paso 2: En el campo Mensaje, escribí la pregunta exacta que querés hacerle. (Ejemplo: "¿Cuál es tu nombre completo?").
 
 Paso 3 (Encadenar más preguntas): Si necesitás pedir más datos seguidos (ej: primero nombre y luego dirección), debés hacer clic en "+ Hijo" sobre el nodo de la primera pregunta. Creá un nodo hijo, activá también el checkbox "Capturar dato y continuar" y escribí la siguiente pregunta en el mensaje.
 
-💡 Ejemplo de Flujo de Datos: Nodo Nombre (Capturar dato) → Hijo Dirección (Capturar dato) → Hijo Confirmación (Mensaje final).
+💡 Ejemplo de Flujo de Datos: Nodo Nombre (📝) → Hijo Dirección (📝) → Hijo Confirmación (🏁).
 
 5. Tutorial: ¿Cómo solicitar un archivo o foto?
 Ideal para recibir comprobantes de pago, imágenes de recetas médicas o documentos en PDF.
 
-Paso 1: Creá un nodo y activá el checkbox "Solicitar archivo".
+Paso 1: Creá un nodo y activá el checkbox "Solicitar archivo" (color verde).
 
 Paso 2: En el campo Mensaje, dale la instrucción al usuario de qué debe enviar. (Ejemplo: "Por favor, envianos la foto de tu comprobante de transferencia aquí").
 
@@ -62,8 +64,31 @@ Paso 3: Agregá un nodo Hijo para determinar qué hace el bot después de recibi
 6. Tutorial: ¿Cómo crear un menú de compras (Carrito de Pedidos)?
 Podés transformar tu menú en una tienda virtual interactiva donde los clientes suman productos a un carrito y reciben el total facturado.
 
-Paso 1 (Configurar Productos): Creá los nodos de tus productos rellenando el campo Precio y activando el checkbox "Crear pedido" en cada uno de ellos.
+Paso 1 (Configurar Productos): Creá los nodos de tus productos rellenando el campo Precio y activando el checkbox "Crear pedido" (color amarillo) en cada uno de ellos.
 
-Paso 2 (Configurar Cantidades - Opcional): Si querés que el bot le pregunte al cliente cuántas unidades llevar de ese artículo, activá también el checkbox "Pedir cantidad" en el producto. El bot interceptará la compra preguntando automáticamente: "¿Cuántos deseas añadir?".
+Paso 2 (Configurar Cantidades - Opcional): Si querés que el bot le pregunte al cliente cuántas unidades llevar de ese artículo, activá también el checkbox "Pedir cantidad" (color celeste) en el producto. El bot interceptará la compra preguntando automáticamente "¿Cuántos?".
 
-Paso 3 (Crear el cierre de compra): En el mismo nivel donde están tus productos, creá un nodo hermano llamado "Finalizar pedido" (o similar). Activá el checkbox "Finalizar" y escribí tu mensaje de despedida en el campo Mensaje (Ejemplo: "¡Gracias por tu compra! Estamos procesando tu pedido.").
+Paso 3 (Variantes - Opcional): Si un producto tiene variantes (ej: chica/grande), el nodo del producto debe tener hijos. En el campo Mensaje de cada hijo, escribí manualmente el tag <code>##COMPLETAR##</code> al final (no tiene checkbox, va escrito a mano). Cuando el usuario ingresa la cantidad, el bot muestra las variantes y al elegir una se agrega al carrito como "2 x pepperoni (chica)".
+
+Paso 4 (Ir a pagar): Activá el checkbox "Ir a pagar" (color verde) en el nodo donde querés que aparezca la opción *p*. Ir a pagar (ej: en la raíz o en una categoría). El bot mostrará esta opción solo cuando haya items en el carrito. Al escribir p, el bot irá al primer hijo con "Finalizar" de ese nodo.
+
+Paso 5 (Crear el cierre de compra): En el mismo nivel donde están tus productos, creá un nodo hermano llamado "Finalizar pedido" (o similar). Activá el checkbox "Finalizar" y escribí tu mensaje de despedida en el campo Mensaje. El bot mostrará el resumen con el total antes de finalizar.
+
+💡 Podés combinar "Finalizar" con "Capturar dato" o "Solicitar archivo": el pedido se finaliza automáticamente después de recibir el dato o archivo.
+
+7. Resumen de Tags del Sistema
+Cada checkbox agrega un tag especial al mensaje del nodo:
+
+##PEDIDO## (✅) — Agrega "1 x Título" al carrito. Excluyente con CANTIDAD, DATOS y ARCHIVO.
+
+##CANTIDAD## (🔢) — Pregunta cuántas unidades, luego agrega al carrito. Si el nodo tiene hijos (variantes), muestra las opciones de variante después de la cantidad. Excluyente con PEDIDO, DATOS y ARCHIVO.
+
+##FINALIZAR## (🏁) — Al terminar el nodo, vacía el carrito. Se puede combinar con cualquier otro tag.
+
+##DATOS## (📝) — Espera que el usuario escriba texto libre. Si tiene hijos, continúa con el siguiente. Excluyente con PEDIDO, CANTIDAD y ARCHIVO.
+
+##ARCHIVO## (📎) — Espera que el usuario envíe un archivo/imagen. Si tiene hijos, continúa. Excluyente con PEDIDO, CANTIDAD y DATOS.
+
+##COMPLETAR## — Completa un item pendiente con variante (se usa en hijos de nodos con CANTIDAD). Agrega al carrito "2 x pepperoni (chica)".
+
+##PAGAR## (💳) — Muestra la opción *p*. Ir a pagar en el menú cuando hay items en el carrito. Se puede combinar con cualquier tag.

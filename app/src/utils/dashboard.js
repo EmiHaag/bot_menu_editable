@@ -317,12 +317,15 @@ class Dashboard {
                 const isFinal = node.message && node.message.includes('##FINALIZAR##');
                 const isData = node.message && node.message.includes('##DATOS##');
                 const isArchivo = node.message && node.message.includes('##ARCHIVO##');
+                const isPagar = node.message && node.message.includes('##PAGAR##');
                 const cleanMessage = (node.message || "")
                     .replace('##PEDIDO##', '')
                     .replace('##CANTIDAD##', '')
                     .replace('##FINALIZAR##', '')
                     .replace('##DATOS##', '')
                     .replace('##ARCHIVO##', '')
+                    .replace('##COMPLETAR##', '')
+                    .replace('##PAGAR##', '')
                     .trim();
 
                 return `
@@ -336,6 +339,7 @@ class Dashboard {
                     <td style="text-align: center;">${isFinal ? '<span style="color: var(--secondary-color);">🏁</span>' : '⚪'}</td>
                     <td style="text-align: center;">${isData ? '<span style="color: var(--warning-color);">📝</span>' : '⚪'}</td>
                     <td style="text-align: center;">${isArchivo ? '<span style="color: var(--info-color);">📎</span>' : '⚪'}</td>
+                    <td style="text-align: center;">${isPagar ? '<span style="color: var(--success-color);">💳</span>' : '⚪'}</td>
                     <td>
                         <div style="display: flex; gap: 5px;">
                             <button type="button" onclick="openEditModal(${idx})" class="btn-action btn-orange">Editar</button>
@@ -894,6 +898,8 @@ ${helpGuideHTML}
                                 <th>Cant.</th>
                                 <th>Fin</th>
                                 <th>Datos</th>
+                                <th>Archivo</th>
+                                <th>Pagar</th>
                                 <th>Acciones</th>
                             </tr>
                         </thead>
@@ -952,7 +958,7 @@ ${helpGuideHTML}
                                             <textarea id="addMessage" name="message" rows="3" placeholder="Mensaje que enviará el bot..." oninput="updatePreview('add')"></textarea>
                                         </div>
                                         <div class="form-group" style="margin-bottom: 20px;">
-                                            <div style="border:1px solid var(--border-color);border-radius:8px;padding:12px 12px 8px 12px;margin-bottom:12px;">
+                                            <div style="border:1px solid var(--border-color);border-radius:8px;padding:12px 12px 8px 12px;">
                                                 <div style="font-size:12px;font-weight:700;color:var(--text-main);margin-bottom:8px;">Carrito de compras</div>
                                                 <div style="display:flex;gap:10px;">
                                                     <div style="flex:1;display:flex;align-items:center;gap:10px;background:#f8f9fa;padding:10px;border-radius:6px;border:1px dashed var(--border-color);">
@@ -968,15 +974,22 @@ ${helpGuideHTML}
                                                         <label for="addIsFinal" style="margin-bottom:0;cursor:pointer;font-size:13px;">¿Finalizar?</label>
                                                     </div>
                                                 </div>
-                                            </div>
-                                            <div style="display:flex;gap:10px;margin-top:6px;">
-                                                <div style="flex:1;display:flex;align-items:center;gap:10px;background:#fff4e5;padding:10px;border-radius:6px;border:1px dashed #ff9800;">
-                                                    <input type="checkbox" id="addIsData" onchange="toggleOrderTag('add', '##DATOS##')" style="width:16px;height:16px;cursor:pointer;">
-                                                    <label for="addIsData" style="margin-bottom:0;cursor:pointer;font-size:13px;">Capturar dato y continuar</label>
+                                                <div style="display:flex;gap:10px;margin-top:6px;">
+                                                    <div style="flex:1;display:flex;align-items:center;gap:10px;background:#fff4e5;padding:10px;border-radius:6px;border:1px dashed #ff9800;">
+                                                        <input type="checkbox" id="addIsData" onchange="toggleOrderTag('add', '##DATOS##')" style="width:16px;height:16px;cursor:pointer;">
+                                                        <label for="addIsData" style="margin-bottom:0;cursor:pointer;font-size:13px;">Capturar dato y continuar</label>
+                                                    </div>
+                                                    <div style="flex:1;display:flex;align-items:center;gap:10px;background:#e8f5e9;padding:10px;border-radius:6px;border:1px dashed #66bb6a;">
+                                                        <input type="checkbox" id="addIsArchivo" onchange="toggleOrderTag('add', '##ARCHIVO##')" style="width:16px;height:16px;cursor:pointer;">
+                                                        <label for="addIsArchivo" style="margin-bottom:0;cursor:pointer;font-size:13px;">Solicitar archivo</label>
+                                                    </div>
                                                 </div>
-                                                <div style="flex:1;display:flex;align-items:center;gap:10px;background:#e8f5e9;padding:10px;border-radius:6px;border:1px dashed #66bb6a;">
-                                                    <input type="checkbox" id="addIsArchivo" onchange="toggleOrderTag('add', '##ARCHIVO##')" style="width:16px;height:16px;cursor:pointer;">
-                                                    <label for="addIsArchivo" style="margin-bottom:0;cursor:pointer;font-size:13px;">Solicitar archivo</label>
+                                                <div style="display:flex;gap:10px;margin-top:6px;">
+                                                    <div style="flex:1;display:flex;align-items:center;gap:10px;background:#f0fdf4;padding:10px;border-radius:6px;border:1px dashed #86efac;">
+                                                        <input type="checkbox" id="addIsPagar" onchange="toggleOrderTag('add', '##PAGAR##')" style="width:16px;height:16px;cursor:pointer;">
+                                                        <label for="addIsPagar" style="margin-bottom:0;cursor:pointer;font-size:13px;">Ir a pagar</label>
+                                                    </div>
+                                                    <div style="flex:1;"></div>
                                                 </div>
                                             </div>
                                         </div>
@@ -1072,15 +1085,22 @@ ${helpGuideHTML}
                                                     <label for="editIsFinal" style="margin-bottom:0;cursor:pointer;color:#5227cc;font-size:13px;">¿Finalizar?</label>
                                                     </div>
                                                 </div>
-                                            </div>
-                                            <div style="display:flex;gap:10px;margin-top:6px;">
-                                                <div style="flex:1;display:flex;align-items:center;gap:10px;background:#fff4e5;padding:10px;border-radius:6px;border:1px dashed #ff9800;">
-                                                    <input type="checkbox" id="editIsData" onchange="toggleOrderTag('edit', '##DATOS##')" style="width:16px;height:16px;cursor:pointer;">
-                                                    <label for="editIsData" style="margin-bottom:0;cursor:pointer;color:#856404;font-size:13px;">¿Capturar dato?</label>
+                                                <div style="display:flex;gap:10px;margin-top:6px;">
+                                                    <div style="flex:1;display:flex;align-items:center;gap:10px;background:#fff4e5;padding:10px;border-radius:6px;border:1px dashed #ff9800;">
+                                                        <input type="checkbox" id="editIsData" onchange="toggleOrderTag('edit', '##DATOS##')" style="width:16px;height:16px;cursor:pointer;">
+                                                        <label for="editIsData" style="margin-bottom:0;cursor:pointer;color:#856404;font-size:13px;">¿Capturar dato?</label>
+                                                    </div>
+                                                    <div style="flex:1;display:flex;align-items:center;gap:10px;background:#e8f5e9;padding:10px;border-radius:6px;border:1px dashed #66bb6a;">
+                                                        <input type="checkbox" id="editIsArchivo" onchange="toggleOrderTag('edit', '##ARCHIVO##')" style="width:16px;height:16px;cursor:pointer;">
+                                                        <label for="editIsArchivo" style="margin-bottom:0;cursor:pointer;color:#2e7d32;font-size:13px;">¿Solicitar archivo?</label>
+                                                    </div>
                                                 </div>
-                                                <div style="flex:1;display:flex;align-items:center;gap:10px;background:#e8f5e9;padding:10px;border-radius:6px;border:1px dashed #66bb6a;">
-                                                    <input type="checkbox" id="editIsArchivo" onchange="toggleOrderTag('edit', '##ARCHIVO##')" style="width:16px;height:16px;cursor:pointer;">
-                                                    <label for="editIsArchivo" style="margin-bottom:0;cursor:pointer;color:#2e7d32;font-size:13px;">¿Solicitar archivo?</label>
+                                                <div style="display:flex;gap:10px;margin-top:6px;">
+                                                    <div style="flex:1;display:flex;align-items:center;gap:10px;background:#f0fdf4;padding:10px;border-radius:6px;border:1px dashed #86efac;">
+                                                        <input type="checkbox" id="editIsPagar" onchange="toggleOrderTag('edit', '##PAGAR##')" style="width:16px;height:16px;cursor:pointer;">
+                                                        <label for="editIsPagar" style="margin-bottom:0;cursor:pointer;color:#166534;font-size:13px;">Ir a pagar</label>
+                                                    </div>
+                                                    <div style="flex:1;"></div>
                                                 </div>
                                             </div>
                                         </div>
@@ -1254,6 +1274,7 @@ ${helpGuideJS}
                             document.getElementById('addModal').style.display = "block";
                             document.getElementById('addIsData').checked = false;
                             document.getElementById('addIsArchivo').checked = false;
+                            document.getElementById('addIsPagar').checked = false;
                             updatePreview('add');
                         }
 
@@ -1266,6 +1287,7 @@ ${helpGuideJS}
                             const isFinal = node.message && node.message.includes('##FINALIZAR##');
                             const isData = node.message && node.message.includes('##DATOS##');
                             const isArchivo = node.message && node.message.includes('##ARCHIVO##');
+                            const isPagar = node.message && node.message.includes('##PAGAR##');
 
                             document.getElementById('editIndex').value = node.rowIndex;
                             document.getElementById('editId').value = node.id;
@@ -1274,9 +1296,12 @@ ${helpGuideJS}
                             document.getElementById('editTitle').value = node.title;
                             document.getElementById('editMessage').value = node.message || '';
                             document.getElementById('editPrice').value = node.price || '';
+                            document.getElementById('editIsOrder').checked = isOrder;
+                            document.getElementById('editIsQty').checked = isQty;
                             document.getElementById('editIsFinal').checked = isFinal;
                             document.getElementById('editIsData').checked = isData;
                             document.getElementById('editIsArchivo').checked = isArchivo;
+                            document.getElementById('editIsPagar').checked = isPagar;
 
                             const strictGroup = document.getElementById('strictTriggerGroup');
                             const strictCheckbox = document.getElementById('editStrictTrigger');
@@ -1405,14 +1430,16 @@ ${helpGuideJS}
                             // 1. Mensaje del Padre (Contexto)
                             let parentHtml = '';
                             if (parent && id !== 'root') {
-                                let parentContent = (parent.message || '')
-                                    .replace('##PEDIDO##', '')
-                                    .replace('##CANTIDAD##', '')
-                                    .replace('##FINALIZAR##', '')
-                                    .replace('##DATOS##', '')
-                                    .replace('##ARCHIVO##', '')
-                                    .replace('_Este es el nodo de inicio, su mensaje no se muestra directamente en el bot._', '')
-                                    .trim();
+                            let parentContent = (parent.message || '')
+                                .replace('##PEDIDO##', '')
+                                .replace('##CANTIDAD##', '')
+                                .replace('##FINALIZAR##', '')
+                                .replace('##DATOS##', '')
+                                .replace('##ARCHIVO##', '')
+                                .replace('##COMPLETAR##', '')
+                                .replace('##PAGAR##', '')
+                                .replace('_Este es el nodo de inicio, su mensaje no se muestra directamente en el bot._', '')
+                                .trim();
 
                                 // Usar los mismos displayItems ordenados para la lista de opciones
                                 let optionsList = '';
@@ -1446,6 +1473,8 @@ ${helpGuideJS}
                                 .replace('##FINALIZAR##', '')
                                 .replace('##DATOS##', '')
                                 .replace('##ARCHIVO##', '')
+                                .replace('##COMPLETAR##', '')
+                                .replace('##PAGAR##', '')
                                 .replace('_Este es el nodo de inicio, su mensaje no se muestra directamente en el bot._', '')
                                 .trim();
                             
@@ -1547,6 +1576,7 @@ ${helpGuideJS}
                             const isFinal = document.getElementById('editIsFinal').checked;
                             const isData = document.getElementById('editIsData').checked;
                             const isArchivo = document.getElementById('editIsArchivo').checked;
+                            const isPagar = document.getElementById('editIsPagar').checked;
 
                             const tags = [];
                             if (isOrder) tags.push('##PEDIDO##');
@@ -1554,6 +1584,7 @@ ${helpGuideJS}
                             if (isFinal) tags.push('##FINALIZAR##');
                             if (isData) tags.push('##DATOS##');
                             if (isArchivo) tags.push('##ARCHIVO##');
+                            if (isPagar) tags.push('##PAGAR##');
 
                             const parentId = document.getElementById('editParentId').value;
                             const parent = menuData.find(n => n.id === parentId);
@@ -1624,6 +1655,7 @@ ${helpGuideJS}
                             const isFinalCheckbox = document.getElementById(type === 'edit' ? 'editIsFinal' : 'addIsFinal');
                             const isDataCheckbox = document.getElementById(type === 'edit' ? 'editIsData' : 'addIsData');
                             const isArchivoCheckbox = document.getElementById(type === 'edit' ? 'editIsArchivo' : 'addIsArchivo');
+                            const isPagarCheckbox = document.getElementById(type === 'edit' ? 'editIsPagar' : 'addIsPagar');
                             
                             let currentVal = messageEl.value
                                 .replace('##PEDIDO##', '')
@@ -1631,36 +1663,41 @@ ${helpGuideJS}
                                 .replace('##FINALIZAR##', '')
                                 .replace('##DATOS##', '')
                                 .replace('##ARCHIVO##', '')
+                                .replace('##PAGAR##', '')
                                 .trim();
+                            
+                            if (tag === '##PAGAR##' || tag === '##FINALIZAR##') {
+                                let val = messageEl.value
+                                    .replace(tag, '')
+                                    .trim();
+                                const cb = tag === '##PAGAR##' ? isPagarCheckbox : isFinalCheckbox;
+                                if (cb.checked) {
+                                    messageEl.value = val + (val ? '\\n\\n' : '') + tag;
+                                } else {
+                                    messageEl.value = val;
+                                }
+                                updatePreview(type);
+                                return;
+                            }
                             
                             if (tag === '##PEDIDO##' && isOrderCheckbox.checked) {
                                 isQtyCheckbox.checked = false;
-                                isFinalCheckbox.checked = false;
                                 isDataCheckbox.checked = false;
                                 isArchivoCheckbox.checked = false;
                                 messageEl.value = currentVal + (currentVal ? '\\n\\n' : '') + '##PEDIDO##';
                             } else if (tag === '##CANTIDAD##' && isQtyCheckbox.checked) {
                                 isOrderCheckbox.checked = false;
-                                isFinalCheckbox.checked = false;
                                 isDataCheckbox.checked = false;
                                 isArchivoCheckbox.checked = false;
                                 messageEl.value = currentVal + (currentVal ? '\\n\\n' : '') + '##CANTIDAD##';
-                            } else if (tag === '##FINALIZAR##' && isFinalCheckbox.checked) {
-                                isOrderCheckbox.checked = false;
-                                isQtyCheckbox.checked = false;
-                                isDataCheckbox.checked = false;
-                                isArchivoCheckbox.checked = false;
-                                messageEl.value = currentVal + (currentVal ? '\\n\\n' : '') + '##FINALIZAR##';
                             } else if (tag === '##DATOS##' && isDataCheckbox.checked) {
                                 isOrderCheckbox.checked = false;
                                 isQtyCheckbox.checked = false;
-                                isFinalCheckbox.checked = false;
                                 isArchivoCheckbox.checked = false;
                                 messageEl.value = currentVal + (currentVal ? '\\n\\n' : '') + '##DATOS##';
                             } else if (tag === '##ARCHIVO##' && isArchivoCheckbox.checked) {
                                 isOrderCheckbox.checked = false;
                                 isQtyCheckbox.checked = false;
-                                isFinalCheckbox.checked = false;
                                 isDataCheckbox.checked = false;
                                 messageEl.value = currentVal + (currentVal ? '\\n\\n' : '') + '##ARCHIVO##';
                             } else {

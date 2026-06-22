@@ -104,11 +104,20 @@ class MenuController {
         const pendingItem = this.stateService.getPendingQuantityItem(jid);
         if (pendingItem && !isNaN(input) && parseInt(input) > 0) {
             const quantity = parseInt(input);
-            ////console.log(`[Estado] Usuario ${jid} añadió cantidad: ${quantity} x ${pendingItem}`);
-            this.stateService.addItemToOrder(jid, `${quantity} x ${pendingItem}`);
             this.stateService.clearPendingQuantityItem(jid);
 
             await this.sendPresenceTyping(sock, jid);
+
+            // Si el nodo actual tiene hijos (ej: talles), no agregamos aún al carrito
+            const children = await this.googleSheetsService.getNodesByParent(currentStateId);
+            if (children.length > 0) {
+                this.stateService.setPendingOrderItem(jid, { quantity, title: pendingItem });
+                await this.processNode(sock, jid, children[0]);
+                return;
+            }
+
+            // Sin hijos: agrega directo al carrito y vuelve al menú padre
+            this.stateService.addItemToOrder(jid, `${quantity} x ${pendingItem}`);
 
             const currentNode = await this.googleSheetsService.getNodeById(currentStateId);
             const parentId = currentNode ? currentNode.parentId : 'root';
@@ -117,7 +126,6 @@ class MenuController {
                 text: `✅ Añadido: ${quantity} x ${pendingItem}`
             });
 
-            // Regresa al menú padre para que el usuario pueda seguir comprando cómodamente
             await this.sendMenu(sock, jid, parentId);
             return;
         }
@@ -154,6 +162,20 @@ class MenuController {
                 await this.sendMenu(sock, jid, parentId);
             }
             return;
+        }
+
+        // IR A PAGAR: busca un hijo con ##FINALIZAR## (confirmación), si no el primer hijo
+        if (input === 'p' || input === 'pagar') {
+            const payNode = await this.googleSheetsService.getNodeById(currentStateId);
+            if (payNode && payNode.message && payNode.message.includes('##PAGAR##')) {
+                const order = this.stateService.getUserOrder(jid);
+                const payChildren = await this.googleSheetsService.getNodesByParent(currentStateId);
+                if (order.length > 0 && payChildren.length > 0) {
+                    const target = payChildren.find(c => c.message && c.message.includes('##FINALIZAR##')) || payChildren[0];
+                    await this.processNode(sock, jid, target);
+                    return;
+                }
+            }
         }
 
         // PRIORIDAD 4: BUSCAR SI EL INPUT ES UNA OPCIÓN DEL MENÚ ACTUAL
@@ -238,8 +260,11 @@ class MenuController {
         // FOOTER DE NAVEGACIÓN CONSISTENTE
         menuText += `\n---\n`;
 
-        if (parentId === 'root') {
-            if (order.length > 0) {
+        if (order.length > 0) {
+            if (currentNode.message && currentNode.message.includes('##PAGAR##')) {
+                menuText += `*p*. Ir a pagar\n`;
+            }
+            if (parentId === 'root') {
                 menuText += `*vaciar*. Vaciar pedido\n`;
             }
         }
@@ -269,6 +294,8 @@ class MenuController {
             if (node.message.includes('##DATOS##')) nodeTags.push('DATOS');
             if (node.message.includes('##ARCHIVO##')) nodeTags.push('ARCHIVO');
             if (node.message.includes('##FINALIZAR##')) nodeTags.push('FINALIZAR');
+            if (node.message.includes('##COMPLETAR##')) nodeTags.push('COMPLETAR');
+            if (node.message.includes('##PAGAR##')) nodeTags.push('PAGAR');
         }
 
         if (nodeTags.includes('PEDIDO')) {
@@ -310,6 +337,27 @@ class MenuController {
             return;
         }
 
+        // 1c. COMPLETAR: completa un ítem pendiente (cantidad + producto + variante)
+        if (nodeTags.includes('COMPLETAR')) {
+            const pending = this.stateService.getPendingOrderItem(jid);
+            if (pending) {
+                this.stateService.addItemToOrder(jid, `${pending.quantity} x ${pending.title} (${node.title})`);
+                this.stateService.clearPendingOrderItem(jid);
+            }
+
+            let finalMessage = await this.replaceOrderSummary(node.message, jid);
+            finalMessage += `\n\n_Escribe *0* para volver al inicio._`;
+            await this.sendPresenceTyping(sock, jid);
+            await sock.sendMessage(jid, { text: finalMessage });
+
+            if (nodeTags.includes('FINALIZAR')) {
+                this.stateService.clearUserOrder(jid);
+            }
+
+            this.stateService.setUserState(jid, node.id);
+            return;
+        }
+
         // 2. Tiene hijos: mostrar submenú
         if (subOptions.length > 0) {
             await this.sendMenu(sock, jid, node.id);
@@ -342,6 +390,8 @@ class MenuController {
             .replace('##FINALIZAR##', '')
             .replace('##DATOS##', '')
             .replace('##ARCHIVO##', '')
+            .replace('##COMPLETAR##', '')
+            .replace('##PAGAR##', '')
             .trim();
 
         const order = this.stateService.getUserOrder(jid);

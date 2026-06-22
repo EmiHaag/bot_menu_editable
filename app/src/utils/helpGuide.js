@@ -173,7 +173,7 @@ const helpGuideHTML = `
                                 <p><strong>Título</strong> — El texto que ve el usuario en el menú (ej: <code>Hamburguesa</code>).</p>
                                 <p><strong>Mensaje</strong> — Lo que responde el bot cuando el usuario elige esta opción.</p>
                                 <p><strong>Precio</strong> — Opcional. Si lo ponés, se muestra al lado del título (ej: <code>$1500</code>).</p>
-                                <p><strong>Pedido / Cant / Fin / Datos / 📎</strong> — Son <span class="tag">tags</span> que le dan comportamientos especiales al nodo. Se activan con los checkboxes al editar.</p>
+                                <p><strong>Carrito de compras</strong> — Grupo de checkboxes que activan comportamientos especiales: <span class="tag">✅ Pedido</span> <span class="tag">🔢 Cantidad</span> <span class="tag">🏁 Finalizar</span> <span class="tag">📝 Datos</span> <span class="tag">📎 Archivo</span> <span class="tag">💳 Pagar</span>.</p>
                             </div>
                         </details>
 
@@ -292,14 +292,28 @@ const helpGuideHTML = `
                                 <div class="step">
                                     <div class="step-num">3</div>
                                     <div class="step-text">
+                                        <strong>Variantes (opcional)</strong>
+                                        Si un producto tiene talles (chica/grande), agregale hijos. En el campo Mensaje de cada hijo escribí <strong>##COMPLETAR##</strong> manualmente (no tiene checkbox). Cuando el usuario ingresa la cantidad, el bot muestra las variantes y al elegir una agrega <em>"2 x pepperoni (chica)"</em> al carrito.
+                                    </div>
+                                </div>
+                                <div class="step">
+                                    <div class="step-num">4</div>
+                                    <div class="step-text">
+                                        <strong>Opcional: activá "Ir a pagar"</strong>
+                                        En el nodo raíz o categoría, marcá <strong>"Ir a pagar"</strong> (color verde). Cuando haya items, el menú muestra <code>*p*. Ir a pagar</code>. Al escribir <code>p</code>, va al primer hijo con "Finalizar".
+                                    </div>
+                                </div>
+                                <div class="step">
+                                    <div class="step-num">5</div>
+                                    <div class="step-text">
                                         <strong>Creá un nodo "Finalizar"</strong>
                                         Agregá un hijo con el tag <strong>"Finalizar"</strong> (color violeta). El mensaje podría ser <em>"Gracias por tu pedido"</em>. El bot mostrará el resumen con el total antes de finalizar.
                                     </div>
                                 </div>
                                 <div class="example">
                                     🛍️ <strong>Ejemplo:</strong><br>
-                                    Menú Principal → 1. Hamburguesa (✅) → 2. Pizza (✅) → 3. Finalizar (🏁)<br>
-                                    El usuario puede escribir <code>vaciar</code> para limpiar el carrito en cualquier momento.
+                                    Menú Principal (💳) → 1. Hamburguesa (✅🔢) → 2. Pizza (✅🔢) → 3. Finalizar (🏁)<br>
+                                    El usuario puede escribir <code>vaciar</code> para limpiar el carrito, y <code>p</code> si está habilitado "Ir a pagar".
                                 </div>
                             </div>
                         </details>
@@ -333,7 +347,19 @@ const helpGuideHTML = `
                                         <span class="tag">##CANTIDAD##</span> Pregunta cuántos<br>
                                         <span class="tag">##DATOS##</span> Espera texto del usuario<br>
                                         <span class="tag">##ARCHIVO##</span> Espera archivo/imagen<br>
-                                        <span class="tag">##FINALIZAR##</span> Finaliza el pedido
+                                        <span class="tag">##FINALIZAR##</span> Finaliza el pedido (combinable)<br>
+                                        <span class="tag">##COMPLETAR##</span> Completa item con variante<br>
+                                        <span class="tag">##PAGAR##</span> Muestra opción "Ir a pagar" (combinable)
+                                    </div>
+                                </div>
+                                <div class="step">
+                                    <div class="step-num">4</div>
+                                    <div class="step-text">
+                                        <strong>Comandos del usuario</strong>
+                                        <code>0</code> — Volver al inicio<br>
+                                        <code>v</code> — Volver atrás<br>
+                                        <code>vaciar</code> — Vaciar carrito<br>
+                                        <code>p</code> — Ir a pagar (si está habilitado)
                                     </div>
                                 </div>
                             </div>
