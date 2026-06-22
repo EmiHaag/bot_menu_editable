@@ -271,15 +271,22 @@ class MenuController {
             if (node.message.includes('##FINALIZAR##')) nodeTags.push('FINALIZAR');
         }
 
-        // Tags que modifican estado pero no la navegación en sí
-        if (nodeTags.includes('CANTIDAD')) {
-            this.stateService.setPendingQuantityItem(jid, node.title);
-        }
         if (nodeTags.includes('PEDIDO')) {
             this.stateService.addItemToOrder(jid, `1 x ${node.title}`);
         }
 
         const subOptions = await this.googleSheetsService.getNodesByParent(node.id);
+
+        // 0. CANTIDAD: mostrar prompt, esperar número del usuario
+        if (nodeTags.includes('CANTIDAD')) {
+            this.stateService.setPendingQuantityItem(jid, node.title);
+            let msg = await this.replaceOrderSummary(node.message, jid);
+            msg += `\n\n_Escribe *v* para volver atrás._\n_Escribe *0* para volver al inicio._`;
+            await this.sendPresenceTyping(sock, jid);
+            await sock.sendMessage(jid, { text: msg });
+            this.stateService.setUserState(jid, node.id);
+            return;
+        }
 
         // 1. DATOS: mostrar prompt siempre, esperar respuesta del usuario
         if (nodeTags.includes('DATOS')) {
