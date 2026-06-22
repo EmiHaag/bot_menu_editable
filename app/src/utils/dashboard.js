@@ -963,31 +963,31 @@ ${helpGuideHTML}
                                                 <div style="display:flex;gap:10px;">
                                                     <div style="flex:1;display:flex;align-items:center;gap:10px;background:#f8f9fa;padding:10px;border-radius:6px;border:1px dashed var(--border-color);">
                                                         <input type="checkbox" id="addIsOrder" onchange="toggleOrderTag('add', '##PEDIDO##')" style="width:16px;height:16px;cursor:pointer;">
-                                                        <label for="addIsOrder" style="margin-bottom:0;cursor:pointer;font-size:13px;">¿Crear pedido?</label>
+                                                        <label for="addIsOrder" style="margin-bottom:0;cursor:pointer;font-size:13px;">¿Crear pedido?<span class="info-icon" style="margin-left:4px;">i<span class="tooltip">Agrega "1 x Título" al carrito de compras.</span></span></label>
                                                     </div>
                                                     <div style="flex:1;display:flex;align-items:center;gap:10px;background:#eefbff;padding:10px;border-radius:6px;border:1px dashed #bee5eb;">
                                                         <input type="checkbox" id="addIsQty" onchange="toggleOrderTag('add', '##CANTIDAD##')" style="width:16px;height:16px;cursor:pointer;">
-                                                        <label for="addIsQty" style="margin-bottom:0;cursor:pointer;font-size:13px;">¿Pedir cantidad?</label>
+                                                        <label for="addIsQty" style="margin-bottom:0;cursor:pointer;font-size:13px;">¿Pedir cantidad?<span class="info-icon" style="margin-left:4px;">i<span class="tooltip">Pregunta al usuario cuántas unidades quiere llevar.</span></span></label>
                                                     </div>
                                                     <div style="flex:1;display:flex;align-items:center;gap:10px;background:#f3f0ff;padding:10px;border-radius:6px;border:1px dashed #d1d1ff;">
                                                         <input type="checkbox" id="addIsFinal" onchange="toggleOrderTag('add', '##FINALIZAR##')" style="width:16px;height:16px;cursor:pointer;">
-                                                        <label for="addIsFinal" style="margin-bottom:0;cursor:pointer;font-size:13px;">¿Finalizar?</label>
+                                                        <label for="addIsFinal" style="margin-bottom:0;cursor:pointer;font-size:13px;">¿Finalizar?<span class="info-icon" style="margin-left:4px;">i<span class="tooltip">Muestra el resumen y vacía el carrito. Combinable con otros tags.</span></span></label>
                                                     </div>
                                                 </div>
                                                 <div style="display:flex;gap:10px;margin-top:6px;">
                                                     <div style="flex:1;display:flex;align-items:center;gap:10px;background:#fff4e5;padding:10px;border-radius:6px;border:1px dashed #ff9800;">
                                                         <input type="checkbox" id="addIsData" onchange="toggleOrderTag('add', '##DATOS##')" style="width:16px;height:16px;cursor:pointer;">
-                                                        <label for="addIsData" style="margin-bottom:0;cursor:pointer;font-size:13px;">Capturar dato y continuar</label>
+                                                        <label for="addIsData" style="margin-bottom:0;cursor:pointer;font-size:13px;">Capturar dato y continuar<span class="info-icon" style="margin-left:4px;">i<span class="tooltip">Espera que el usuario escriba texto libre (nombre, dirección, etc.).</span></span></label>
                                                     </div>
                                                     <div style="flex:1;display:flex;align-items:center;gap:10px;background:#e8f5e9;padding:10px;border-radius:6px;border:1px dashed #66bb6a;">
                                                         <input type="checkbox" id="addIsArchivo" onchange="toggleOrderTag('add', '##ARCHIVO##')" style="width:16px;height:16px;cursor:pointer;">
-                                                        <label for="addIsArchivo" style="margin-bottom:0;cursor:pointer;font-size:13px;">Solicitar archivo</label>
+                                                        <label for="addIsArchivo" style="margin-bottom:0;cursor:pointer;font-size:13px;">Solicitar archivo<span class="info-icon" style="margin-left:4px;">i<span class="tooltip">Espera que el usuario envíe una imagen o archivo.</span></span></label>
                                                     </div>
                                                 </div>
                                                 <div style="display:flex;gap:10px;margin-top:6px;">
                                                     <div style="flex:1;display:flex;align-items:center;gap:10px;background:#f0fdf4;padding:10px;border-radius:6px;border:1px dashed #86efac;">
                                                         <input type="checkbox" id="addIsPagar" onchange="toggleOrderTag('add', '##PAGAR##')" style="width:16px;height:16px;cursor:pointer;">
-                                                        <label for="addIsPagar" style="margin-bottom:0;cursor:pointer;font-size:13px;">Ir a pagar</label>
+                                                        <label for="addIsPagar" style="margin-bottom:0;cursor:pointer;font-size:13px;">Ir a pagar<span class="info-icon" style="margin-left:4px;">i<span class="tooltip">Muestra "p. Ir a pagar" cuando hay items en el carrito. Al escribir p va al primer hijo con Finalizar.</span></span></label>
                                                     </div>
                                                     <div style="flex:1;"></div>
                                                 </div>
@@ -1074,31 +1074,31 @@ ${helpGuideHTML}
                                                 <div style="display:flex;gap:10px;">
                                                     <div style="flex:1;display:flex;align-items:center;gap:10px;background:#fff3cd;padding:10px;border-radius:6px;border:1px dashed #ffc107;">
                                                     <input type="checkbox" id="editIsOrder" onchange="toggleOrderTag('edit', '##PEDIDO##')" style="width:16px;height:16px;cursor:pointer;">
-                                                    <label for="editIsOrder" style="margin-bottom:0;cursor:pointer;color:#856404;font-size:13px;">¿Crear pedido?</label>
+                                                    <label for="editIsOrder" style="margin-bottom:0;cursor:pointer;color:#856404;font-size:13px;">¿Crear pedido?<span class="info-icon" style="margin-left:4px;">i<span class="tooltip">Agrega "1 x Título" al carrito de compras.</span></span></label>
                                                 </div>
                                                 <div style="flex:1;display:flex;align-items:center;gap:10px;background:#eefbff;padding:10px;border-radius:6px;border:1px dashed #bee5eb;">
                                                     <input type="checkbox" id="editIsQty" onchange="toggleOrderTag('edit', '##CANTIDAD##')" style="width:16px;height:16px;cursor:pointer;">
-                                                    <label for="editIsQty" style="margin-bottom:0;cursor:pointer;color:#0c5460;font-size:13px;">¿Pedir cantidad?</label>
+                                                    <label for="editIsQty" style="margin-bottom:0;cursor:pointer;color:#0c5460;font-size:13px;">¿Pedir cantidad?<span class="info-icon" style="margin-left:4px;">i<span class="tooltip">Pregunta al usuario cuántas unidades quiere llevar.</span></span></label>
                                                 </div>
                                                 <div style="flex:1;display:flex;align-items:center;gap:10px;background:#f3f0ff;padding:10px;border-radius:6px;border:1px dashed #d1d1ff;">
                                                     <input type="checkbox" id="editIsFinal" onchange="toggleOrderTag('edit', '##FINALIZAR##')" style="width:16px;height:16px;cursor:pointer;">
-                                                    <label for="editIsFinal" style="margin-bottom:0;cursor:pointer;color:#5227cc;font-size:13px;">¿Finalizar?</label>
+                                                    <label for="editIsFinal" style="margin-bottom:0;cursor:pointer;color:#5227cc;font-size:13px;">¿Finalizar?<span class="info-icon" style="margin-left:4px;">i<span class="tooltip">Muestra el resumen y vacía el carrito. Combinable con otros tags.</span></span></label>
                                                     </div>
                                                 </div>
                                                 <div style="display:flex;gap:10px;margin-top:6px;">
                                                     <div style="flex:1;display:flex;align-items:center;gap:10px;background:#fff4e5;padding:10px;border-radius:6px;border:1px dashed #ff9800;">
                                                         <input type="checkbox" id="editIsData" onchange="toggleOrderTag('edit', '##DATOS##')" style="width:16px;height:16px;cursor:pointer;">
-                                                        <label for="editIsData" style="margin-bottom:0;cursor:pointer;color:#856404;font-size:13px;">¿Capturar dato?</label>
+                                                        <label for="editIsData" style="margin-bottom:0;cursor:pointer;color:#856404;font-size:13px;">¿Capturar dato?<span class="info-icon" style="margin-left:4px;">i<span class="tooltip">Espera que el usuario escriba texto libre (nombre, dirección, etc.).</span></span></label>
                                                     </div>
                                                     <div style="flex:1;display:flex;align-items:center;gap:10px;background:#e8f5e9;padding:10px;border-radius:6px;border:1px dashed #66bb6a;">
                                                         <input type="checkbox" id="editIsArchivo" onchange="toggleOrderTag('edit', '##ARCHIVO##')" style="width:16px;height:16px;cursor:pointer;">
-                                                        <label for="editIsArchivo" style="margin-bottom:0;cursor:pointer;color:#2e7d32;font-size:13px;">¿Solicitar archivo?</label>
+                                                        <label for="editIsArchivo" style="margin-bottom:0;cursor:pointer;color:#2e7d32;font-size:13px;">¿Solicitar archivo?<span class="info-icon" style="margin-left:4px;">i<span class="tooltip">Espera que el usuario envíe una imagen o archivo.</span></span></label>
                                                     </div>
                                                 </div>
                                                 <div style="display:flex;gap:10px;margin-top:6px;">
                                                     <div style="flex:1;display:flex;align-items:center;gap:10px;background:#f0fdf4;padding:10px;border-radius:6px;border:1px dashed #86efac;">
                                                         <input type="checkbox" id="editIsPagar" onchange="toggleOrderTag('edit', '##PAGAR##')" style="width:16px;height:16px;cursor:pointer;">
-                                                        <label for="editIsPagar" style="margin-bottom:0;cursor:pointer;color:#166534;font-size:13px;">Ir a pagar</label>
+                                                        <label for="editIsPagar" style="margin-bottom:0;cursor:pointer;color:#166534;font-size:13px;">Ir a pagar<span class="info-icon" style="margin-left:4px;">i<span class="tooltip">Muestra "p. Ir a pagar" cuando hay items en el carrito. Al escribir p va al primer hijo con Finalizar.</span></span></label>
                                                     </div>
                                                     <div style="flex:1;"></div>
                                                 </div>
