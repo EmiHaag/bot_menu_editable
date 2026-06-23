@@ -26,7 +26,11 @@ class StateService {
     addItemToOrder(jid, item) {
         const key = this._getKey(jid) + ':order';
         const currentOrder = this.cache.get(key) || [];
-        currentOrder.push(item);
+        if (typeof item === 'string') {
+            currentOrder.push({ text: item, price: 0, quantity: 1 });
+        } else {
+            currentOrder.push(item);
+        }
         this.cache.set(key, currentOrder);
     }
 

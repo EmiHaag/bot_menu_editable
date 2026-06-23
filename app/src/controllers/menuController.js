@@ -117,10 +117,14 @@ class MenuController {
             }
 
             // Sin hijos: agrega directo al carrito y vuelve al menú padre
-            this.stateService.addItemToOrder(jid, `${quantity} x ${pendingItem}`);
-
             const currentNode = await this.googleSheetsService.getNodeById(currentStateId);
             const parentId = currentNode ? currentNode.parentId : 'root';
+
+            this.stateService.addItemToOrder(jid, {
+                text: `${quantity} x ${pendingItem}`,
+                price: parseFloat(String(currentNode?.price || '0').replace(',', '.')) || 0,
+                quantity: quantity
+            });
 
             await sock.sendMessage(jid, {
                 text: `✅ Añadido: ${quantity} x ${pendingItem}`
@@ -164,7 +168,7 @@ class MenuController {
             return;
         }
 
-        // IR A PAGAR: busca un hijo con ##FINALIZAR## (confirmación), si no el primer hijo
+        // IR A PAGAR: busca el hijo con ##FINALIZAR## y muestra sus sub-opciones de checkout
         if (input === 'p' || input === 'pagar') {
             const payNode = await this.googleSheetsService.getNodeById(currentStateId);
             if (payNode && payNode.message && payNode.message.includes('##PAGAR##')) {
@@ -299,7 +303,11 @@ class MenuController {
         }
 
         if (nodeTags.includes('PEDIDO')) {
-            this.stateService.addItemToOrder(jid, `1 x ${node.title}`);
+            this.stateService.addItemToOrder(jid, {
+                text: `1 x ${node.title}`,
+                price: parseFloat(String(node.price).replace(',', '.')) || 0,
+                quantity: 1
+            });
         }
 
         const subOptions = await this.googleSheetsService.getNodesByParent(node.id);
@@ -338,11 +346,46 @@ class MenuController {
         }
 
         // 1c. COMPLETAR: completa un ítem pendiente (cantidad + producto + variante)
+        // Soporta cadenas: item -> completar -> completar -> ... -> menú principal
         if (nodeTags.includes('COMPLETAR')) {
             const pending = this.stateService.getPendingOrderItem(jid);
             if (pending) {
-                this.stateService.addItemToOrder(jid, `${pending.quantity} x ${pending.title} (${node.title})`);
+                // Ver si este completar tiene más hijos (sigue la cadena)
+                const nextChildren = await this.googleSheetsService.getNodesByParent(node.id);
+
+                if (nextChildren.length > 0) {
+                    // Paso intermedio: acumular título en el pending y mostrar siguiente hijo
+                    this.stateService.setPendingOrderItem(jid, {
+                        quantity: pending.quantity,
+                        title: `${pending.title} (${node.title})`
+                    });
+                    await this.sendPresenceTyping(sock, jid);
+                    await sock.sendMessage(jid, { text: `✅ Elegiste: ${pending.title} -> ${node.title}` });
+                    await this.processNode(sock, jid, nextChildren[0]);
+                    return;
+                }
+
+                // Último eslabón: agrega al carrito y vuelve al menú categoría
+                const itemTitle = `${pending.quantity} x ${pending.title} (${node.title})`;
+                this.stateService.addItemToOrder(jid, {
+                    text: itemTitle,
+                    price: parseFloat(String(node.price || '0').replace(',', '.')) || 0,
+                    quantity: pending.quantity
+                });
                 this.stateService.clearPendingOrderItem(jid);
+
+                // Ir al menú categoría (donde está ##PAGAR##)
+                const cantParent = await this.googleSheetsService.getNodeById(node.parentId);
+                const categoryId = cantParent ? cantParent.parentId : 'root';
+
+                await this.sendPresenceTyping(sock, jid);
+                await sock.sendMessage(jid, { text: `✅ Añadido: ${itemTitle}` });
+                await this.sendMenu(sock, jid, categoryId);
+
+                if (nodeTags.includes('FINALIZAR')) {
+                    this.stateService.clearUserOrder(jid);
+                }
+                return;
             }
 
             let finalMessage = await this.replaceOrderSummary(node.message, jid);
@@ -397,28 +440,40 @@ class MenuController {
         const order = this.stateService.getUserOrder(jid);
         if (order.length === 0) return cleanText;
 
-        // CÁLCULO DE TOTALES BASADO EN PRECIOS DEL EXCEL
         const menu = await this.googleSheetsService.getMenuData();
+
+        // CÁLCULO DE TOTALES
         let total = 0;
         let hasPrices = false;
+        const detailedOrder = [];
 
-        const detailedOrder = order.map(itemStr => {
-            const parts = itemStr.split(' x ');
-            if (parts.length === 2) {
-                const qty = parseInt(parts[0]);
-                const title = parts[1];
-                const node = menu.find(n => n.title === title);
-                if (node && node.price) {
-                    const price = parseFloat(String(node.price).replace(',', '.'));
-                    if (!isNaN(price)) {
-                        total += qty * price;
-                        hasPrices = true;
-                        return `${itemStr} ($${price * qty})`;
+        for (const item of order) {
+            if (typeof item === 'string') {
+                // Fallback para strings viejos
+                const parts = item.split(' x ');
+                if (parts.length === 2) {
+                    const qty = parseInt(parts[0]);
+                    const node = menu.find(n => n.title === parts[1]);
+                    if (node && node.price) {
+                        const price = parseFloat(String(node.price).replace(',', '.'));
+                        if (!isNaN(price)) {
+                            total += qty * price;
+                            hasPrices = true;
+                            detailedOrder.push(`${item} ($${price * qty})`);
+                            continue;
+                        }
                     }
                 }
+                detailedOrder.push(item);
+                continue;
             }
-            return itemStr;
-        });
+
+            // Objeto: { text, price, quantity }
+            const itemTotal = item.price * item.quantity;
+            total += itemTotal;
+            if (item.price > 0) hasPrices = true;
+            detailedOrder.push(`${item.text}${item.price > 0 ? ` ($${itemTotal})` : ''}`);
+        }
 
         // Crear bloque visual de resumen
         let summary = `\n\n🛍️ *Tu pedido:* \n${detailedOrder.join('\n')}`;
