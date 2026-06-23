@@ -340,6 +340,7 @@ class Dashboard {
                     <td style="text-align: center;">${isData ? '<span style="color: var(--warning-color);">📝</span>' : '⚪'}</td>
                     <td style="text-align: center;">${isArchivo ? '<span style="color: var(--info-color);">📎</span>' : '⚪'}</td>
                     <td style="text-align: center;">${isPagar ? '<span style="color: var(--success-color);">💳</span>' : '⚪'}</td>
+                    <td style="text-align: center; max-width: 120px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${node.redirigirA || '<span style="color:#999;">-</span>'}</td>
                     <td>
                         <div style="display: flex; gap: 5px;">
                             <button type="button" onclick="openEditModal(${idx})" class="btn-action btn-orange">Editar</button>
@@ -900,6 +901,7 @@ ${helpGuideHTML}
                                 <th>Datos</th>
                                 <th>Archivo</th>
                                 <th>Pagar</th>
+                                <th>Redirigir</th>
                                 <th>Acciones</th>
                             </tr>
                         </thead>
@@ -992,6 +994,14 @@ ${helpGuideHTML}
                                                     <div style="flex:1;"></div>
                                                 </div>
                                             </div>
+                                        </div>
+                                        <div class="form-group">
+                                            <label>Redirigir a (opcional):</label>
+                                            <select id="addRedirigirA" name="redirigirA" style="width:100%;padding:8px;border:1px solid var(--border-color);border-radius:6px;background:white;">
+                                                <option value="">-- Sin redirección --</option>
+                                                ${menuData.filter(n => n.id).map(n => `<option value="${n.id}">${n.title || n.id}${n.price ? ' ($' + n.price + ')' : ''}</option>`).join('')}
+                                            </select>
+                                            <small style="color:#888;">Al finalizar, irá directamente a este nodo.</small>
                                         </div>
                                         <button type="submit" class="btn btn-green" style="width: 100%;">Crear Nodo Hijo</button>
                                     </form>
@@ -1103,6 +1113,14 @@ ${helpGuideHTML}
                                                     <div style="flex:1;"></div>
                                                 </div>
                                             </div>
+                                        </div>
+                                        <div class="form-group">
+                                            <label>Redirigir a (opcional):</label>
+                                            <select id="editRedirigirA" name="redirigirA" style="width:100%;padding:8px;border:1px solid var(--border-color);border-radius:6px;background:white;">
+                                                <option value="">-- Sin redirección --</option>
+                                                ${menuData.filter(n => n.id).map(n => `<option value="${n.id}">${n.title || n.id}${n.price ? ' ($' + n.price + ')' : ''}</option>`).join('')}
+                                            </select>
+                                            <small style="color:#888;">Al finalizar, irá directamente a este nodo.</small>
                                         </div>
                                         <button type="submit" class="btn btn-green" style="width: 100%;">Guardar Cambios</button>
                                     </form>
@@ -1271,6 +1289,7 @@ ${helpGuideJS}
                             document.getElementById('addTrigger').value = nextNumber;
                             document.getElementById('addPrice').value = '';
 
+                            document.getElementById('addRedirigirA').value = '';
                             document.getElementById('addModal').style.display = "block";
                             document.getElementById('addIsData').checked = false;
                             document.getElementById('addIsArchivo').checked = false;
@@ -1344,6 +1363,7 @@ ${helpGuideJS}
                                 parentInput.placeholder = '';
                             }
 
+                            document.getElementById('editRedirigirA').value = node.redirigirA || '';
                             currentParent = menuData.find(n => n.id === node.parentId) || { title: 'Raíz', id: 'root' };
                             document.getElementById('editModal').style.display = "block";
                             updatePreview('edit');
@@ -1753,7 +1773,8 @@ ${helpGuideJS}
                     title,
                     message,
                     price,
-                    strictTrigger
+                    strictTrigger,
+                    redirigirA
                 } = req.body;
 
                 await service.updateNode(index, {
@@ -1763,7 +1784,8 @@ ${helpGuideJS}
                     message,
                     trigger,
                     price,
-                    strictTrigger
+                    strictTrigger,
+                    redirigirA
                 });
                 res.redirect(`/app/?botId=${encodeURIComponent(botId)}`);
             } catch (error) {
@@ -1785,7 +1807,8 @@ ${helpGuideJS}
                     trigger,
                     title,
                     message,
-                    price
+                    price,
+                    redirigirA
                 } = req.body;
 
                 await service.addNode({
@@ -1794,7 +1817,8 @@ ${helpGuideJS}
                     trigger,
                     title,
                     message,
-                    price
+                    price,
+                    redirigirA
                 });
 
                 res.redirect(`/app/?botId=${encodeURIComponent(botId)}`);

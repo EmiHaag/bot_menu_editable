@@ -12,6 +12,8 @@ Mensaje: La respuesta de texto que el bot enviará de forma automática cuando e
 
 Precio (Opcional): Si vendés productos, al colocar el valor numérico aquí, el sistema lo mostrará automáticamente al lado del título (ej: $1500).
 
+RedirigirA (Opcional): Permite redirigir al usuario a cualquier otro nodo después de procesar este. Si está vacío, el bot usa la navegación jerárquica normal (vuelve al menú padre). Si se especifica, al terminar la acción del nodo, el bot va directamente al nodo indicado (ver sección 8).
+
 Checkboxes "Carrito de compras": Casillas especiales dentro del grupo "Carrito de compras" que le dan comportamientos de automatización a la opción.
 
 2. Reglas de Funcionamiento y Comandos Globales
@@ -23,7 +25,7 @@ Navegación del Historial: El sistema cuenta con comandos globales que el usuari
 
 0: Vuelve inmediatamente al menú de inicio (Nodo Raíz).
 
-v: Vuelve un paso atrás (al menú del nivel anterior).
+v: Vuelve un paso atrás (al menú del nivel anterior según parentId).
 
 vaciar: Limpia por completo el carrito de compras (si está usando el módulo de pedidos).
 
@@ -52,6 +54,8 @@ Paso 3 (Encadenar más preguntas): Si necesitás pedir más datos seguidos (ej: 
 
 💡 Ejemplo de Flujo de Datos: Nodo Nombre (📝) → Hijo Dirección (📝) → Hijo Confirmación (🏁).
 
+⚠️ Importante sobre DATOS: Después de un nodo con "Capturar dato", el siguiente nodo debe enviar un mensaje de confirmación (ej: "✅ Datos recibidos") para que el flujo continúe correctamente. Si no creás ese nodo hijo, el bot omitirá el título del siguiente paso y se mostrará sin título en el menú.
+
 5. Tutorial: ¿Cómo solicitar un archivo o foto?
 Ideal para recibir comprobantes de pago, imágenes de recetas médicas o documentos en PDF.
 
@@ -59,20 +63,20 @@ Paso 1: Creá un nodo y activá el checkbox "Solicitar archivo" (color verde).
 
 Paso 2: En el campo Mensaje, dale la instrucción al usuario de qué debe enviar. (Ejemplo: "Por favor, envianos la foto de tu comprobante de transferencia aquí").
 
-Paso 3: Agregá un nodo Hijo para determinar qué hace el bot después de recibir el archivo. Si no agregás un hijo, el bot simplemente confirmará la recepción y devolverá al usuario al menú de inicio de forma automática.
+Paso 3: Agregá un nodo Hijo para determinar qué hace el bot después de recibir el archivo. Si no agregás un hijo, el bot confirmará la recepción y redirigirá según el campo RedirigirA del nodo (o al inicio si está vacío).
 
 6. Tutorial: ¿Cómo crear un menú de compras (Carrito de Pedidos)?
 Podés transformar tu menú en una tienda virtual interactiva donde los clientes suman productos a un carrito y reciben el total facturado.
 
-Paso 1 (Configurar Productos): Creá los nodos de tus productos rellenando el campo Precio y activando el checkbox "Crear pedido" (color amarillo) en cada uno de ellos.
+Paso 1 (Configurar Productos): Creá los nodos de tus productos rellenando el campo Precio y activando el checkbox "Crear pedido" (color amarillo) en cada uno de ellos. El bot agrega "1 x Título" al carrito automáticamente.
 
-Paso 2 (Configurar Cantidades - Opcional): Si querés que el bot le pregunte al cliente cuántas unidades llevar de ese artículo, activá también el checkbox "Pedir cantidad" (color celeste) en el producto. El bot interceptará la compra preguntando automáticamente "¿Cuántos?".
+Paso 2 (Configurar Cantidades - Opcional): Si querés que el bot le pregunte al cliente cuántas unidades llevar de ese artículo, activá también el checkbox "Pedir cantidad" (color celeste) en el producto. El bot interceptará la compra preguntando automáticamente "¿Cuántos?". Si el producto tiene hijos (variantes), después de la cantidad muestra las opciones de variante.
 
-Paso 3 (Variantes - Opcional): Si un producto tiene variantes (ej: chica/grande), el nodo del producto debe tener hijos. En el campo Mensaje de cada hijo, escribí manualmente el tag <code>##COMPLETAR##</code> al final (no tiene checkbox, va escrito a mano). Cuando el usuario ingresa la cantidad, el bot muestra las variantes y al elegir una se agrega al carrito como "2 x pepperoni (chica)".
+Paso 3 (Variantes con ##COMPLETAR## - Opcional): Si un producto tiene variantes (ej: chica/grande), el nodo del producto debe tener hijos. En el campo Mensaje de cada hijo, escribí manualmente el tag ##COMPLETAR## al final (no tiene checkbox, va escrito a mano). Cuando el usuario ingresa la cantidad, el bot muestra las variantes y al elegir una se agrega al carrito como "2 x pepperoni (chica)". Las variantes se pueden encadenar: pepperoni → chica → extra queso, acumulando el título en cada paso.
 
-Paso 4 (Ir a pagar): Activá el checkbox "Ir a pagar" (color verde) en el nodo donde querés que aparezca la opción *p*. Ir a pagar (ej: en la raíz o en una categoría). El bot mostrará esta opción solo cuando haya items en el carrito. Al escribir p, el bot irá al primer hijo con "Finalizar" de ese nodo.
+Paso 4 (Ir a pagar): Activá el checkbox "Ir a pagar" (color verde) en el nodo donde querés que aparezca la opción *p*. Ir a pagar (ej: en "Hacer pedido" o en la raíz). El bot mostrará esta opción en el pie del menú solo cuando haya items en el carrito. Al escribir p, el bot buscará el primer hijo con "Finalizar" de ese nodo y comenzará el flujo de checkout.
 
-Paso 5 (Crear el cierre de compra): En el mismo nivel donde están tus productos, creá un nodo hermano llamado "Finalizar pedido" (o similar). Activá el checkbox "Finalizar" y escribí tu mensaje de despedida en el campo Mensaje. El bot mostrará el resumen con el total antes de finalizar.
+Paso 5 (Crear el flujo de checkout): El nodo con "Finalizar" debe tener hijos (ej: Dirección, Confirmar). Así el bot muestra un submenú de checkout en lugar de finalizar inmediatamente. El último hijo (hoja) con "Finalizar" es el que efectivamente vacía el carrito.
 
 💡 Podés combinar "Finalizar" con "Capturar dato" o "Solicitar archivo": el pedido se finaliza automáticamente después de recibir el dato o archivo.
 
@@ -83,12 +87,74 @@ Cada checkbox agrega un tag especial al mensaje del nodo:
 
 ##CANTIDAD## (🔢) — Pregunta cuántas unidades, luego agrega al carrito. Si el nodo tiene hijos (variantes), muestra las opciones de variante después de la cantidad. Excluyente con PEDIDO, DATOS y ARCHIVO.
 
-##FINALIZAR## (🏁) — Al terminar el nodo, vacía el carrito. Se puede combinar con cualquier otro tag.
+##FINALIZAR## (🏁) — Marca el cierre del pedido. Si el nodo tiene hijos, muestra un submenú (checkout) sin borrar el carrito. Si es un nodo hoja, vacía el carrito al finalizar. Se puede combinar con cualquier otro tag.
 
 ##DATOS## (📝) — Espera que el usuario escriba texto libre. Si tiene hijos, continúa con el siguiente. Excluyente con PEDIDO, CANTIDAD y ARCHIVO.
 
 ##ARCHIVO## (📎) — Espera que el usuario envíe un archivo/imagen. Si tiene hijos, continúa. Excluyente con PEDIDO, CANTIDAD y DATOS.
 
-##COMPLETAR## — Completa un item pendiente con variante (se usa en hijos de nodos con CANTIDAD). Agrega al carrito "2 x pepperoni (chica)".
+##COMPLETAR## — (se escribe manualmente en el mensaje, no tiene checkbox). Completa un item pendiente con variante. Se usa en hijos de nodos con ##CANTIDAD##. Cuando el usuario elige la variante, acumula el título y si la variante tiene más hijos, continúa la cadena. Si no tiene más hijos, agrega al carrito con el nombre completo (ej: "2 x pepperoni (chica)") y redirige según el campo RedirigirA o al menú categoría.
 
-##PAGAR## (💳) — Muestra la opción *p*. Ir a pagar en el menú cuando hay items en el carrito. Se puede combinar con cualquier tag.
+##PAGAR## (💳) — Muestra la opción *p*. Ir a pagar en el menú cuando hay items en el carrito. Al escribir "p", el bot busca el primer hijo con ##FINALIZAR## y comienza el flujo de checkout. Se puede combinar con cualquier tag.
+
+8. RedirigirA: Control total de navegación
+El campo RedirigirA (columna I en la planilla, selector en el dashboard) te permite decidir exactamente a dónde va el usuario después de procesar un nodo, sin depender de la jerarquía de parentId.
+
+¿Cómo funciona?
+- Si el campo RedirigirA está vacío: el bot usa la navegación normal (vuelve al menú padre o al menú categoría).
+- Si tiene un ID de nodo: después de ejecutar la acción del nodo (agregar al carrito, enviar mensaje, etc.), el bot redirige al usuario a ese nodo específico.
+
+¿Dónde se aplica?
+- En productos con ##CANTIDAD## (sin hijos): después de agregar al carrito, va al RedirigirA en vez del menú padre.
+- En variantes ##COMPLETAR## (último de la cadena): después de agregar al carrito, va al RedirigirA.
+- En nodos hoja: después de mostrar el mensaje, va al RedirigirA.
+- En nodos ##DATOS##: después de recibir el dato, va al RedirigirA.
+- En nodos ##ARCHIVO##: después de recibir el archivo, va al RedirigirA.
+
+Ejemplo práctico:
+Si un producto "Pepperoni grande" tiene RedirigirA = "menu_opcion1" (Hacer pedido), después de agregarlo al carrito, el usuario vuelve directamente al menú "Hacer pedido" donde puede seguir comprando y ve "p. Ir a pagar" en el pie.
+
+9. Flujo completo del carrito (ejemplo práctico)
+
+Estructura en la planilla:
+
+  Hacer pedido (##PAGAR##)              ← categoría principal
+    ├── Pepperoni (##CANTIDAD##)        ← producto, tiene hijos
+    │     ├── Chica (##COMPLETAR##)     ← variante, precio $8000
+    │     └── Grande (##COMPLETAR##)    ← variante, precio $12000
+    ├── Bebidas (##CANTIDAD##)          ← otro producto
+    └── ✅ Ir a pagar (##FINALIZAR##)  ← checkout (tiene hijos)
+          ├── Dirección (##DATOS##)     ← paso del checkout
+          └── Confirmar (##FINALIZAR##) ← último paso, vacía carrito
+
+Flujo:
+  1. Usuario elige "Hacer pedido" → ve productos + "p. Ir a pagar"
+  2. Elige "Pepperoni" → escribe cantidad "2" → ve variantes: "1. Chica ($8000) 2. Grande ($12000)"
+  3. Elige "Grande" → agrega "2 x Pepperoni (Grande)" al carrito → vuelve a "Hacer pedido"
+  4. Sigue comprando: repite con Bebidas, etc.
+  5. Presiona "p" → va a "✅ Ir a pagar" (##FINALIZAR## con hijos → muestra checkout)
+  6. Elige "Dirección" → escribe su dirección
+  7. Elige "Confirmar" → se vacía el carrito
+
+Cálculo de totales:
+  - El precio se toma del nodo hoja (ej: Grande con $12000)
+  - "2 x Pepperoni (Grande)" → 2 × $12000 = $24000
+  - Se muestra el total en el resumen del pedido
+
+10. Resolución de problemas comunes
+
+Problema: "p. Ir a pagar" no aparece
+  Causa: El nodo actual no tiene ##PAGAR## o el carrito está vacío.
+  Solución: Agregá ##PAGAR## al mensaje de la categoría (ej: "Hacer pedido") y asegurate de tener items en el carrito.
+
+Problema: Al presionar "p" se vacía el carrito inmediatamente
+  Causa: El nodo con ##FINALIZAR## no tiene hijos (es hoja).
+  Solución: El nodo con ##FINALIZAR## debe tener hijos (los pasos del checkout). Solo la última hoja debe tener ##FINALIZAR##.
+
+Problema: Después de agregar un item vuelve al inicio (root) en vez de al menú categoría
+  Causa: El RedirigirA está vacío o apunta a root.
+  Solución: Configurá RedirigirA en el producto o variante para que apunte al menú categoría (ej: "menu_opcion1").
+
+Problema: Los precios no se suman en el total
+  Causa: El campo Precio está vacío en el nodo hoja o el item usó ##PEDIDO## sin precio.
+  Solución: Completá el Precio en cada nodo que se agrega al carrito (productos y variantes).

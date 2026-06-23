@@ -9,7 +9,7 @@ class GoogleSheetsService extends GoogleAuthBase {
         super();
         this.spreadsheetId = config.spreadsheetId;
         this.clientId = config.clientId; 
-        this.range = config.range || 'Menu!A2:H'; // A:ID_client, B:ID, C:ParentID, D:Title, E:Message, F:Trigger, G:Price, H:StrictTrigger
+        this.range = config.range || 'Menu!A2:I'; // A:ID_client, B:ID, C:ParentID, D:Title, E:Message, F:Trigger, G:Price, H:StrictTrigger, I:RedirigirA
     }
 
     get sheets() {
@@ -38,6 +38,7 @@ class GoogleSheetsService extends GoogleAuthBase {
                 trigger: row[5] || '',
                 price: row[6] || '',
                 strictTrigger: String(row[7] || 'false').toLowerCase(),
+                redirigirA: row[8] || '',
                 rowIndex: index + 2 
             }));
 
@@ -83,14 +84,14 @@ class GoogleSheetsService extends GoogleAuthBase {
             // Asegurarse de no sobrescribir la cabecera si el sheet está vacío
             if (nextRow < 2) nextRow = 2;
 
-            // Valores por defecto: id_cliente, id, parentID, Titulo, Mensaje, Trigger, Precio, StrictTrigger
+            // Valores por defecto: id_cliente, id, parentID, Titulo, Mensaje, Trigger, Precio, StrictTrigger, RedirigirA
             const defaultValues = [
-                [this.clientId, 'root', '', 'Inicio', 'Hola bienvenido a .. ', '0', '', 'false']
+                [this.clientId, 'root', '', 'Inicio', 'Hola bienvenido a .. ', '0', '', 'false', '']
             ];
 
             await sheets.spreadsheets.values.update({
                 spreadsheetId: this.spreadsheetId,
-                range: `${sheetName}!A${nextRow}:H${nextRow}`,
+                range: `${sheetName}!A${nextRow}:I${nextRow}`,
                 valueInputOption: 'USER_ENTERED',
                 requestBody: {
                     values: defaultValues
@@ -145,7 +146,7 @@ class GoogleSheetsService extends GoogleAuthBase {
                 console.log(`[Sheets] Limpiando fila: ${sheetName}!A${rowIndex}:H${rowIndex}`);
                 return sheets.spreadsheets.values.clear({
                     spreadsheetId: this.spreadsheetId,
-                    range: `${sheetName}!A${rowIndex}:H${rowIndex}`,
+                    range: `${sheetName}!A${rowIndex}:I${rowIndex}`,
                 });
             });
 
@@ -161,15 +162,15 @@ class GoogleSheetsService extends GoogleAuthBase {
         try {
             const sheets = this.sheets;
             const sheetName = this.range.split('!')[0];
-            const { id, parentId, title, message, trigger, price, strictTrigger } = nodeData;
+            const { id, parentId, title, message, trigger, price, strictTrigger, redirigirA } = nodeData;
 
             await sheets.spreadsheets.values.update({
                 spreadsheetId: this.spreadsheetId,
-                range: `${sheetName}!A${index}:H${index}`,
+                range: `${sheetName}!A${index}:I${index}`,
                 valueInputOption: 'USER_ENTERED',
                 requestBody: {
                     values: [
-                        [this.clientId, id || '', parentId || '', title || '', message || '', trigger || '', price || '', strictTrigger || 'false']
+                        [this.clientId, id || '', parentId || '', title || '', message || '', trigger || '', price || '', strictTrigger || 'false', nodeData.redirigirA || '']
                     ]
                 }
             });
@@ -185,7 +186,7 @@ class GoogleSheetsService extends GoogleAuthBase {
         try {
             const sheets = this.sheets;
             const sheetName = this.range.split('!')[0];
-            const { id, parentId, title, message, trigger, price } = nodeData;
+            const { id, parentId, title, message, trigger, price, redirigirA } = nodeData;
 
             if (id === parentId && id !== 'root') {
                 throw new Error('Un nodo no puede ser su propio padre.');
@@ -213,11 +214,11 @@ class GoogleSheetsService extends GoogleAuthBase {
 
             await sheets.spreadsheets.values.update({
                 spreadsheetId: this.spreadsheetId,
-                range: `${sheetName}!A${nextRow}:H${nextRow}`,
+                range: `${sheetName}!A${nextRow}:I${nextRow}`,
                 valueInputOption: 'USER_ENTERED',
                 requestBody: {
                     values: [
-                        [this.clientId, id || '', parentId || '', title || '', message || '', trigger || '', price || '', 'false']
+                        [this.clientId, id || '', parentId || '', title || '', message || '', trigger || '', price || '', 'false', redirigirA || '']
                     ]
                 }
             });
@@ -236,7 +237,7 @@ class GoogleSheetsService extends GoogleAuthBase {
             const sheetName = this.range.split('!')[0];
             await sheets.spreadsheets.values.clear({
                 spreadsheetId: this.spreadsheetId,
-                range: `${sheetName}!A${index}:H${index}`,
+                range: `${sheetName}!A${index}:I${index}`,
             });
             this.clearCache();
             return true;

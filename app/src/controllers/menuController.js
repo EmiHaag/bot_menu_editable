@@ -65,8 +65,9 @@ class MenuController {
                 if (waitingNode && waitingNode.message && waitingNode.message.includes('##FINALIZAR##')) {
                     this.stateService.clearUserOrder(jid);
                 }
-                await sock.sendMessage(jid, { text: '✅ Archivo recibido correctamente.\n\n_Escribe *0* para volver al inicio._' });
-                this.stateService.setUserState(jid, 'root');
+                const fileTarget = waitingNode?.redirigirA || 'root';
+                await sock.sendMessage(jid, { text: '✅ Archivo recibido correctamente.' });
+                await this.sendMenu(sock, jid, fileTarget);
             }
             return;
         }
@@ -93,8 +94,9 @@ class MenuController {
                     this.stateService.clearUserOrder(jid);
                 }
 
-                await sock.sendMessage(jid, { text: '✅ Datos recibidos correctamente.\n\n_Escribe *0* para volver al inicio._' });
-                this.stateService.setUserState(jid, 'root');
+                const datosTarget = waitingNode?.redirigirA || 'root';
+                await sock.sendMessage(jid, { text: '✅ Datos recibidos correctamente.' });
+                await this.sendMenu(sock, jid, datosTarget);
                 return;
             }
         }
@@ -116,9 +118,9 @@ class MenuController {
                 return;
             }
 
-            // Sin hijos: agrega directo al carrito y vuelve al menú padre
+            // Sin hijos: agrega directo al carrito y vuelve al menú (redirigirA o padre)
             const currentNode = await this.googleSheetsService.getNodeById(currentStateId);
-            const parentId = currentNode ? currentNode.parentId : 'root';
+            const targetId = currentNode?.redirigirA || currentNode?.parentId || 'root';
 
             this.stateService.addItemToOrder(jid, {
                 text: `${quantity} x ${pendingItem}`,
@@ -130,7 +132,7 @@ class MenuController {
                 text: `✅ Añadido: ${quantity} x ${pendingItem}`
             });
 
-            await this.sendMenu(sock, jid, parentId);
+            await this.sendMenu(sock, jid, targetId);
             return;
         }
 
@@ -365,7 +367,7 @@ class MenuController {
                     return;
                 }
 
-                // Último eslabón: agrega al carrito y vuelve al menú categoría
+                // Último eslabón: agrega al carrito y navega según redirigirA
                 const itemTitle = `${pending.quantity} x ${pending.title} (${node.title})`;
                 this.stateService.addItemToOrder(jid, {
                     text: itemTitle,
@@ -374,13 +376,14 @@ class MenuController {
                 });
                 this.stateService.clearPendingOrderItem(jid);
 
-                // Ir al menú categoría (donde está ##PAGAR##)
+                // Si tiene redirigirA, va allí; si no, sube al menú categoría
                 const cantParent = await this.googleSheetsService.getNodeById(node.parentId);
                 const categoryId = cantParent ? cantParent.parentId : 'root';
+                const targetId = node.redirigirA || categoryId;
 
                 await this.sendPresenceTyping(sock, jid);
                 await sock.sendMessage(jid, { text: `✅ Añadido: ${itemTitle}` });
-                await this.sendMenu(sock, jid, categoryId);
+                await this.sendMenu(sock, jid, targetId);
 
                 if (nodeTags.includes('FINALIZAR')) {
                     this.stateService.clearUserOrder(jid);
@@ -407,7 +410,7 @@ class MenuController {
             return;
         }
 
-        // 3. Nodo hoja: muestra su mensaje + ofrece volver al inicio
+        // 3. Nodo hoja: muestra su mensaje y redirige según redirigirA
         let finalMessage = await this.replaceOrderSummary(node.message, jid);
         finalMessage += `\n\n_Escribe *0* para volver al inicio._`;
         await this.sendPresenceTyping(sock, jid);
@@ -417,7 +420,11 @@ class MenuController {
             this.stateService.clearUserOrder(jid);
         }
 
-        this.stateService.setUserState(jid, node.id);
+        if (node.redirigirA) {
+            await this.sendMenu(sock, jid, node.redirigirA);
+        } else {
+            this.stateService.setUserState(jid, node.id);
+        }
     }
 
     /**
