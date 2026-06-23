@@ -121,10 +121,10 @@ class GoogleDriveService extends GoogleAuthBase {
             });
 
             // 2. Agregar cabeceras a "Menu"
-            const menuHeaders = [['ID_client', 'ID', 'ParentID', 'Title', 'Message', 'Trigger', 'Price', 'strictTrigger', 'RedirigirA']];
+            const menuHeaders = [['ID_client', 'ID', 'ParentID', 'Title', 'Message', 'Trigger', 'Price', 'strictTrigger', 'RedirigirA', 'Disponible']];
             await sheets.spreadsheets.values.update({
                 spreadsheetId,
-                range: 'Menu!A1:I1',
+                range: 'Menu!A1:J1',
                 valueInputOption: 'USER_ENTERED',
                 requestBody: {
                     values: menuHeaders
@@ -132,10 +132,10 @@ class GoogleDriveService extends GoogleAuthBase {
             });
 
             // 3. Agregar fila inicial root a "Menu"
-            const rootRow = [[idCliente, 'root', '', 'Inicio', 'Hola bienvenido a ' + nombreCliente, '0', '', 'false', '']];
+            const rootRow = [[idCliente, 'root', '', 'Inicio', 'Hola bienvenido a ' + nombreCliente, '0', '', 'false', '', 'true']];
             await sheets.spreadsheets.values.update({
                 spreadsheetId,
-                range: 'Menu!A2:I2',
+                range: 'Menu!A2:J2',
                 valueInputOption: 'USER_ENTERED',
                 requestBody: {
                     values: rootRow

@@ -341,6 +341,7 @@ class Dashboard {
                     <td style="text-align: center;">${isArchivo ? '<span style="color: var(--info-color);">📎</span>' : '⚪'}</td>
                     <td style="text-align: center;">${isPagar ? '<span style="color: var(--success-color);">💳</span>' : '⚪'}</td>
                     <td style="text-align: center; max-width: 120px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${node.redirigirA || '<span style="color:#999;">-</span>'}</td>
+                    <td style="text-align: center;">${node.disponible === 'false' ? '<span style="color:#999;" title="No disponible">🚫</span>' : '<span style="color:var(--primary-color);" title="Disponible">✅</span>'}</td>
                     <td>
                         <div style="display: flex; gap: 5px;">
                             <button type="button" onclick="openEditModal(${idx})" class="btn-action btn-orange">Editar</button>
@@ -902,6 +903,7 @@ ${helpGuideHTML}
                                 <th>Archivo</th>
                                 <th>Pagar</th>
                                 <th>Redirigir</th>
+                                <th>Disp.</th>
                                 <th>Acciones</th>
                             </tr>
                         </thead>
@@ -1002,6 +1004,10 @@ ${helpGuideHTML}
                                                 ${menuData.filter(n => n.id).map(n => `<option value="${n.id}">${n.title || n.id}${n.price ? ' ($' + n.price + ')' : ''}</option>`).join('')}
                                             </select>
                                             <small style="color:#888;">Al finalizar, irá directamente a este nodo.</small>
+                                        </div>
+                                        <div class="form-group" style="display:flex;align-items:center;gap:10px;background:#fff3e0;padding:12px;border-radius:6px;border:1px dashed #ffb74d;">
+                                            <input type="checkbox" id="addNoDisponible" name="disponible" value="false" style="width:18px;height:18px;cursor:pointer;">
+                                            <label for="addNoDisponible" style="margin-bottom:0;cursor:pointer;font-weight:700;color:#e65100;">No disponible (sin stock)</label>
                                         </div>
                                         <button type="submit" class="btn btn-green" style="width: 100%;">Crear Nodo Hijo</button>
                                     </form>
@@ -1121,6 +1127,10 @@ ${helpGuideHTML}
                                                 ${menuData.filter(n => n.id).map(n => `<option value="${n.id}">${n.title || n.id}${n.price ? ' ($' + n.price + ')' : ''}</option>`).join('')}
                                             </select>
                                             <small style="color:#888;">Al finalizar, irá directamente a este nodo.</small>
+                                        </div>
+                                        <div class="form-group" style="display:flex;align-items:center;gap:10px;background:#fff3e0;padding:12px;border-radius:6px;border:1px dashed #ffb74d;">
+                                            <input type="checkbox" id="editNoDisponible" name="disponible" value="false" style="width:18px;height:18px;cursor:pointer;">
+                                            <label for="editNoDisponible" style="margin-bottom:0;cursor:pointer;font-weight:700;color:#e65100;">No disponible (sin stock)</label>
                                         </div>
                                         <button type="submit" class="btn btn-green" style="width: 100%;">Guardar Cambios</button>
                                     </form>
@@ -1290,6 +1300,7 @@ ${helpGuideJS}
                             document.getElementById('addPrice').value = '';
 
                             document.getElementById('addRedirigirA').value = '';
+                            document.getElementById('addNoDisponible').checked = false;
                             document.getElementById('addModal').style.display = "block";
                             document.getElementById('addIsData').checked = false;
                             document.getElementById('addIsArchivo').checked = false;
@@ -1364,6 +1375,7 @@ ${helpGuideJS}
                             }
 
                             document.getElementById('editRedirigirA').value = node.redirigirA || '';
+                            document.getElementById('editNoDisponible').checked = node.disponible === 'false';
                             currentParent = menuData.find(n => n.id === node.parentId) || { title: 'Raíz', id: 'root' };
                             document.getElementById('editModal').style.display = "block";
                             updatePreview('edit');
@@ -1774,7 +1786,8 @@ ${helpGuideJS}
                     message,
                     price,
                     strictTrigger,
-                    redirigirA
+                    redirigirA,
+                    disponible
                 } = req.body;
 
                 await service.updateNode(index, {
@@ -1785,7 +1798,8 @@ ${helpGuideJS}
                     trigger,
                     price,
                     strictTrigger,
-                    redirigirA
+                    redirigirA,
+                    disponible: disponible || 'true'
                 });
                 res.redirect(`/app/?botId=${encodeURIComponent(botId)}`);
             } catch (error) {
@@ -1808,7 +1822,8 @@ ${helpGuideJS}
                     title,
                     message,
                     price,
-                    redirigirA
+                    redirigirA,
+                    disponible
                 } = req.body;
 
                 await service.addNode({
@@ -1818,7 +1833,8 @@ ${helpGuideJS}
                     title,
                     message,
                     price,
-                    redirigirA
+                    redirigirA,
+                    disponible: disponible || 'true'
                 });
 
                 res.redirect(`/app/?botId=${encodeURIComponent(botId)}`);

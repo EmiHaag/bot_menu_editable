@@ -14,6 +14,8 @@ Precio (Opcional): Si vendés productos, al colocar el valor numérico aquí, el
 
 RedirigirA (Opcional): Permite redirigir al usuario a cualquier otro nodo después de procesar este. Si está vacío, el bot usa la navegación jerárquica normal (vuelve al menú padre). Si se especifica, al terminar la acción del nodo, el bot va directamente al nodo indicado (ver sección 8).
 
+Disponible (Opcional): Indica si el producto está disponible para la venta. Por defecto está marcado como disponible. Si se marca como "No disponible", el bot mostrará el producto tachado con la etiqueta "(sin stock)" y no permitirá agregarlo al carrito.
+
 Checkboxes "Carrito de compras": Casillas especiales dentro del grupo "Carrito de compras" que le dan comportamientos de automatización a la opción.
 
 2. Reglas de Funcionamiento y Comandos Globales
@@ -158,3 +160,7 @@ Problema: Después de agregar un item vuelve al inicio (root) en vez de al menú
 Problema: Los precios no se suman en el total
   Causa: El campo Precio está vacío en el nodo hoja o el item usó ##PEDIDO## sin precio.
   Solución: Completá el Precio en cada nodo que se agrega al carrito (productos y variantes).
+
+Problema: Un producto aparece tachado con "(sin stock)" en el menú
+  Causa: El editor marcó "No disponible (sin stock)" en el dashboard para ese producto.
+  Solución: Desmarcá el checkbox "No disponible" en el nodo del producto desde el dashboard.

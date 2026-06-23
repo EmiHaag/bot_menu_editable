@@ -200,6 +200,12 @@ class MenuController {
         const selectedOption = availableOptions.find(opt => opt.trigger.toLowerCase() === input);
 
         if (selectedOption) {
+            if (selectedOption.disponible === 'false') {
+                await this.sendPresenceTyping(sock, jid);
+                await sock.sendMessage(jid, { text: `❌ *${selectedOption.title}* no está disponible por el momento.` });
+                await this.sendMenu(sock, jid, currentStateId);
+                return;
+            }
             await this.processNode(sock, jid, selectedOption);
         } else {
             // 7. MANEJO DE ENTRADAS NO VÁLIDAS O PRIMER CONTACTO
@@ -256,10 +262,14 @@ class MenuController {
             return true;
         });
 
-        // Listar opciones de submenus con precios
+        // Listar opciones de submenus con precios (tachar no disponibles)
         visibleNodes.forEach(node => {
             const priceText = node.price ? ` ($${node.price})` : '';
-            menuText += `*${node.trigger}*. ${node.title}${priceText}\n`;
+            if (node.disponible === 'false') {
+                menuText += `~*${node.trigger}*. ${node.title}${priceText}~ (sin stock)\n`;
+            } else {
+                menuText += `*${node.trigger}*. ${node.title}${priceText}\n`;
+            }
         });
         //console.log("menuText #216:: ", menuText);
 
