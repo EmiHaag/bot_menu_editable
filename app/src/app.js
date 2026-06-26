@@ -20,6 +20,7 @@ const express = require('express');
 const GoogleSheetsService = require('./services/googleSheetsService');
 const StateService = require('./services/stateService');
 const MenuController = require('./controllers/menuController');
+const orderService = require('./services/orderService');
 const dashboard = require('./utils/dashboard');
 const userService = require('./services/userService');
 
@@ -278,7 +279,7 @@ async function startBot(botConfig, forceStart = false) {
         });
 
         const stateService = new StateService(id);
-        const menuController = new MenuController(googleSheetsService, stateService);
+        const menuController = new MenuController(googleSheetsService, stateService, orderService);
 
         const {
             state,

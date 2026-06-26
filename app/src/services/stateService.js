@@ -21,6 +21,7 @@ class StateService {
     resetUserState(jid) {
         this.cache.del(this._getKey(jid));
         this.cache.del(this._getKey(jid) + ':order');
+        this.cache.del(this._getKey(jid) + ':datos');
     }
 
     addItemToOrder(jid, item) {
@@ -40,6 +41,20 @@ class StateService {
 
     clearUserOrder(jid) {
         this.cache.del(this._getKey(jid) + ':order');
+    }
+
+    addDatosText(jid, text) {
+        const key = this._getKey(jid) + ':datos';
+        const existing = this.cache.get(key) || '';
+        this.cache.set(key, existing + (existing ? '\n' : '') + text);
+    }
+
+    getDatosText(jid) {
+        return this.cache.get(this._getKey(jid) + ':datos') || '';
+    }
+
+    clearDatosText(jid) {
+        this.cache.del(this._getKey(jid) + ':datos');
     }
 
     setPendingQuantityItem(jid, itemTitle) {

@@ -3,9 +3,10 @@
  * Gestiona la lógica de navegación, el estado del usuario y la interacción con WhatsApp.
  */
 class MenuController {
-    constructor(googleSheetsService, stateService) {
+    constructor(googleSheetsService, stateService, orderService = null) {
         this.googleSheetsService = googleSheetsService; // Servicio para leer datos de Google Sheets
         this.stateService = stateService;             // Servicio para gestionar estados y carritos de usuarios
+        this.orderService = orderService;             // Servicio para guardar pedidos en Google Sheets
     }
 
     /**
@@ -63,7 +64,7 @@ class MenuController {
                 await this.processNode(sock, jid, children[0]);
             } else {
                 if (waitingNode && waitingNode.message && waitingNode.message.includes('##FINALIZAR##')) {
-                    this.stateService.clearUserOrder(jid);
+                    await this._finalizeOrder(jid);
                 }
                 const fileTarget = waitingNode?.redirigirA || 'root';
                 await sock.sendMessage(jid, { text: '✅ Archivo recibido correctamente.' });
@@ -81,6 +82,9 @@ class MenuController {
             const children = await this.googleSheetsService.getNodesByParent(waitingNodeId);
             this.stateService.clearWaitingForData(jid);
 
+            // Guardar el texto ingresado por el usuario (nombre, dirección, etc.)
+            this.stateService.addDatosText(jid, text);
+
             if (children.length > 0) {
                 // Si hay un siguiente paso tras recibir datos, procesamos el primer hijo
                 //console.log("El nodo espera datos pero tiene hijos, procesando el primer hijo #64");
@@ -91,7 +95,7 @@ class MenuController {
                 if (waitingNode && waitingNode.message && waitingNode.message.includes('##FINALIZAR##')) {
                     //console.log("nodo no tiene mas hijos #70");
                     ////console.log(`[Estado] Limpiando pedido de ${jid}. Motivo: Tag ##FINALIZAR## procesado tras recibir datos.`);
-                    this.stateService.clearUserOrder(jid);
+                    await this._finalizeOrder(jid);
                 }
 
                 const datosTarget = waitingNode?.redirigirA || 'root';
@@ -396,7 +400,7 @@ class MenuController {
                 await this.sendMenu(sock, jid, targetId);
 
                 if (nodeTags.includes('FINALIZAR')) {
-                    this.stateService.clearUserOrder(jid);
+                    await this._finalizeOrder(jid);
                 }
                 return;
             }
@@ -407,7 +411,7 @@ class MenuController {
             await sock.sendMessage(jid, { text: finalMessage });
 
             if (nodeTags.includes('FINALIZAR')) {
-                this.stateService.clearUserOrder(jid);
+                await this._finalizeOrder(jid);
             }
 
             this.stateService.setUserState(jid, node.id);
@@ -427,7 +431,7 @@ class MenuController {
         await sock.sendMessage(jid, { text: finalMessage });
 
         if (nodeTags.includes('FINALIZAR')) {
-            this.stateService.clearUserOrder(jid);
+            await this._finalizeOrder(jid);
         }
 
         if (node.redirigirA) {
@@ -500,6 +504,26 @@ class MenuController {
         }
 
         return cleanText + summary;
+    }
+
+    async _finalizeOrder(jid) {
+        if (!this.orderService) {
+            this.stateService.clearUserOrder(jid);
+            this.stateService.clearDatosText(jid);
+            return;
+        }
+        const order = this.stateService.getUserOrder(jid);
+        if (order.length > 0) {
+            const datosText = this.stateService.getDatosText(jid);
+            await this.orderService.saveOrder(
+                this.stateService.clientId,
+                jid,
+                order,
+                datosText
+            );
+        }
+        this.stateService.clearUserOrder(jid);
+        this.stateService.clearDatosText(jid);
     }
 }
 

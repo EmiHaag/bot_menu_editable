@@ -10,6 +10,7 @@ const {
 } = require('googleapis');
 
 const GoogleDriveService = require('../services/googleDriveService');
+const orderService = require('../services/orderService');
 const { helpGuideCSS, helpGuideHTML, helpGuideJS } = require('./helpGuide');
 const { askGemini } = require('./geminiHelper');
 
@@ -91,6 +92,7 @@ class Dashboard {
                         <td>
                             <button onclick="deleteClient('${client.idCliente}')" class="btn-action btn-red">Borrar</button>
                             <a href="/app/?botId=${client.idCliente}" class="btn-action">Ver Menú</a>
+                            <a href="/app/pedidos/${client.idCliente}" target="_blank" class="btn-action btn-green" style="background: #00bc7d; color: white;">Pedidos</a>
                         </td>
                     </tr>
                 `).join('');
@@ -214,7 +216,10 @@ class Dashboard {
                     password
                 }, folderId);
 
-                // 3. Agregar a la lista de usuarios maestra
+                // 3. Crear Spreadsheet de Pedidos para el cliente
+                await orderService.createPedidosSpreadsheet(idCliente);
+
+                // 4. Agregar a la lista de usuarios maestra
                 await userService.addUser({
                     idCliente,
                     nombreCliente,
@@ -247,10 +252,30 @@ class Dashboard {
                     await GoogleDriveService.deleteFile(client.spreadsheetId);
                 }
 
+                // 3. Borrar spreadsheet de Pedidos
+                await orderService.deletePedidosSpreadsheet(id);
+
                 res.redirect('/app/admin?deleted=1');
             } catch (error) {
                 console.error('Error deleting client:', error);
                 res.status(500).send('Error al borrar el cliente');
+            }
+        });
+
+        // Ruta para abrir la hoja de pedidos de un cliente
+        router.get('/pedidos/:clientId', async (req, res) => {
+            try {
+                let sheetId = await orderService.getPedidosSpreadsheetId(req.params.clientId);
+                if (!sheetId) {
+                    sheetId = await orderService.createPedidosSpreadsheet(req.params.clientId);
+                }
+                if (sheetId) {
+                    return res.redirect(`https://docs.google.com/spreadsheets/d/${sheetId}`);
+                }
+                res.status(500).send('No se pudo crear la hoja de pedidos.');
+            } catch (error) {
+                console.error('Error al obtener hoja de pedidos:', error);
+                res.status(500).send('Error al obtener la hoja de pedidos.');
             }
         });
 
@@ -882,6 +907,7 @@ ${helpGuideCSS}
                             <button onclick="showVisual()" class="btn btn-purple">Visualizar</button>
                             <a href="/app/qr" class="btn btn-green">WhatsApp QR</a>
                             <a href="/app/refresh?botId=${botId}" class="btn btn-orange">Refrescar</a>
+                            <a href="/app/pedidos/${botId}" target="_blank" class="btn btn-green">Ver Pedidos</a>
                             ${isAdmin ? `<a href="https://docs.google.com/spreadsheets/d/${service.spreadsheetId}" target="_blank" class="btn btn-blue">Abrir Sheet</a>` : ''}
                             <a href="/app/logout" class="btn btn-red">Salir</a>
                         </div>
