@@ -393,12 +393,14 @@ async function startBot(botConfig, forceStart = false) {
             if (m.type === 'notify') {
                 for (const msg of m.messages) {
                     if (!msg.key.fromMe && msg.message) {
-                        const jid = msg.key.remoteJid;
+                        const jid = msg.key.remoteJidAlt || msg.key.remoteJid;
                         const content = extractMessageContent(msg.message) || msg.message;
                         const text = msg.message.conversation ||
                             msg.message.extendedTextMessage?.text ||
                             msg.message.buttonsResponseMessage?.selectedButtonId ||
                             msg.message.listResponseMessage?.singleSelectReply?.selectedRowId;
+
+                        console.log(`[${id}] JID: "${jid}"${msg.key.remoteJidAlt ? ` (remoteJid original: "${msg.key.remoteJid}")` : ''}`);
 
                         const image = content.imageMessage;
                         const document = content.documentMessage;

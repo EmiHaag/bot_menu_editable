@@ -1,10 +1,14 @@
 const { google } = require('googleapis');
 const GoogleAuthBase = require('./googleAuthBase');
 
+const GREEN_RGB = { red: 0, green: 188 / 255, blue: 125 / 255 };
+const MAX_DATA_ROWS = 2000;
+
 class OrderService extends GoogleAuthBase {
     constructor() {
         super();
         this.spreadsheetIds = {};
+        this.sheetIds = {};
     }
 
     get sheets() {
@@ -13,6 +17,23 @@ class OrderService extends GoogleAuthBase {
 
     get drive() {
         return google.drive({ version: 'v3', auth: this.getAuthClient() });
+    }
+
+    async _getOrInitSheetMeta(clientId) {
+        if (this.sheetIds[clientId]) return this.sheetIds[clientId];
+
+        const spreadsheetId = this.spreadsheetIds[clientId] || await this.getPedidosSpreadsheetId(clientId);
+        if (!spreadsheetId) return null;
+
+        const spreadsheet = await this.sheets.spreadsheets.get({ spreadsheetId });
+        const sheet = spreadsheet.data.sheets[0];
+        const meta = {
+            spreadsheetId,
+            sheetId: sheet.properties.sheetId,
+            sheetTitle: sheet.properties.title,
+        };
+        this.sheetIds[clientId] = meta;
+        return meta;
     }
 
     async getPedidosSpreadsheetId(clientId) {
@@ -54,9 +75,9 @@ class OrderService extends GoogleAuthBase {
         const spreadsheetId = newFile.data.id;
         this.spreadsheetIds[clientId] = spreadsheetId;
 
-        // Renombrar la hoja por defecto (Sheet1/Hoja1) y poner cabeceras
         const spreadsheet = await this.sheets.spreadsheets.get({ spreadsheetId });
         const defaultSheetId = spreadsheet.data.sheets[0].properties.sheetId;
+        const sheetTitle = this._sanitizeSheetTitle(clientId);
 
         await this.sheets.spreadsheets.batchUpdate({
             spreadsheetId,
@@ -66,7 +87,7 @@ class OrderService extends GoogleAuthBase {
                         updateSheetProperties: {
                             properties: {
                                 sheetId: defaultSheetId,
-                                title: this._sanitizeSheetTitle(clientId),
+                                title: sheetTitle,
                             },
                             fields: 'title',
                         },
@@ -75,14 +96,30 @@ class OrderService extends GoogleAuthBase {
             },
         });
 
+        this.sheetIds[clientId] = { spreadsheetId, sheetId: defaultSheetId, sheetTitle };
+
         await this.sheets.spreadsheets.values.update({
             spreadsheetId,
-            range: `${this._sanitizeSheetTitle(clientId)}!A1:F1`,
+            range: `${sheetTitle}!A1:F1`,
             valueInputOption: 'USER_ENTERED',
             requestBody: {
                 values: [['Fecha/Hora', 'WhatsApp', 'Items', 'Total', 'Datos del Cliente', 'Cliente']],
             },
         });
+
+        await this._applyFormatting(spreadsheetId, defaultSheetId, sheetTitle);
+
+        try {
+            await this.drive.permissions.create({
+                fileId: spreadsheetId,
+                resource: {
+                    role: 'reader',
+                    type: 'anyone',
+                },
+            });
+        } catch (e) {
+            console.warn('[OrderService] No se pudo hacer público el Pedidos:', e.message);
+        }
 
         if (process.env.ADMIN_EMAIL) {
             try {
@@ -102,6 +139,73 @@ class OrderService extends GoogleAuthBase {
         return spreadsheetId;
     }
 
+    async _applyFormatting(spreadsheetId, sheetId, sheetTitle) {
+        const range = `${sheetTitle}!A1:F${MAX_DATA_ROWS}`;
+
+        await this.sheets.spreadsheets.batchUpdate({
+            spreadsheetId,
+            requestBody: {
+                requests: [
+                    {
+                        repeatCell: {
+                            range: {
+                                sheetId,
+                                startRowIndex: 0,
+                                endRowIndex: 1,
+                                startColumnIndex: 0,
+                                endColumnIndex: 6,
+                            },
+                            cell: {
+                                userEnteredFormat: {
+                                    backgroundColor: GREEN_RGB,
+                                    textFormat: {
+                                        bold: true,
+                                        foregroundColor: { red: 0, green: 0, blue: 0 },
+                                    },
+                                    horizontalAlignment: 'CENTER',
+                                },
+                            },
+                            fields: 'userEnteredFormat(backgroundColor,textFormat,horizontalAlignment)',
+                        },
+                    },
+                    {
+                        addBanding: {
+                            bandedRange: {
+                                range: {
+                                    sheetId,
+                                    startRowIndex: 0,
+                                    endRowIndex: MAX_DATA_ROWS,
+                                    startColumnIndex: 0,
+                                    endColumnIndex: 6,
+                                },
+                                rowProperties: {
+                                    headerColor: GREEN_RGB,
+                                    firstBandColor: { red: 1, green: 1, blue: 1 },
+                                    secondBandColor: { red: 245 / 255, green: 245 / 255, blue: 245 / 255 },
+                                },
+                            },
+                        },
+                    },
+                    {
+                        updateBorders: {
+                            range: {
+                                sheetId,
+                                startRowIndex: 0,
+                                endRowIndex: MAX_DATA_ROWS,
+                                startColumnIndex: 0,
+                                endColumnIndex: 6,
+                            },
+                            top: { style: 'SOLID', color: { red: 0.8, green: 0.8, blue: 0.8 } },
+                            bottom: { style: 'SOLID', color: { red: 0.8, green: 0.8, blue: 0.8 } },
+                            left: { style: 'SOLID', color: { red: 0.8, green: 0.8, blue: 0.8 } },
+                            right: { style: 'SOLID', color: { red: 0.8, green: 0.8, blue: 0.8 } },
+                        },
+                    },
+                ],
+            },
+        });
+    }
+
     async deletePedidosSpreadsheet(clientId) {
         const spreadsheetId = this.spreadsheetIds[clientId] || await this.getPedidosSpreadsheetId(clientId);
         if (!spreadsheetId) return false;
@@ -109,6 +213,7 @@ class OrderService extends GoogleAuthBase {
         const driveService = require('./googleDriveService');
         const result = await driveService.deleteFile(spreadsheetId);
         delete this.spreadsheetIds[clientId];
+        delete this.sheetIds[clientId];
         return result;
     }
 
@@ -118,7 +223,10 @@ class OrderService extends GoogleAuthBase {
             spreadsheetId = await this.createPedidosSpreadsheet(clientId);
         }
 
-        const sheetTitle = this._sanitizeSheetTitle(clientId);
+        const meta = await this._getOrInitSheetMeta(clientId);
+        if (!meta) return;
+
+        const { sheetId, sheetTitle } = meta;
         const phone = jid ? jid.split('@')[0] : 'desconocido';
 
         const itemsText = items.map(item => {
@@ -137,9 +245,28 @@ class OrderService extends GoogleAuthBase {
         const now = new Date().toLocaleString('es-AR');
 
         try {
-            await this.sheets.spreadsheets.values.append({
+            await this.sheets.spreadsheets.batchUpdate({
                 spreadsheetId,
-                range: `${sheetTitle}!A:F`,
+                requestBody: {
+                    requests: [
+                        {
+                            insertDimension: {
+                                range: {
+                                    sheetId,
+                                    dimension: 'ROWS',
+                                    startIndex: 1,
+                                    endIndex: 2,
+                                },
+                                inheritFromBefore: false,
+                            },
+                        },
+                    ],
+                },
+            });
+
+            await this.sheets.spreadsheets.values.update({
+                spreadsheetId,
+                range: `${sheetTitle}!A2:F2`,
                 valueInputOption: 'USER_ENTERED',
                 requestBody: {
                     values: [[now, phone, itemsText, `$${total}`, datosText || '', clientId]],
