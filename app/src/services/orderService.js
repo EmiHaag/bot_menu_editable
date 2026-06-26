@@ -100,10 +100,10 @@ class OrderService extends GoogleAuthBase {
 
         await this.sheets.spreadsheets.values.update({
             spreadsheetId,
-            range: `${sheetTitle}!A1:F1`,
+            range: `${sheetTitle}!A1:E1`,
             valueInputOption: 'USER_ENTERED',
             requestBody: {
-                values: [['Fecha/Hora', 'WhatsApp', 'Items', 'Total', 'Datos del Cliente', 'Cliente']],
+                values: [['Fecha/Hora', 'WhatsApp', 'Items', 'Total', 'Datos del Cliente']],
             },
         });
 
@@ -113,7 +113,7 @@ class OrderService extends GoogleAuthBase {
             await this.drive.permissions.create({
                 fileId: spreadsheetId,
                 resource: {
-                    role: 'reader',
+                    role: 'writer',
                     type: 'anyone',
                 },
             });
@@ -140,8 +140,6 @@ class OrderService extends GoogleAuthBase {
     }
 
     async _applyFormatting(spreadsheetId, sheetId, sheetTitle) {
-        const range = `${sheetTitle}!A1:F${MAX_DATA_ROWS}`;
-
         await this.sheets.spreadsheets.batchUpdate({
             spreadsheetId,
             requestBody: {
@@ -153,7 +151,7 @@ class OrderService extends GoogleAuthBase {
                                 startRowIndex: 0,
                                 endRowIndex: 1,
                                 startColumnIndex: 0,
-                                endColumnIndex: 6,
+                                endColumnIndex: 5,
                             },
                             cell: {
                                 userEnteredFormat: {
@@ -176,7 +174,7 @@ class OrderService extends GoogleAuthBase {
                                     startRowIndex: 0,
                                     endRowIndex: MAX_DATA_ROWS,
                                     startColumnIndex: 0,
-                                    endColumnIndex: 6,
+                                    endColumnIndex: 5,
                                 },
                                 rowProperties: {
                                     headerColor: GREEN_RGB,
@@ -193,12 +191,54 @@ class OrderService extends GoogleAuthBase {
                                 startRowIndex: 0,
                                 endRowIndex: MAX_DATA_ROWS,
                                 startColumnIndex: 0,
-                                endColumnIndex: 6,
+                                endColumnIndex: 5,
                             },
                             top: { style: 'SOLID', color: { red: 0.8, green: 0.8, blue: 0.8 } },
                             bottom: { style: 'SOLID', color: { red: 0.8, green: 0.8, blue: 0.8 } },
                             left: { style: 'SOLID', color: { red: 0.8, green: 0.8, blue: 0.8 } },
                             right: { style: 'SOLID', color: { red: 0.8, green: 0.8, blue: 0.8 } },
+                        },
+                    },
+                    {
+                        updateDimensionProperties: {
+                            range: {
+                                sheetId,
+                                dimension: 'COLUMNS',
+                                startIndex: 2,
+                                endIndex: 3,
+                            },
+                            properties: {
+                                pixelSize: 250,
+                            },
+                            fields: 'pixelSize',
+                        },
+                    },
+                    {
+                        updateDimensionProperties: {
+                            range: {
+                                sheetId,
+                                dimension: 'COLUMNS',
+                                startIndex: 3,
+                                endIndex: 4,
+                            },
+                            properties: {
+                                pixelSize: 80,
+                            },
+                            fields: 'pixelSize',
+                        },
+                    },
+                    {
+                        updateDimensionProperties: {
+                            range: {
+                                sheetId,
+                                dimension: 'COLUMNS',
+                                startIndex: 4,
+                                endIndex: 5,
+                            },
+                            properties: {
+                                pixelSize: 250,
+                            },
+                            fields: 'pixelSize',
                         },
                     },
                 ],
@@ -227,7 +267,7 @@ class OrderService extends GoogleAuthBase {
         if (!meta) return;
 
         const { sheetId, sheetTitle } = meta;
-        const phone = jid ? jid.split('@')[0] : 'desconocido';
+        const phone = jid ? this._maskPhone(jid.split('@')[0]) : 'desconocido';
 
         const itemsText = items.map(item => {
             if (typeof item === 'string') return item;
@@ -242,7 +282,8 @@ class OrderService extends GoogleAuthBase {
             }
         }
 
-        const now = new Date().toLocaleString('es-AR');
+        const d = new Date();
+        const now = `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')} ${d.getDate()}/${d.getMonth() + 1}/${String(d.getFullYear()).slice(-2)}`;
 
         try {
             await this.sheets.spreadsheets.batchUpdate({
@@ -266,10 +307,10 @@ class OrderService extends GoogleAuthBase {
 
             await this.sheets.spreadsheets.values.update({
                 spreadsheetId,
-                range: `${sheetTitle}!A2:F2`,
+                range: `${sheetTitle}!A2:E2`,
                 valueInputOption: 'USER_ENTERED',
                 requestBody: {
-                    values: [[now, phone, itemsText, `$${total}`, datosText || '', clientId]],
+                    values: [[now, phone, itemsText, `$${total}`, datosText || '']],
                 },
             });
 
@@ -277,6 +318,14 @@ class OrderService extends GoogleAuthBase {
         } catch (error) {
             console.error('[OrderService] Error guardando pedido:', error.message);
         }
+    }
+
+    _maskPhone(phone) {
+        const cleaned = phone.replace(/^\+/, '');
+        const withoutCode = cleaned.slice(3);
+        if (withoutCode.length <= 4) return withoutCode;
+        const last4 = withoutCode.slice(-4);
+        return '*'.repeat(withoutCode.length - 4) + last4;
     }
 
     _sanitizeSheetTitle(title) {

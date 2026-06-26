@@ -27,11 +27,24 @@ class StateService {
     addItemToOrder(jid, item) {
         const key = this._getKey(jid) + ':order';
         const currentOrder = this.cache.get(key) || [];
-        if (typeof item === 'string') {
-            currentOrder.push({ text: item, price: 0, quantity: 1 });
+        const newItem = typeof item === 'string' ? { text: item, price: 0, quantity: 1 } : item;
+        const newTitle = newItem.text.includes(' x ') ? newItem.text.substring(newItem.text.indexOf(' x ') + 3).trim() : newItem.text;
+
+        const existing = currentOrder.find(ex => {
+            const exTitle = ex.text.includes(' x ') ? ex.text.substring(ex.text.indexOf(' x ') + 3).trim() : ex.text;
+            return exTitle === newTitle;
+        });
+
+        if (existing) {
+            existing.quantity += newItem.quantity;
+            if (existing.text.includes(' x ')) {
+                const titlePart = existing.text.substring(existing.text.indexOf(' x '));
+                existing.text = `${existing.quantity}${titlePart}`;
+            }
         } else {
-            currentOrder.push(item);
+            currentOrder.push(newItem);
         }
+
         this.cache.set(key, currentOrder);
     }
 

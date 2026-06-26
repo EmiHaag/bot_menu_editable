@@ -400,8 +400,6 @@ async function startBot(botConfig, forceStart = false) {
                             msg.message.buttonsResponseMessage?.selectedButtonId ||
                             msg.message.listResponseMessage?.singleSelectReply?.selectedRowId;
 
-                        console.log(`[${id}] JID: "${jid}"${msg.key.remoteJidAlt ? ` (remoteJid original: "${msg.key.remoteJid}")` : ''}`);
-
                         const image = content.imageMessage;
                         const document = content.documentMessage;
 
