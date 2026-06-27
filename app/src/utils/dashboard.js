@@ -951,108 +951,158 @@ ${helpGuideHTML}
                     <div id="addModal" class="modal">
                         <div class="modal-content" style="width: 90%; max-width: 1100px;">
                             <span onclick="closeModal('addModal')" style="float:right; cursor:pointer; font-size:24px;">&times;</span>
-                            <h2>Agregar Nuevo Hijo</h2>
+                            <h2 id="addModalTitle">Agregar Nuevo Hijo</h2>
                             
-                            <div class="modal-body-wrapper">
-                                <div class="form-column">
-                                    <div style="background: #e9ecef; padding: 15px; border-radius: 5px; margin-bottom: 20px; border-left: 5px solid #007bff;">
-                                        <small style="color: #666; display: block; margin-bottom: 10px;">Vista previa de la relación:</small>
-                                        <div id="addPreview" style="font-family: monospace; white-space: pre-wrap; font-size: 13px; max-height: 120px; overflow-y: auto; overflow-x: hidden;"></div>
-                                    </div>
-
-                                    <form action="/app/add" method="POST">
-                                        <input type="hidden" name="botId" value="${botId}">
-                                        <input type="hidden" id="addParentId" name="parentId">
-                                        <input type="hidden" id="addId" name="id">
-                                        <div style="display: flex; gap: 15px;">
-                                            <div class="form-group" style="flex: 1;">
-                                                <label>Disparador (Número/Letra):</label>
-                                                <input type="text" id="addTrigger" name="trigger" placeholder="ej: 1" required oninput="updatePreview('add')">
-                                            </div>
-                                            <div class="form-group" style="flex: 1;">
-                                                <label>Precio ($) <small>(Opcional)</small>:</label>
-                                                <input type="text" id="addPrice" name="price" placeholder="ej: 1500" oninput="updatePreview('add')">
-                                            </div>
-                                        </div>
-                                        <div class="form-group" id="addTitleGroup">
-                                            <label>Título (En el menú):</label>
-                                            <input type="text" id="addTitle" name="title" placeholder="ej: Hablar con Soporte" required oninput="updatePreview('add')">
-                                        </div>
-                                        <div class="form-group">
-                                            <label style="display: flex; align-items: center;">
-                                                Mensaje (Respuesta):
-                                                <span class="info-icon">i
-                                                    <span class="tooltip" id="addMessageTooltip">Esta será la respuesta cuando el usuario escriba el disparador. Si deseas agregar un submenú aquí cierra esta ventana y agrega un "hijo" a esta respuesta.</span>
-                                                </span>
-                                            </label>
-                                            <textarea id="addMessage" name="message" rows="3" placeholder="Mensaje que enviará el bot..." oninput="updatePreview('add')"></textarea>
-                                        </div>
-                                        <div class="form-group" style="margin-bottom: 20px;">
-                                            <div style="border:1px solid var(--border-color);border-radius:8px;padding:12px 12px 8px 12px;">
-                                                <div style="font-size:12px;font-weight:700;color:var(--text-main);margin-bottom:8px;">Carrito de compras</div>
-                                                <div style="display:flex;gap:10px;">
-                                                    <div style="flex:1;display:flex;align-items:center;gap:10px;background:#f8f9fa;padding:10px;border-radius:6px;border:1px dashed var(--border-color);">
-                                                        <input type="checkbox" id="addIsOrder" onchange="toggleOrderTag('add', '##PEDIDO##')" style="width:16px;height:16px;cursor:pointer;">
-                                                        <label for="addIsOrder" style="margin-bottom:0;cursor:pointer;font-size:13px;">¿Crear pedido?<span class="info-icon" style="margin-left:4px;">i<span class="tooltip">Agrega "1 x Título" al carrito de compras.</span></span></label>
-                                                    </div>
-                                                    <div style="flex:1;display:flex;align-items:center;gap:10px;background:#eefbff;padding:10px;border-radius:6px;border:1px dashed #bee5eb;">
-                                                        <input type="checkbox" id="addIsQty" onchange="toggleOrderTag('add', '##CANTIDAD##')" style="width:16px;height:16px;cursor:pointer;">
-                                                        <label for="addIsQty" style="margin-bottom:0;cursor:pointer;font-size:13px;">¿Pedir cantidad?<span class="info-icon" style="margin-left:4px;">i<span class="tooltip">Pregunta al usuario cuántas unidades quiere llevar.</span></span></label>
-                                                    </div>
-                                                    <div style="flex:1;display:flex;align-items:center;gap:10px;background:#f3f0ff;padding:10px;border-radius:6px;border:1px dashed #d1d1ff;">
-                                                        <input type="checkbox" id="addIsFinal" onchange="toggleOrderTag('add', '##FINALIZAR##')" style="width:16px;height:16px;cursor:pointer;">
-                                                        <label for="addIsFinal" style="margin-bottom:0;cursor:pointer;font-size:13px;">¿Finalizar?<span class="info-icon" style="margin-left:4px;">i<span class="tooltip">Muestra el resumen y vacía el carrito. Combinable con otros tags.</span></span></label>
-                                                    </div>
-                                                </div>
-                                                <div style="display:flex;gap:10px;margin-top:6px;">
-                                                    <div style="flex:1;display:flex;align-items:center;gap:10px;background:#fff4e5;padding:10px;border-radius:6px;border:1px dashed #ff9800;">
-                                                        <input type="checkbox" id="addIsData" onchange="toggleOrderTag('add', '##DATOS##')" style="width:16px;height:16px;cursor:pointer;">
-                                                        <label for="addIsData" style="margin-bottom:0;cursor:pointer;font-size:13px;">Capturar dato y continuar<span class="info-icon" style="margin-left:4px;">i<span class="tooltip">Espera que el usuario escriba texto libre (nombre, dirección, etc.).</span></span></label>
-                                                    </div>
-                                                    <div style="flex:1;display:flex;align-items:center;gap:10px;background:#e8f5e9;padding:10px;border-radius:6px;border:1px dashed #66bb6a;">
-                                                        <input type="checkbox" id="addIsArchivo" onchange="toggleOrderTag('add', '##ARCHIVO##')" style="width:16px;height:16px;cursor:pointer;">
-                                                        <label for="addIsArchivo" style="margin-bottom:0;cursor:pointer;font-size:13px;">Solicitar archivo<span class="info-icon" style="margin-left:4px;">i<span class="tooltip">Espera que el usuario envíe una imagen o archivo.</span></span></label>
-                                                    </div>
-                                                </div>
-                                                <div style="display:flex;gap:10px;margin-top:6px;">
-                                                    <div style="flex:1;display:flex;align-items:center;gap:10px;background:#f0fdf4;padding:10px;border-radius:6px;border:1px dashed #86efac;">
-                                                        <input type="checkbox" id="addIsPagar" onchange="toggleOrderTag('add', '##PAGAR##')" style="width:16px;height:16px;cursor:pointer;">
-                                                        <label for="addIsPagar" style="margin-bottom:0;cursor:pointer;font-size:13px;">Ir a pagar<span class="info-icon" style="margin-left:4px;">i<span class="tooltip">Muestra "p. Ir a pagar" cuando hay items en el carrito. Al escribir p va al primer hijo con Finalizar.</span></span></label>
-                                                    </div>
-                                                    <div style="flex:1;"></div>
-                                                </div>
-                                            </div>
-                                        </div>
-                                        <div class="form-group">
-                                            <label>Redirigir a (opcional):</label>
-                                            <select id="addRedirigirA" name="redirigirA" style="width:100%;padding:8px;border:1px solid var(--border-color);border-radius:6px;background:white;">
-                                                <option value="">-- Sin redirección --</option>
-                                                ${menuData.filter(n => n.id).map(n => `<option value="${n.id}">${n.title || n.id}${n.price ? ' ($' + n.price + ')' : ''}</option>`).join('')}
-                                            </select>
-                                            <small style="color:#888;">Al finalizar, irá directamente a este nodo.</small>
-                                        </div>
-                                        <div class="form-group" style="display:flex;align-items:center;gap:10px;background:#fff3e0;padding:12px;border-radius:6px;border:1px dashed #ffb74d;">
-                                            <input type="checkbox" id="addNoDisponible" name="disponible" value="false" style="width:18px;height:18px;cursor:pointer;">
-                                            <label for="addNoDisponible" style="margin-bottom:0;cursor:pointer;font-weight:700;color:#e65100;">No disponible (sin stock)</label>
-                                        </div>
-                                        <button type="submit" class="btn btn-green" style="width: 100%;">Crear Nodo Hijo</button>
-                                    </form>
+                            <!-- Step 0: Ask if it's an item -->
+                            <div id="wizardAsk" style="text-align: center; padding: 30px 20px;">
+                                <p style="font-size: 18px; margin-bottom: 30px; color: var(--text-main);">¿Es un item de compra/pedido?</p>
+                                <div style="display: flex; gap: 20px; justify-content: center;">
+                                    <button type="button" onclick="startItemWizard()" style="padding: 15px 40px; font-size: 16px; font-weight: 600; background: var(--primary-color); color: white; border: none; border-radius: 8px; cursor: pointer; transition: transform 0.2s;" onmouseover="this.style.transform='scale(1.05)'" onmouseout="this.style.transform='scale(1)'">Sí, es un item</button>
+                                    <button type="button" onclick="showFullForm()" style="padding: 15px 40px; font-size: 16px; font-weight: 600; background: var(--bg-box); color: var(--text-muted); border: 2px solid var(--border-color); border-radius: 8px; cursor: pointer; transition: transform 0.2s;" onmouseover="this.style.transform='scale(1.05)'" onmouseout="this.style.transform='scale(1)'">No, formulario completo</button>
                                 </div>
+                            </div>
 
-                                <div class="chat-column">
-                                    <div class="whatsapp-container">
-                                        <div class="whatsapp-header">
-                                            <div style="width: 30px; height: 30px; background: #ccc; border-radius: 50%;"></div>
-                                            <div style="font-weight: bold; font-size: 14px;">Bot WhatsApp</div>
+                            <!-- Full form (existing behavior) -->
+                            <div id="addFullForm" style="display: none;">
+                                <div class="modal-body-wrapper">
+                                    <div class="form-column">
+                                        <div style="background: #e9ecef; padding: 15px; border-radius: 5px; margin-bottom: 20px; border-left: 5px solid #007bff;">
+                                            <small style="color: #666; display: block; margin-bottom: 10px;">Vista previa de la relación:</small>
+                                            <div id="addPreview" style="font-family: monospace; white-space: pre-wrap; font-size: 13px; max-height: 120px; overflow-y: auto; overflow-x: hidden;"></div>
                                         </div>
-                                        <div class="whatsapp-body" id="addChatBody">
-                                            <!-- Chat content -->
-                                        </div>
-                                        <div class="wa-footer">
-                                            <div class="wa-input"></div>
-                                        </div>
+
+                                        <form action="/app/add" method="POST">
+                                            <input type="hidden" name="botId" value="${botId}">
+                                            <input type="hidden" id="addParentId" name="parentId">
+                                            <input type="hidden" id="addId" name="id">
+                                            <div style="display: flex; gap: 15px;">
+                                                <div class="form-group" style="flex: 1;">
+                                                    <label>Disparador (Número/Letra):</label>
+                                                    <input type="text" id="addTrigger" name="trigger" placeholder="ej: 1" required oninput="updatePreview('add')">
+                                                </div>
+                                                <div class="form-group" style="flex: 1;">
+                                                    <label>Precio ($) <small>(Opcional)</small>:</label>
+                                                    <input type="text" id="addPrice" name="price" placeholder="ej: 1500" oninput="updatePreview('add')">
+                                                </div>
+                                            </div>
+                                            <div class="form-group" id="addTitleGroup">
+                                                <label>Título (En el menú):</label>
+                                                <input type="text" id="addTitle" name="title" placeholder="ej: Hablar con Soporte" required oninput="updatePreview('add')">
+                                            </div>
+                                            <div class="form-group">
+                                                <label style="display: flex; align-items: center;">
+                                                    Mensaje (Respuesta):
+                                                    <span class="info-icon">i
+                                                        <span class="tooltip" id="addMessageTooltip">Esta será la respuesta cuando el usuario escriba el disparador. Si deseas agregar un submenú aquí cierra esta ventana y agrega un "hijo" a esta respuesta.</span>
+                                                    </span>
+                                                </label>
+                                                <textarea id="addMessage" name="message" rows="3" placeholder="Mensaje que enviará el bot..." oninput="updatePreview('add')"></textarea>
+                                            </div>
+                                            <div class="form-group" style="margin-bottom: 20px;">
+                                                <div style="border:1px solid var(--border-color);border-radius:8px;padding:12px 12px 8px 12px;">
+                                                    <div style="font-size:12px;font-weight:700;color:var(--text-main);margin-bottom:8px;">Carrito de compras</div>
+                                                    <div style="display:flex;gap:10px;">
+                                                        <div style="flex:1;display:flex;align-items:center;gap:10px;background:#f8f9fa;padding:10px;border-radius:6px;border:1px dashed var(--border-color);">
+                                                            <input type="checkbox" id="addIsOrder" onchange="toggleOrderTag('add', '##PEDIDO##')" style="width:16px;height:16px;cursor:pointer;">
+                                                            <label for="addIsOrder" style="margin-bottom:0;cursor:pointer;font-size:13px;">¿Crear pedido?<span class="info-icon" style="margin-left:4px;">i<span class="tooltip">Agrega "1 x Título" al carrito de compras.</span></span></label>
+                                                        </div>
+                                                        <div style="flex:1;display:flex;align-items:center;gap:10px;background:#eefbff;padding:10px;border-radius:6px;border:1px dashed #bee5eb;">
+                                                            <input type="checkbox" id="addIsQty" onchange="toggleOrderTag('add', '##CANTIDAD##')" style="width:16px;height:16px;cursor:pointer;">
+                                                            <label for="addIsQty" style="margin-bottom:0;cursor:pointer;font-size:13px;">¿Pedir cantidad?<span class="info-icon" style="margin-left:4px;">i<span class="tooltip">Pregunta al usuario cuántas unidades quiere llevar.</span></span></label>
+                                                        </div>
+                                                        <div style="flex:1;display:flex;align-items:center;gap:10px;background:#f3f0ff;padding:10px;border-radius:6px;border:1px dashed #d1d1ff;">
+                                                            <input type="checkbox" id="addIsFinal" onchange="toggleOrderTag('add', '##FINALIZAR##')" style="width:16px;height:16px;cursor:pointer;">
+                                                            <label for="addIsFinal" style="margin-bottom:0;cursor:pointer;font-size:13px;">¿Finalizar?<span class="info-icon" style="margin-left:4px;">i<span class="tooltip">Muestra el resumen y vacía el carrito. Combinable con otros tags.</span></span></label>
+                                                        </div>
+                                                    </div>
+                                                    <div style="display:flex;gap:10px;margin-top:6px;">
+                                                        <div style="flex:1;display:flex;align-items:center;gap:10px;background:#fff4e5;padding:10px;border-radius:6px;border:1px dashed #ff9800;">
+                                                            <input type="checkbox" id="addIsData" onchange="toggleOrderTag('add', '##DATOS##')" style="width:16px;height:16px;cursor:pointer;">
+                                                            <label for="addIsData" style="margin-bottom:0;cursor:pointer;font-size:13px;">Capturar dato y continuar<span class="info-icon" style="margin-left:4px;">i<span class="tooltip">Espera que el usuario escriba texto libre (nombre, dirección, etc.).</span></span></label>
+                                                        </div>
+                                                        <div style="flex:1;display:flex;align-items:center;gap:10px;background:#e8f5e9;padding:10px;border-radius:6px;border:1px dashed #66bb6a;">
+                                                            <input type="checkbox" id="addIsArchivo" onchange="toggleOrderTag('add', '##ARCHIVO##')" style="width:16px;height:16px;cursor:pointer;">
+                                                            <label for="addIsArchivo" style="margin-bottom:0;cursor:pointer;font-size:13px;">Solicitar archivo<span class="info-icon" style="margin-left:4px;">i<span class="tooltip">Espera que el usuario envíe una imagen o archivo.</span></span></label>
+                                                        </div>
+                                                    </div>
+                                                    <div style="display:flex;gap:10px;margin-top:6px;">
+                                                        <div style="flex:1;display:flex;align-items:center;gap:10px;background:#f0fdf4;padding:10px;border-radius:6px;border:1px dashed #86efac;">
+                                                            <input type="checkbox" id="addIsPagar" onchange="toggleOrderTag('add', '##PAGAR##')" style="width:16px;height:16px;cursor:pointer;">
+                                                            <label for="addIsPagar" style="margin-bottom:0;cursor:pointer;font-size:13px;">Ir a pagar<span class="info-icon" style="margin-left:4px;">i<span class="tooltip">Muestra "p. Ir a pagar" cuando hay items en el carrito. Al escribir p va al primer hijo con Finalizar.</span></span></label>
+                                                        </div>
+                                                        <div style="flex:1;"></div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div class="form-group">
+                                                <label>Redirigir a (opcional):</label>
+                                                <select id="addRedirigirA" name="redirigirA" style="width:100%;padding:8px;border:1px solid var(--border-color);border-radius:6px;background:white;">
+                                                    <option value="">-- Sin redirección --</option>
+                                                    ${menuData.filter(n => n.id).map(n => `<option value="${n.id}">${n.title || n.id}${n.price ? ' ($' + n.price + ')' : ''}</option>`).join('')}
+                                                </select>
+                                                <small style="color:#888;">Al finalizar, irá directamente a este nodo.</small>
+                                            </div>
+                                            <div class="form-group" style="display:flex;align-items:center;gap:10px;background:#fff3e0;padding:12px;border-radius:6px;border:1px dashed #ffb74d;">
+                                                <input type="checkbox" id="addNoDisponible" name="disponible" value="false" style="width:18px;height:18px;cursor:pointer;">
+                                                <label for="addNoDisponible" style="margin-bottom:0;cursor:pointer;font-weight:700;color:#e65100;">No disponible (sin stock)</label>
+                                            </div>
+                                            <button type="submit" class="btn btn-green" style="width: 100%;">Crear Nodo Hijo</button>
+                                        </form>
                                     </div>
-                                    <p style="font-size: 11px; color: #999; text-align: center; margin-top: 10px;">* Simulación de respuesta del bot</p>
+
+                                    <div class="chat-column">
+                                        <div class="whatsapp-container">
+                                            <div class="whatsapp-header">
+                                                <div style="width: 30px; height: 30px; background: #ccc; border-radius: 50%;"></div>
+                                                <div style="font-weight: bold; font-size: 14px;">Bot WhatsApp</div>
+                                            </div>
+                                            <div class="whatsapp-body" id="addChatBody">
+                                                <!-- Chat content -->
+                                            </div>
+                                            <div class="wa-footer">
+                                                <div class="wa-input"></div>
+                                            </div>
+                                        </div>
+                                        <p style="font-size: 11px; color: #999; text-align: center; margin-top: 10px;">* Simulación de respuesta del bot</p>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Wizard Container -->
+                            <div id="wizardContainer" style="display: none;">
+                                <div style="display: flex; gap: 20px; align-items: flex-start;">
+                                    <div style="flex: 1;">
+                                        <!-- Step indicator -->
+                                        <div id="wizardSteps" style="display: flex; gap: 12px; margin-bottom: 20px; align-items: center;">
+                                            <span id="wizStepIndicator" style="background: var(--primary-color); color: white; padding: 4px 12px; border-radius: 12px; font-size: 13px; font-weight: 600;">Item #1</span>
+                                            <span style="color: var(--text-muted); font-size: 13px;" id="wizItemsCount">0 items agregados</span>
+                                        </div>
+
+                                        <!-- Current question -->
+                                        <div id="wizQuestion" style="background: var(--bg-box); border: 2px solid var(--border-color); border-radius: 12px; padding: 25px;">
+                                            <div id="wizQuestionContent">
+                                                <!-- Dynamic content -->
+                                            </div>
+                                        </div>
+
+                                        <!-- Item list -->
+                                        <div id="wizItemsList" style="margin-top: 15px; max-height: 200px; overflow-y: auto;"></div>
+                                    </div>
+
+                                    <!-- Wizard preview -->
+                                    <div class="chat-column" style="flex: 0 0 35%;">
+                                        <div class="whatsapp-container" style="position: sticky; top: 0;">
+                                            <div class="whatsapp-header">
+                                                <div style="width: 30px; height: 30px; background: #ccc; border-radius: 50%;"></div>
+                                                <div style="font-weight: bold; font-size: 14px;">Bot WhatsApp</div>
+                                            </div>
+                                            <div class="whatsapp-body" id="wizChatBody"></div>
+                                            <div class="wa-footer">
+                                                <div class="wa-input"></div>
+                                            </div>
+                                        </div>
+                                        <p style="font-size: 11px; color: #999; text-align: center; margin-top: 10px;">* Vista previa del menú</p>
+                                    </div>
                                 </div>
                             </div>
                         </div>
@@ -1303,35 +1353,290 @@ ${helpGuideJS}
                             document.getElementById('visualModal').style.display = "block";
                         }
 
+                        // --- Wizard State ---
+                        let wizardState = {
+                            parentId: 'root',
+                            parentTitle: 'Raíz',
+                            items: [],
+                            currentItemIdx: 0,
+                            step: 0, // 0=titulo, 1=precio, 2=cantidad, 3=another
+                            prefix: 'menu',
+                            nextTrigger: 1
+                        };
+
                         function openAddModal(idx) {
                             const parent = menuData[idx] || { title: 'Raíz', id: 'root' };
                             const parentId = parent.id || 'root';
                             currentParent = parent;
-                            
-                            // Asegurar que el parentId sea el ID real del nodo seleccionado
+
+                            // Setup full form
                             document.getElementById('addParentId').value = parentId;
-                            
                             const childrenCount = menuData.filter(n => n.parentId === parentId).length;
                             const nextNumber = childrenCount + 1;
-
-                            // Sugerencia de ID: nombre_padre + _opcion + X
-                            // Si el padre es root, el prefijo es 'menu'
                             const prefix = parentId === 'root' ? 'menu' : parentId;
                             const newId = prefix + '_opcion' + nextNumber;
-                            
                             document.getElementById('addId').value = newId;
-
-                            // Sugerencia de Trigger: X
                             document.getElementById('addTrigger').value = nextNumber;
                             document.getElementById('addPrice').value = '';
-
                             document.getElementById('addRedirigirA').value = '';
                             document.getElementById('addNoDisponible').checked = false;
-                            document.getElementById('addModal').style.display = "block";
                             document.getElementById('addIsData').checked = false;
                             document.getElementById('addIsArchivo').checked = false;
                             document.getElementById('addIsPagar').checked = false;
                             updatePreview('add');
+
+                            // Reset wizard state
+                            wizardState = {
+                                parentId: parentId,
+                                parentTitle: parent.title || 'Raíz',
+                                items: [],
+                                currentItemIdx: 0,
+                                step: 0,
+                                prefix: prefix,
+                                nextTrigger: nextNumber
+                            };
+
+                            // Show initial question
+                            document.getElementById('addModalTitle').textContent = 'Agregar Nuevo Hijo';
+                            document.getElementById('wizardAsk').style.display = 'block';
+                            document.getElementById('addFullForm').style.display = 'none';
+                            document.getElementById('wizardContainer').style.display = 'none';
+                            document.getElementById('addModal').style.display = "block";
+                        }
+
+                        function showFullForm() {
+                            document.getElementById('addModalTitle').textContent = 'Agregar Nuevo Hijo (Formulario Completo)';
+                            document.getElementById('wizardAsk').style.display = 'none';
+                            document.getElementById('addFullForm').style.display = 'block';
+                            document.getElementById('wizardContainer').style.display = 'none';
+                            updatePreview('add');
+                        }
+
+                        function startItemWizard() {
+                            document.getElementById('addModalTitle').textContent = 'Crear Items de Compra';
+                            document.getElementById('wizardAsk').style.display = 'none';
+                            document.getElementById('addFullForm').style.display = 'none';
+                            document.getElementById('wizardContainer').style.display = 'block';
+
+                            wizardState.items = [];
+                            wizardState.currentItemIdx = 0;
+                            wizardState.step = 0;
+                            showWizardQuestion();
+                        }
+
+                        function showWizardQuestion() {
+                            const container = document.getElementById('wizQuestionContent');
+                            const stepIndicator = document.getElementById('wizStepIndicator');
+                            const itemsCount = document.getElementById('wizItemsCount');
+                            
+                            stepIndicator.textContent = 'Item #' + (wizardState.currentItemIdx + 1);
+                            itemsCount.textContent = wizardState.items.length + ' items agregados';
+
+                            const qIdx = wizardState.currentItemIdx;
+
+                            if (wizardState.step === 0) {
+                                // Ask for title
+                                container.innerHTML = \`
+                                    <p style="font-size: 16px; font-weight: 600; margin-bottom: 15px; color: var(--text-main);">\u00bfT\u00edtulo del item?</p>
+                                    <p style="font-size: 13px; color: var(--text-muted); margin-bottom: 15px;">ej: Pizza Pepperoni, Coca Cola, etc.</p>
+                                    <input type="text" id="wizTitleInput" placeholder="ej: Pepperoni" style="width: 100%; padding: 12px; border: 2px solid var(--border-color); border-radius: 8px; font-size: 15px; box-sizing: border-box;" onkeydown="if(event.key==='Enter') wizNextTitle()" autofocus>
+                                    <div style="margin-top: 15px; display: flex; gap: 10px;">
+                                        <button type="button" onclick="wizNextTitle()" style="flex: 1; padding: 12px; background: var(--primary-color); color: white; border: none; border-radius: 8px; font-size: 15px; font-weight: 600; cursor: pointer;">Siguiente \u2192</button>
+                                    </div>
+                                \`;
+                                setTimeout(() => document.getElementById('wizTitleInput').focus(), 100);
+                            } else if (wizardState.step === 1) {
+                                // Ask for price
+                                container.innerHTML = \`
+                                    <p style="font-size: 16px; font-weight: 600; margin-bottom: 15px; color: var(--text-main);">\u00bfPrecio? (opcional)</p>
+                                    <p style="font-size: 13px; color: var(--text-muted); margin-bottom: 15px;">Si tiene precio, escribilo. Si no, dejalo vac\u00edo.</p>
+                                    <input type="text" id="wizPriceInput" placeholder="ej: 8000 (o vac\u00edo)" style="width: 100%; padding: 12px; border: 2px solid var(--border-color); border-radius: 8px; font-size: 15px; box-sizing: border-box;" onkeydown="if(event.key==='Enter') wizNextPrice()" autofocus>
+                                    <div style="margin-top: 15px; display: flex; gap: 10px;">
+                                        <button type="button" onclick="wizBack()" style="flex: 1; padding: 12px; background: var(--bg-box); color: var(--text-muted); border: 2px solid var(--border-color); border-radius: 8px; font-size: 15px; font-weight: 600; cursor: pointer;">\u2190 Atr\u00e1s</button>
+                                        <button type="button" onclick="wizNextPrice()" style="flex: 1; padding: 12px; background: var(--primary-color); color: white; border: none; border-radius: 8px; font-size: 15px; font-weight: 600; cursor: pointer;">Siguiente \u2192</button>
+                                    </div>
+                                \`;
+                                setTimeout(() => document.getElementById('wizPriceInput').focus(), 100);
+                            } else if (wizardState.step === 2) {
+                                // Ask if quantity
+                                container.innerHTML = \`
+                                    <p style="font-size: 16px; font-weight: 600; margin-bottom: 15px; color: var(--text-main);">\u00bfPedir cantidad al usuario?</p>
+                                    <p style="font-size: 13px; color: var(--text-muted); margin-bottom: 15px;">Si marc\u00e1s "S\u00ed", el bot preguntar\u00e1 "\u00bfCu\u00e1ntas unidades?"</p>
+                                    <div style="display: flex; gap: 15px;">
+                                        <button type="button" onclick="wizSetQty(true)" style="flex: 1; padding: 15px; background: var(--primary-color); color: white; border: none; border-radius: 8px; font-size: 15px; font-weight: 600; cursor: pointer;">S\u00ed, pedir cantidad</button>
+                                        <button type="button" onclick="wizSetQty(false)" style="flex: 1; padding: 15px; background: var(--bg-box); color: var(--text-muted); border: 2px solid var(--border-color); border-radius: 8px; font-size: 15px; font-weight: 600; cursor: pointer;">No</button>
+                                    </div>
+                                \`;
+                            } else if (wizardState.step === 3) {
+                                // Ask to add another
+                                const currentItem = wizardState.items[wizardState.items.length - 1];
+                                const itemSummary = currentItem ? 
+                                    '<span style="color: var(--primary-color); font-weight: 600;">\u2713 ' + currentItem.title + '</span>' : '';
+                                container.innerHTML = \`
+                                    <p style="font-size: 16px; font-weight: 600; margin-bottom: 5px; color: var(--text-main);">\u00a1Item agregado!</p>
+                                    <p style="font-size: 15px; margin-bottom: 15px;">\${itemSummary}</p>
+                                    <p style="font-size: 16px; font-weight: 600; margin-bottom: 15px; color: var(--text-main);">\u00bfAgregar otro item?</p>
+                                    <div style="display: flex; gap: 15px;">
+                                        <button type="button" onclick="wizAddAnother()" style="flex: 1; padding: 15px; background: var(--primary-color); color: white; border: none; border-radius: 8px; font-size: 15px; font-weight: 600; cursor: pointer;">S\u00ed, agregar otro</button>
+                                        <button type="button" onclick="wizFinish()" style="flex: 1; padding: 15px; background: #6f42c1; color: white; border: none; border-radius: 8px; font-size: 15px; font-weight: 600; cursor: pointer;">No, finalizar</button>
+                                    </div>
+                                \`;
+                            }
+
+                            updateWizardPreview();
+                        }
+
+                        function wizNextTitle() {
+                            const title = document.getElementById('wizTitleInput').value.trim();
+                            if (!title) { alert('Por favor ingresá un título.'); return; }
+                            wizardState.items[wizardState.currentItemIdx] = { title: title, price: '', askQty: false };
+                            wizardState.step = 1;
+                            showWizardQuestion();
+                        }
+
+                        function wizNextPrice() {
+                            const price = document.getElementById('wizPriceInput').value.trim();
+                            if (wizardState.items[wizardState.currentItemIdx]) {
+                                wizardState.items[wizardState.currentItemIdx].price = price;
+                            }
+                            wizardState.step = 2;
+                            showWizardQuestion();
+                        }
+
+                        function wizBack() {
+                            wizardState.step--;
+                            showWizardQuestion();
+                        }
+
+                        function wizSetQty(askQty) {
+                            if (wizardState.items[wizardState.currentItemIdx]) {
+                                wizardState.items[wizardState.currentItemIdx].askQty = askQty;
+                            }
+                            wizardState.step = 3;
+                            showWizardQuestion();
+                        }
+
+                        function wizAddAnother() {
+                            wizardState.currentItemIdx++;
+                            wizardState.step = 0;
+                            showWizardQuestion();
+                        }
+
+                        async function wizFinish() {
+                            const btnContainer = document.getElementById('wizQuestionContent');
+                            btnContainer.innerHTML = '<p style="text-align: center; font-size: 16px; color: var(--text-muted);">Creando items... <span id="wizProgress"></span></p>';
+                            
+                            const items = wizardState.items;
+                            const parentId = wizardState.parentId;
+                            const prefix = wizardState.prefix;
+                            let trigger = wizardState.nextTrigger;
+
+                            for (let i = 0; i < items.length; i++) {
+                                const item = items[i];
+                                const nodeId = prefix + '_opcion' + (trigger);
+                                document.getElementById('wizProgress').textContent = '(' + (i+1) + '/' + (items.length + 1) + ')';
+
+                                let message = item.askQty ? '##CANTIDAD##' : '##PEDIDO##';
+
+                                try {
+                                    await fetch('/app/api/add-node', {
+                                        method: 'POST',
+                                        headers: { 'Content-Type': 'application/json' },
+                                        body: JSON.stringify({
+                                            botId: botId,
+                                            id: nodeId,
+                                            parentId: parentId,
+                                            trigger: String(trigger),
+                                            title: item.title,
+                                            message: message,
+                                            price: item.price,
+                                            redirigirA: '',
+                                            disponible: 'true'
+                                        })
+                                    });
+                                } catch (e) {
+                                    console.error('Error creating item:', e);
+                                }
+                                trigger++;
+                            }
+
+                            // Create Finalizar node
+                            document.getElementById('wizProgress').textContent = '(' + (items.length + 1) + '/' + (items.length + 1) + ') - Creando Finalizar...';
+                            const finalId = prefix + '_opcion' + (trigger);
+                            try {
+                                await fetch('/app/api/add-node', {
+                                    method: 'POST',
+                                    headers: { 'Content-Type': 'application/json' },
+                                    body: JSON.stringify({
+                                        botId: botId,
+                                        id: finalId,
+                                        parentId: parentId,
+                                        trigger: String(trigger),
+                                        title: '✅ Finalizar',
+                                        message: '##FINALIZAR##',
+                                        price: '',
+                                        redirigirA: '',
+                                        disponible: 'true'
+                                    })
+                                });
+                            } catch (e) {
+                                console.error('Error creating finalizar node:', e);
+                            }
+
+                            // Redirect to refresh
+                            window.location.href = '/app/?botId=' + encodeURIComponent(botId);
+                        }
+
+                        function updateWizardPreview() {
+                            const chatBody = document.getElementById('wizChatBody');
+                            let content = '';
+                            
+                            const parentTitle = wizardState.parentTitle || 'Menú';
+                            content += '<div class="wa-bubble" style="font-weight: 600;">' + parentTitle + '</div>\\n';
+
+                            const items = wizardState.items;
+                            for (let i = 0; i < items.length; i++) {
+                                const item = items[i];
+                                const num = wizardState.nextTrigger + i;
+                                let line = '*' + num + '*. ' + item.title;
+                                if (item.price) line += ' ($' + item.price + ')';
+                                content += '<div class="wa-bubble">' + line + '</div>\\n';
+                            }
+
+                            // Show preview if there are items
+                            if (items.length > 0) {
+                                const nextNum = wizardState.nextTrigger + items.length;
+                                content += '<div class="wa-bubble" style="background: #f3f0ff; border: 1px dashed #d1d1ff;">✅ Finalizar (' + nextNum + ')</div>\\n';
+                            }
+
+                            chatBody.innerHTML = content;
+                            chatBody.scrollTop = chatBody.scrollHeight;
+
+                            // Update item list
+                            const listContainer = document.getElementById('wizItemsList');
+                            if (items.length === 0) {
+                                listContainer.innerHTML = '<p style="color: var(--text-muted); font-size: 13px; text-align: center; padding: 20px;">No hay items todavía</p>';
+                            } else {
+                                let listHtml = '<div style="background: var(--bg-box); border: 1px solid var(--border-color); border-radius: 8px; padding: 10px;">';
+                                listHtml += '<div style="font-size: 12px; font-weight: 600; color: var(--text-muted); margin-bottom: 8px;">Items agregados:</div>';
+                                items.forEach((item, i) => {
+                                    const num = wizardState.nextTrigger + i;
+                                    const isCurrent = i === wizardState.currentItemIdx;
+                                    const qtyBadge = item.askQty ? ' <span style="background: #eefbff; padding: 1px 6px; border-radius: 4px; font-size: 10px;">🔢 cant.</span>' : '';
+                                    listHtml += '<div style="display: flex; align-items: center; gap: 8px; padding: 6px 0; ' + (isCurrent ? 'background: #f0fdf4; margin: 0 -8px; padding: 6px 8px; border-radius: 6px;' : '') + '">' +
+                                        '<span style="background: ' + (isCurrent ? 'var(--primary-color)' : '#e9ecef') + '; color: ' + (isCurrent ? 'white' : '#666') + '; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 600;">' + num + '</span>' +
+                                        '<span style="flex: 1; font-size: 13px;">' + item.title + '</span>' +
+                                        (item.price ? '<span style="font-size: 12px; color: var(--text-muted);">$' + item.price + '</span>' : '') +
+                                        qtyBadge +
+                                        '</div>';
+                                });
+                                listHtml += '<div style="border-top: 1px dashed var(--border-color); margin-top: 6px; padding-top: 6px; display: flex; align-items: center; gap: 8px;">' +
+                                    '<span style="background: #e9ecef; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 600; color: #666;">' + (wizardState.nextTrigger + items.length) + '</span>' +
+                                    '<span style="flex: 1; font-size: 13px; color: #6f42c1;">✅ Finalizar (auto)</span>' +
+                                    '</div>';
+                                listHtml += '</div>';
+                                listContainer.innerHTML = listHtml;
+                            }
                         }
 
                         function openEditModal(idx) {
@@ -1831,6 +2136,30 @@ ${helpGuideJS}
             } catch (error) {
                 console.error('Error al guardar en Sheets:', error);
                 res.status(500).send('Error al guardar los datos.');
+            }
+        });
+
+        // Ruta JSON API para agregar nodo (usado por el wizard)
+        router.post('/api/add-node', async (req, res) => {
+            try {
+                const { service } = await getServiceInfo(req);
+                const { id, parentId, trigger, title, message, price, redirigirA, disponible } = req.body;
+
+                await service.addNode({
+                    id,
+                    parentId,
+                    trigger,
+                    title,
+                    message,
+                    price,
+                    redirigirA,
+                    disponible: disponible || 'true'
+                });
+
+                res.json({ success: true });
+            } catch (error) {
+                console.error('Error al agregar nodo via API:', error);
+                res.status(500).json({ success: false, error: error.message });
             }
         });
 

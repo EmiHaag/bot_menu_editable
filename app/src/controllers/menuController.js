@@ -332,6 +332,7 @@ class MenuController {
         if (nodeTags.includes('CANTIDAD')) {
             this.stateService.setPendingQuantityItem(jid, node.title);
             let msg = await this.replaceOrderSummary(node.message, jid);
+            if (!msg) msg = `✅ Agregado: *${node.title}* — ¿Cuántos querés?`;
             msg += `\n\n_Escribe *v* para volver atrás._\n_Escribe *0* para volver al inicio._`;
             await this.sendPresenceTyping(sock, jid);
             await sock.sendMessage(jid, { text: msg });
