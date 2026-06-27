@@ -155,6 +155,16 @@ class Dashboard {
                             </tbody>
                         </table>
 
+                        <div style="margin-top: 30px; padding-top: 20px; border-top: 2px solid #e7e3e4;">
+                            <h3>⚙️ Configuración General</h3>
+                            <div style="display: flex; align-items: center; gap: 12px; margin-top: 12px; flex-wrap: wrap;">
+                                <label style="font-weight: 600;">Precio Plan Estándar ($):</label>
+                                <input type="number" id="precioInput" style="padding: 8px 12px; border: 1px solid #ccc; border-radius: 6px; width: 120px; font-size: 1rem;">
+                                <button onclick="savePrice()" class="btn btn-green">Guardar</button>
+                                <span id="priceStatus" style="font-size: 0.85rem; color: #888;"></span>
+                            </div>
+                        </div>
+
                         <div id="addClientModal" class="modal">
                             <div class="modal-content">
                                 <h3>Crear Nuevo Cliente</h3>
@@ -185,6 +195,21 @@ class Dashboard {
 
                         <script>
                             drawRobot('botLogoAdmin');
+                            fetch('/api/config').then(function(r){return r.json()}).then(function(d){
+                                document.getElementById('precioInput').value = d.precioEstandar;
+                            });
+                            function savePrice() {
+                                var val = document.getElementById('precioInput').value;
+                                if (!val) return;
+                                fetch('/api/config', {
+                                    method: 'POST',
+                                    headers: {'Content-Type': 'application/json'},
+                                    body: JSON.stringify({precio_estandar: Number(val)})
+                                }).then(function(r){return r.json()}).then(function(){
+                                    document.getElementById('priceStatus').textContent = '✅ Guardado';
+                                    setTimeout(function(){document.getElementById('priceStatus').textContent = '';}, 3000);
+                                });
+                            }
                             function deleteClient(id) {
                                 if (confirm('¿Seguro que deseas borrar al cliente ' + id + '? Se eliminará su acceso.')) {
                                     window.location.href = '/app/admin/delete-client/' + id;

@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>WhatsApp Bot Menu</title>
+    <title>WhatsApp Bot Menu — Gestioná tu menú por WhatsApp</title>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
@@ -11,44 +11,83 @@
             background: #f8f9fa;
             color: #333;
             min-height: 100vh;
-            display: flex;
-            flex-direction: column;
         }
         .hero {
-            background: linear-gradient(135deg, #00bc7d 0%, #009b66 100%);
+            background: linear-gradient(135deg, #0f6b4f 0%, #0c5841 100%);
             color: white;
-            padding: 80px 24px 60px;
+            padding: 80px 24px 70px;
             text-align: center;
+            position: relative;
+            overflow: hidden;
         }
-        .hero h1 {
-            font-size: 3rem;
-            font-weight: 800;
-            margin-bottom: 16px;
-            letter-spacing: -1px;
-        }
-        .hero p {
-            font-size: 1.2rem;
-            opacity: 0.9;
-            max-width: 600px;
-            margin: 0 auto 32px;
-            line-height: 1.6;
+        .hero::before {
+            content: '';
+            position: absolute;
+            top: -50%;
+            left: -50%;
+            width: 200%;
+            height: 200%;
+            background: radial-gradient(circle at 30% 50%, rgba(255,255,255,0.06) 0%, transparent 60%);
+            pointer-events: none;
         }
         .hero-badge {
             display: inline-block;
-            background: rgba(255,255,255,0.15);
+            background: rgba(255,255,255,0.12);
             backdrop-filter: blur(4px);
             padding: 6px 18px;
             border-radius: 20px;
-            font-size: 0.85rem;
+            font-size: 0.8rem;
             font-weight: 600;
             margin-bottom: 24px;
             letter-spacing: 0.5px;
+            border: 1px solid rgba(255,255,255,0.15);
+        }
+        .hero h1 {
+            font-size: 3.2rem;
+            font-weight: 800;
+            margin-bottom: 12px;
+            letter-spacing: -1px;
+            line-height: 1.1;
+        }
+        .hero h1 span {
+            background: rgba(255,255,255,0.15);
+            padding: 0 8px;
+            border-radius: 4px;
+            line-height: 1;
+        }
+        .hero p {
+            font-size: 1.15rem;
+            opacity: 0.92;
+            max-width: 650px;
+            margin: 0 auto 32px;
+            line-height: 1.7;
+        }
+        .hero-stats {
+            display: flex;
+            justify-content: center;
+            gap: 40px;
+            margin-bottom: 36px;
+            flex-wrap: wrap;
+        }
+        .hero-stat {
+            text-align: center;
+        }
+        .hero-stat-num {
+            font-size: 1.6rem;
+            font-weight: 800;
+        }
+        .hero-stat-label {
+            font-size: 0.8rem;
+            opacity: 0.75;
+            font-weight: 500;
         }
         .btn-group {
             display: flex;
             gap: 16px;
             justify-content: center;
             flex-wrap: wrap;
+            position: relative;
+            z-index: 1;
         }
         .btn {
             display: inline-flex;
@@ -65,7 +104,7 @@
         }
         .btn-primary {
             background: white;
-            color: #00bc7d;
+            color: #0f6b4f;
         }
         .btn-primary:hover {
             transform: translateY(-2px);
@@ -80,64 +119,966 @@
             background: rgba(255,255,255,0.1);
             border-color: white;
         }
+        .section {
+            padding: 70px 24px;
+            max-width: 1100px;
+            margin: 0 auto;
+            text-align: center;
+        }
+        .section h2 {
+            font-size: 2rem;
+            font-weight: 800;
+            margin-bottom: 10px;
+            color: #222;
+        }
+        .section > p {
+            color: #666;
+            font-size: 1.05rem;
+            max-width: 650px;
+            margin: 0 auto 50px;
+            line-height: 1.6;
+        }
+        .steps {
+            display: flex;
+            gap: 20px;
+            justify-content: center;
+            flex-wrap: wrap;
+        }
+        .step-card {
+            background: white;
+            border: 1px solid #eee;
+            border-radius: 14px;
+            padding: 32px 24px;
+            flex: 1;
+            min-width: 240px;
+            max-width: 320px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.03);
+            transition: transform 0.2s, box-shadow 0.2s;
+            text-align: left;
+        }
+        .step-card:hover {
+            transform: translateY(-4px);
+            box-shadow: 0 12px 32px rgba(0,0,0,0.06);
+        }
+        .step-num {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 36px;
+            height: 36px;
+            background: #0f6b4f;
+            color: white;
+            border-radius: 50%;
+            font-weight: 700;
+            font-size: 1rem;
+            margin-bottom: 16px;
+        }
+        .step-card h3 {
+            font-size: 1.15rem;
+            font-weight: 700;
+            margin-bottom: 8px;
+            color: #222;
+        }
+        .step-card p {
+            font-size: 0.9rem;
+            color: #666;
+            line-height: 1.6;
+        }
+        .wizard-demo {
+            padding: 70px 24px;
+            max-width: 1100px;
+            margin: 0 auto;
+            text-align: center;
+        }
+        .wizard-demo h2 {
+            font-size: 2rem;
+            font-weight: 800;
+            margin-bottom: 8px;
+            color: #222;
+        }
+        .wizard-demo > p {
+            color: #666;
+            margin-bottom: 40px;
+            font-size: 1.05rem;
+            max-width: 600px;
+            margin-left: auto;
+            margin-right: auto;
+        }
+        .wizard-steps {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+        .wiz-card {
+            background: white;
+            border: 1px solid #eee;
+            border-radius: 12px;
+            padding: 20px 16px;
+            width: 140px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.04);
+            transition: transform 0.2s, box-shadow 0.2s;
+            position: relative;
+        }
+        .wiz-card:hover {
+            transform: translateY(-4px);
+            box-shadow: 0 8px 24px rgba(0,0,0,0.08);
+        }
+        .wiz-num {
+            position: absolute;
+            top: -10px;
+            left: -10px;
+            background: #0f6b4f;
+            color: white;
+            width: 24px;
+            height: 24px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 12px;
+            font-weight: 700;
+        }
+        .wiz-icon {
+            font-size: 1.8rem;
+            margin-bottom: 8px;
+        }
+        .wiz-title {
+            font-weight: 700;
+            font-size: 0.85rem;
+            margin-bottom: 6px;
+            color: #222;
+        }
+        .wiz-desc {
+            font-size: 0.75rem;
+            color: #888;
+            line-height: 1.4;
+        }
+        .wiz-arrow {
+            font-size: 1.5rem;
+            color: #ccc;
+            font-weight: 300;
+            flex-shrink: 0;
+        }
+        .wiz-result {
+            margin-top: 40px;
+            background: #e8f5e9;
+            border-radius: 12px;
+            padding: 20px 24px;
+            display: inline-flex;
+            align-items: center;
+            gap: 12px;
+            border: 1px solid #c8e6c9;
+        }
+        .wiz-result-icon {
+            font-size: 1.5rem;
+        }
+        .wiz-result-text {
+            font-size: 0.95rem;
+            color: #2e7d32;
+            text-align: left;
+            max-width: 500px;
+        }
+
         .features {
-            padding: 60px 24px;
+            padding: 70px 24px;
             max-width: 1100px;
             margin: 0 auto;
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-            gap: 24px;
+            grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+            gap: 20px;
         }
         .feature {
             background: white;
             border-radius: 12px;
-            padding: 32px 24px;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.04);
+            padding: 28px 22px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.03);
             border: 1px solid #eee;
             transition: transform 0.2s, box-shadow 0.2s;
+            text-align: left;
         }
         .feature:hover {
-            transform: translateY(-4px);
-            box-shadow: 0 8px 24px rgba(0,0,0,0.08);
+            transform: translateY(-3px);
+            box-shadow: 0 8px 24px rgba(0,0,0,0.06);
         }
         .feature-icon {
-            font-size: 2rem;
-            margin-bottom: 16px;
+            font-size: 1.6rem;
+            margin-bottom: 12px;
         }
         .feature h3 {
-            font-size: 1.2rem;
-            margin-bottom: 8px;
+            font-size: 1.05rem;
+            font-weight: 700;
+            margin-bottom: 6px;
             color: #222;
         }
         .feature p {
             color: #666;
             line-height: 1.5;
-            font-size: 0.95rem;
+            font-size: 0.88rem;
+        }
+        .cta-section {
+            background: linear-gradient(135deg, #0f6b4f 0%, #0c5841 100%);
+            color: white;
+            text-align: center;
+            padding: 70px 24px;
+        }
+        .cta-section h2 {
+            font-size: 2rem;
+            font-weight: 800;
+            margin-bottom: 10px;
+        }
+        .cta-section p {
+            font-size: 1.05rem;
+            opacity: 0.9;
+            margin-bottom: 32px;
+            max-width: 550px;
+            margin-left: auto;
+            margin-right: auto;
+            line-height: 1.6;
         }
         .footer {
-            margin-top: auto;
-            padding: 24px;
+            padding: 32px 24px;
             text-align: center;
             color: #999;
             font-size: 0.85rem;
             border-top: 1px solid #eee;
+            background: white;
+        }
+        .phone-demo {
+            padding: 70px 24px;
+            max-width: 1100px;
+            margin: 0 auto;
+            text-align: center;
+        }
+        .phone-demo h2 {
+            font-size: 2rem;
+            font-weight: 800;
+            margin-bottom: 8px;
+            color: #222;
+        }
+        .phone-demo > p {
+            color: #666;
+            font-size: 1.05rem;
+            max-width: 650px;
+            margin: 0 auto 40px;
+            line-height: 1.6;
+        }
+        .phone-demo-row {
+            display: flex;
+            gap: 24px;
+            justify-content: center;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+        .phone-scenarios {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            min-width: 170px;
+            max-width: 350px;
+            padding-top: 10px;
+        }
+        .scenario-btn {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 10px 14px;
+            border: 1px solid #e0e0e0;
+            border-radius: 10px;
+            background: white;
+            cursor: pointer;
+            font-size: 0.82rem;
+            font-weight: 600;
+            color: #555;
+            text-align: left;
+            transition: all 0.2s;
+            font-family: inherit;
+            width: 100%;
+        }
+        .scenario-btn:hover { border-color: #0f6b4f; color: #222; background: #f0fdf4; }
+        .scenario-btn.active { border-color: #0f6b4f; background: #e8f5e9; color: #1b5e20; box-shadow: 0 0 0 2px rgba(15,107,79,0.15); }
+        .scenario-btn .s-icon { font-size: 1.3rem; }
+        @media (max-width: 768px) {
+            .phone-scenarios { flex-direction: row; flex-wrap: wrap; justify-content: center; min-width: auto; }
+        }
+        .phone-mockup {
+            width: 300px;
+            height: 600px;
+            background: #111;
+            border-radius: 34px;
+            padding: 10px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.25), 0 0 0 1px rgba(255,255,255,0.05);
+            margin: 0 auto;
+            position: relative;
+        }
+        .phone-screen {
+            width: 100%;
+            height: 100%;
+            background: #e5ddd5;
+            border-radius: 24px;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            position: relative;
+        }
+        .phone-status {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 4px 14px 2px;
+            background: #075e54;
+            color: white;
+            font-size: 10px;
+            font-weight: 600;
+        }
+        .phone-status-icons {
+            display: flex;
+            gap: 3px;
+            align-items: center;
+            font-size: 10px;
+        }
+        .phone-header {
+            display: flex;
+            align-items: center;
+            padding: 6px 10px;
+            background: #075e54;
+            color: white;
+            gap: 8px;
+        }
+        .phone-header-back {
+            font-size: 18px;
+            line-height: 1;
+            opacity: 0.9;
+        }
+        .phone-avatar {
+            width: 34px;
+            height: 34px;
+            border-radius: 50%;
+            background: #0c5841;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 14px;
+            font-weight: 700;
+            color: white;
+            flex-shrink: 0;
+        }
+        .phone-contact {
+            flex: 1;
+            text-align: left;
+        }
+        .phone-contact-name {
+            font-size: 13px;
+            font-weight: 600;
+            line-height: 1.2;
+        }
+        .phone-contact-status {
+            font-size: 10px;
+            opacity: 0.8;
+        }
+        .phone-header-menu {
+            font-size: 16px;
+            opacity: 0.9;
+        }
+        .phone-chat {
+            flex: 1;
+            overflow-y: auto;
+            padding: 10px 12px;
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+            background: #e5ddd5;
+            scroll-behavior: smooth;
+        }
+        .msg {
+            max-width: 88%;
+            padding: 6px 10px;
+            border-radius: 7px;
+            font-size: 12.5px;
+            line-height: 1.55;
+            position: relative;
+            word-wrap: break-word;
+            white-space: pre-wrap;
+            text-align: left;
+            box-shadow: 0 1px 1px rgba(0,0,0,0.04);
+            animation: msgIn 0.2s ease-out;
+        }
+        @keyframes msgIn {
+            from { opacity: 0; transform: translateY(6px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        .msg.bot {
+            align-self: flex-start;
+            background: white;
+            border-top-left-radius: 2px;
+        }
+        .msg.user {
+            align-self: flex-end;
+            background: #dcf8c6;
+            border-top-right-radius: 2px;
+        }
+        .msg .msg-time {
+            font-size: 9px;
+            color: #999;
+            text-align: right;
+            margin-top: 1px;
+            display: flex;
+            align-items: center;
+            justify-content: flex-end;
+            gap: 2px;
+        }
+        .msg.user .msg-time { color: #86b57e; }
+        .msg .check {
+            font-size: 12px;
+            line-height: 1;
+        }
+        .typing-indicator {
+            display: flex;
+            align-items: center;
+            gap: 3px;
+            padding: 8px 14px;
+            background: white;
+            align-self: flex-start;
+            border-radius: 7px;
+            border-top-left-radius: 2px;
+            box-shadow: 0 1px 1px rgba(0,0,0,0.04);
+            animation: msgIn 0.2s ease-out;
+        }
+        .typing-dot {
+            width: 6px;
+            height: 6px;
+            background: #999;
+            border-radius: 50%;
+            animation: typingBounce 1.3s infinite ease-in-out;
+        }
+        .typing-dot:nth-child(2) { animation-delay: 0.15s; }
+        .typing-dot:nth-child(3) { animation-delay: 0.3s; }
+        @keyframes typingBounce {
+            0%, 60%, 100% { transform: translateY(0); }
+            30% { transform: translateY(-5px); }
+        }
+        .phone-input {
+            display: flex;
+            align-items: center;
+            padding: 5px 8px;
+            background: #f0f2f5;
+            gap: 5px;
+        }
+        .phone-input-icon {
+            font-size: 20px;
+            color: #666;
+            line-height: 1;
+        }
+        .phone-input-field {
+            flex: 1;
+            background: white;
+            border-radius: 18px;
+            padding: 7px 12px;
+            font-size: 12.5px;
+            color: #333;
+            text-align: left;
+            white-space: pre-wrap;
+            overflow: hidden;
+            min-height: 18px;
+            display: flex;
+            align-items: center;
+        }
+        .phone-cta-row {
+            display: flex;
+            justify-content: center;
+            gap: 16px;
+            margin-top: 28px;
+            flex-wrap: wrap;
+        }
+        .phone-play-btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 12px 28px;
+            background: #0f6b4f;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-weight: 700;
+            font-size: 0.9rem;
+            cursor: pointer;
+            transition: all 0.2s;
+            font-family: inherit;
+        }
+        .phone-play-btn:hover { transform: translateY(-2px); box-shadow: 0 6px 20px rgba(15,107,79,0.3); }
+        .phone-play-btn:disabled { opacity: 0.5; cursor: default; transform: none; box-shadow: none; }
+        .plan-section {
+            padding: 60px 24px;
+            max-width: 1100px;
+            margin: 0 auto;
+            text-align: center;
+        }
+        .plan-section h2 {
+            font-size: 2rem;
+            font-weight: 800;
+            margin-bottom: 8px;
+            color: #222;
+        }
+        .plan-section > p {
+            color: #666;
+            font-size: 1.05rem;
+            max-width: 600px;
+            margin: 0 auto 40px;
+            line-height: 1.6;
+        }
+        .plan-grid {
+            display: flex;
+            gap: 24px;
+            justify-content: center;
+            flex-wrap: wrap;
+        }
+        .plan-card {
+            flex: 1;
+            min-width: 280px;
+            max-width: 400px;
+            background: white;
+            border: 1px solid #eee;
+            border-radius: 16px;
+            padding: 32px 28px;
+            text-align: left;
+            box-shadow: 0 2px 12px rgba(0,0,0,0.04);
+            transition: transform 0.2s, box-shadow 0.2s;
+            display: flex;
+            flex-direction: column;
+        }
+        .plan-card:hover { transform: translateY(-4px); box-shadow: 0 12px 32px rgba(0,0,0,0.08); }
+        .plan-card.standard { border-color: #0f6b4f; position: relative; }
+        .plan-card.standard::before {
+            content: 'MÁS ELEGIDO';
+            position: absolute;
+            top: -10px;
+            right: 16px;
+            background: #0f6b4f;
+            color: white;
+            font-size: 0.6rem;
+            font-weight: 700;
+            padding: 3px 10px;
+            border-radius: 4px;
+            letter-spacing: 0.5px;
+        }
+        .plan-badge {
+            display: inline-block;
+            background: #e8f5e9;
+            color: #2e7d32;
+            font-size: 0.7rem;
+            font-weight: 700;
+            padding: 3px 10px;
+            border-radius: 4px;
+            margin-bottom: 14px;
+        }
+        .plan-card h3 {
+            font-size: 1.1rem;
+            font-weight: 700;
+            color: #222;
+            margin-bottom: 6px;
+        }
+        .plan-price {
+            font-size: 2rem;
+            font-weight: 800;
+            color: #222;
+            margin-bottom: 4px;
+        }
+        .plan-price .price-period {
+            font-size: 0.9rem;
+            font-weight: 400;
+            color: #888;
+        }
+        .plan-sub {
+            font-size: 0.82rem;
+            color: #888;
+            margin-bottom: 18px;
+        }
+        .plan-features {
+            list-style: none;
+            padding: 0;
+            margin: 0 0 24px;
+            flex: 1;
+        }
+        .plan-features li {
+            padding: 6px 0;
+            font-size: 0.88rem;
+            color: #555;
+            display: flex;
+            gap: 8px;
+            align-items: flex-start;
+            border-bottom: 1px solid #f5f5f5;
+        }
+        .plan-features li:last-child { border-bottom: none; }
+        .plan-features li .ck { color: #0f6b4f; font-weight: 700; flex-shrink: 0; }
+        .plan-btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+            padding: 12px 20px;
+            border-radius: 8px;
+            font-weight: 700;
+            font-size: 0.9rem;
+            text-decoration: none;
+            transition: all 0.2s;
+            cursor: pointer;
+            border: none;
+            font-family: inherit;
+            width: 100%;
+            text-align: center;
+        }
+        .plan-btn.primary { background: #0f6b4f; color: white; }
+        .plan-btn.primary:hover { background: #0c5841; transform: translateY(-2px); box-shadow: 0 4px 14px rgba(15,107,79,0.3); }
+        .plan-btn.secondary { background: #f0f0f0; color: #333; }
+        .plan-btn.secondary:hover { background: #e0e0e0; transform: translateY(-2px); }
+        .modal-overlay {
+            display: none;
+            position: fixed;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(0,0,0,0.5);
+            z-index: 1000;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+        .modal-overlay.open { display: flex; }
+        .modal {
+            background: white;
+            border-radius: 16px;
+            padding: 32px 28px;
+            max-width: 480px;
+            width: 100%;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.2);
+            text-align: left;
+            position: relative;
+        }
+        .modal h3 { font-size: 1.2rem; font-weight: 700; color: #222; margin-bottom: 4px; }
+        .modal p { font-size: 0.88rem; color: #666; margin-bottom: 20px; }
+        .modal-close {
+            position: absolute;
+            top: 12px; right: 16px;
+            font-size: 1.4rem;
+            cursor: pointer;
+            color: #999;
+            background: none;
+            border: none;
+        }
+        .modal-form label {
+            display: block;
+            font-size: 0.82rem;
+            font-weight: 600;
+            color: #444;
+            margin-bottom: 4px;
+        }
+        .modal-form input, .modal-form textarea {
+            width: 100%;
+            padding: 10px 12px;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            font-size: 0.88rem;
+            font-family: inherit;
+            margin-bottom: 14px;
+            transition: border-color 0.2s;
+            box-sizing: border-box;
+        }
+        .modal-form input:focus, .modal-form textarea:focus {
+            outline: none;
+            border-color: #0f6b4f;
+        }
+        .modal-form textarea { resize: vertical; min-height: 80px; }
+        @media (max-width: 768px) {
+            .hero h1 { font-size: 2.2rem; }
+            .hero-stats { gap: 20px; }
+            .wizard-steps { flex-direction: column; }
+            .wiz-arrow { transform: rotate(90deg); }
+            .wiz-card { width: 100%; max-width: 280px; }
+            .phone-mockup { width: 260px; height: 520px; border-radius: 28px; padding: 8px; }
+            .phone-screen { border-radius: 20px; }
         }
         @media (max-width: 600px) {
-            .hero h1 { font-size: 2rem; }
             .hero p { font-size: 1rem; }
             .btn-group { flex-direction: column; align-items: stretch; }
             .btn { justify-content: center; }
+            .section h2, .wizard-demo h2, .cta-section h2 { font-size: 1.5rem; }
         }
     </style>
+    <script src="/js/robot-logo.js"></script>
 </head>
 <body>
     <section class="hero">
-        <div class="hero-badge">Bot Menu v1.0</div>
-        <h1>WhatsApp Bot Menu</h1>
-        <p>Gestiona el menú de tu negocio directamente desde WhatsApp. Tus clientes pueden ver productos, hacer pedidos y recibir respuestas automáticas.</p>
+        <canvas id="heroRobotLogo" width="80" height="80" style="width:60px;height:60px;margin-bottom:10px;display:block;margin-left:auto;margin-right:auto;"></canvas>
+        <div class="hero-badge">🔥 Sin programar · Lo manejás vos</div>
+        <h1>Tu negocio en WhatsApp<br>lo creás <span>vos mismo</span></h1>
+        <p>Menú de pedidos, reserva de turnos, consultas, promociones — lo que necesite tu negocio. El panel lo tenés siempre disponible en tu navegador.</p>
+        <div class="hero-stats">
+            <div class="hero-stat">
+                <div class="hero-stat-num">⚡</div>
+                <div class="hero-stat-label">Activación inmediata</div>
+            </div>
+            <div class="hero-stat">
+                <div class="hero-stat-num">✏️</div>
+                <div class="hero-stat-label">Lo editás cuando quieras</div>
+            </div>
+            <div class="hero-stat">
+                <div class="hero-stat-num">📱</div>
+                <div class="hero-stat-label">Sin apps ni descargas</div>
+            </div>
+        </div>
         <div class="btn-group">
-            <a href="/app/" class="btn btn-primary">Ingresar al Panel</a>
+            <a href="/app/" class="btn btn-primary">Ir al Panel →</a>
             <a href="/app/qr" class="btn btn-secondary">Conectar WhatsApp</a>
+        </div>
+    </section>
+
+    <section class="section">
+        <h2>✍️ Cómo funciona</h2>
+        <p>En 3 pasos tenés tu bot de WhatsApp funcionando con la lógica que necesite tu negocio.</p>
+        <div class="steps">
+            <div class="step-card">
+                <div class="step-num">1</div>
+                <h3>Creá tu cuenta</h3>
+                <p>Solicitá tu suscripción y luego con el usuario y clave que te proporcionaremos ingresá al panel y vinculá tu número de WhatsApp escaneando el código QR. No necesitas instalar nada.</p>
+            </div>
+            <div class="step-card">
+                <div class="step-num">2</div>
+                <h3>Armá los flujos</h3>
+                <p>Usá el editor visual y el wizard para crear pedidos con carrito, reserva de turnos, captura de datos o lo que necesite tu emprendimiento.</p>
+            </div>
+            <div class="step-card">
+                <div class="step-num">3</div>
+                <h3>Automatizá</h3>
+                <p>Tus clientes interactúan desde WhatsApp y vos recibís la información ordenada. Sin depender de nadie para administrarlo.</p>
+            </div>
+        </div>
+    </section>
+
+    <section class="phone-demo">
+        <h2>📱 Mirá cómo funciona</h2>
+        <p>Elegí un caso y mirá la conversación. Así de natural interactúa tu bot con un cliente real.</p>
+        <div class="phone-demo-row">
+            <div class="phone-scenarios">
+                <button class="scenario-btn active" onclick="setScenario(0)">
+                    <span class="s-icon">🍕</span> Menú de comida
+                </button>
+                <button class="scenario-btn" onclick="setScenario(1)">
+                    <span class="s-icon">🩺</span> Solicitud de turnos
+                </button>
+                <button class="scenario-btn" onclick="setScenario(2)">
+                    <span class="s-icon">👗</span> Tienda online
+                </button>
+            </div>
+            <div class="phone-mockup">
+                <div class="phone-screen">
+                    <div class="phone-status">
+                        <span>10:24</span>
+                        <span class="phone-status-icons">📶 🔋</span>
+                    </div>
+                    <div class="phone-header">
+                        <span class="phone-header-back">◀</span>
+                        <div class="phone-avatar" id="phoneAvatar">🍕</div>
+                        <div class="phone-contact">
+                            <div class="phone-contact-name" id="phoneContactName">Pizzería La Esquina</div>
+                            <div class="phone-contact-status">en línea</div>
+                        </div>
+                        <span class="phone-header-menu">⋮</span>
+                    </div>
+                    <div class="phone-chat" id="phoneChat"></div>
+                    <div class="phone-input">
+                        <span class="phone-input-icon">😊</span>
+                        <div class="phone-input-field" id="phoneInputField">Mensaje</div>
+                        <span class="phone-input-icon">📎</span>
+                        <span class="phone-input-icon">🎤</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="phone-cta-row">
+            <button class="phone-play-btn" id="phonePlayBtn" onclick="startPhoneDemo()">▶ Reproducir demo</button>
+        </div>
+    </section>
+
+    <section class="section" style="max-width: 1100px; margin: 0 auto; padding: 0 24px 50px; text-align: center;">
+        <h2 style="font-size:1.5rem; font-weight:800; margin-bottom:6px; color:#222;">📊 Llega directo a tu planilla</h2>
+        <p style="color:#666; font-size:0.95rem; margin-bottom:20px; line-height:1.5;">Cada pedido se guarda automáticamente en Google Sheets. Así lo ves al instante.</p>
+        <div style="overflow-x:auto; border-radius:12px; border:1px solid #e0e0e0; box-shadow:0 2px 12px rgba(0,0,0,0.04); background:white; text-align:left;">
+            <table style="width:100%; border-collapse:collapse; font-size:0.78rem; white-space:nowrap;">
+                <thead>
+                    <tr style="background:#1a73e8; color:white;">
+                        <th style="padding:8px 10px; text-align:left; font-weight:600;">Fecha/Hora</th>
+                        <th style="padding:8px 10px; text-align:left; font-weight:600;">WhatsApp</th>
+                        <th style="padding:8px 10px; text-align:left; font-weight:600;">Items</th>
+                        <th style="padding:8px 10px; text-align:right; font-weight:600;">Total</th>
+                        <th style="padding:8px 10px; text-align:left; font-weight:600;">Datos del Cliente</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr style="border-bottom:1px solid #f0f0f0;">
+                        <td style="padding:7px 10px; color:#444;">15:26 27/6/26</td>
+                        <td style="padding:7px 10px; color:#444;">******9236</td>
+                        <td style="padding:7px 10px; color:#444; max-width:180px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">1 x 1 x Cebolla y queso (grande) ($13000)</td>
+                        <td style="padding:7px 10px; text-align:right; color:#444; font-weight:600;">$13000</td>
+                        <td style="padding:7px 10px; color:#999; font-style:italic;">—</td>
+                    </tr>
+                    <tr style="border-bottom:1px solid #f0f0f0;">
+                        <td style="padding:7px 10px; color:#444;">15:21 27/6/26</td>
+                        <td style="padding:7px 10px; color:#444;">******9236</td>
+                        <td style="padding:7px 10px; color:#444; max-width:180px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">2 x 2 x Anana ($26000), 1 x 1 x Muzarella (grande) ($12000)</td>
+                        <td style="padding:7px 10px; text-align:right; color:#444; font-weight:600;">$38000</td>
+                        <td style="padding:7px 10px; color:#999; font-style:italic;">—</td>
+                    </tr>
+                    <tr style="border-bottom:1px solid #f0f0f0;">
+                        <td style="padding:7px 10px; color:#444;">15:06 27/6/26</td>
+                        <td style="padding:7px 10px; color:#444;">******9236</td>
+                        <td style="padding:7px 10px; color:#444; max-width:180px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">2 x 2 x Cebolla y queso (grande) ($26000), 1 x 1 x Muzarella (grande) ($12000)</td>
+                        <td style="padding:7px 10px; text-align:right; color:#444; font-weight:600;">$38000</td>
+                        <td style="padding:7px 10px; color:#999; font-style:italic;">—</td>
+                    </tr>
+                    <tr style="border-bottom:1px solid #f0f0f0;">
+                        <td style="padding:7px 10px; color:#444;">15:00 27/6/26</td>
+                        <td style="padding:7px 10px; color:#444;">******9236</td>
+                        <td style="padding:7px 10px; color:#444; max-width:180px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">2 x 2 x Muzarella (grande) ($24000), 2 x 2 x Cebolla y queso (grande) ($26000)</td>
+                        <td style="padding:7px 10px; text-align:right; color:#444; font-weight:600;">$50000</td>
+                        <td style="padding:7px 10px; color:#999; font-style:italic;">—</td>
+                    </tr>
+                    <tr style="border-bottom:1px solid #f0f0f0; background:#f8f9fa;">
+                        <td style="padding:7px 10px; color:#444;">14:21 27/6/26</td>
+                        <td style="padding:7px 10px; color:#444;">******9236</td>
+                        <td style="padding:7px 10px; color:#444; max-width:180px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">1 x 1 x Pepperoni ($8000)</td>
+                        <td style="padding:7px 10px; text-align:right; color:#444; font-weight:600;">$8000</td>
+                        <td style="padding:7px 10px; color:#999; font-style:italic;">—</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </section>
+
+    <section class="plan-section">
+        <h2>💰 Planes</h2>
+        <p>Elegí el plan que mejor se adapte a tu negocio. Sin contratos largos, sin sorpresas.</p>
+        <div class="plan-grid">
+            <div class="plan-card standard">
+                <div class="plan-badge">🥇 Primer mes gratis</div>
+                <h3>Plan Estándar</h3>
+                <div class="plan-price"><span class="price-num">$<span id="precioDisplay"></span> ARS</span> <span class="price-period">/mes</span></div>
+                <div class="plan-sub">Bot editor autoadministrable · Sin límite de productos</div>
+                <ul class="plan-features">
+                    <li><span class="ck">✓</span> Bot de WhatsApp con menú interactivo</li>
+                    <li><span class="ck">✓</span> Panel editor desde el navegador</li>
+                    <li><span class="ck">✓</span> Google Sheets con pedidos en tiempo real</li>
+                    <li><span class="ck">✓</span> Carrito de compras y cálculo de total</li>
+                    <li><span class="ck">✓</span> Captura de datos del cliente</li>
+                    <li><span class="ck">✓</span> Soporte por WhatsApp incluido</li>
+                </ul>
+                <a class="plan-btn primary" id="btnWhatsappStandard" target="_blank" href="#">📲 Quisiera obtener esta promo</a>
+            </div>
+            <div class="plan-card">
+                <div class="plan-badge" style="background:#e3f2fd; color:#1565c0;">⚡ A medida</div>
+                <h3>Plan Personalizado</h3>
+                <div class="plan-price">A tu medida <span></span></div>
+                <div class="plan-sub">Cotización sin compromiso · Te asesoramos</div>
+                <ul class="plan-features">
+                    <li><span class="ck">✓</span> Todo lo del Plan Estándar</li>
+                    <li><span class="ck">✓</span> Inteligencia Artificial para respuestas naturales</li>
+                    <li><span class="ck">✓</span> Integraciones (MercadoPago, Calendar, APIs)</li>
+                    <li><span class="ck">✓</span> Flujos personalizados (turnos, encuestas, etc.)</li>
+                    <li><span class="ck">✓</span> Hosting y mantenimiento incluidos</li>
+                    <li><span class="ck">✓</span> Soporte prioritario</li>
+                </ul>
+                <button class="plan-btn secondary" onclick="openModal()">✍️ Quiero saber más</button>
+            </div>
+        </div>
+    </section>
+
+    <div class="modal-overlay" id="modalCustom">
+        <div class="modal">
+            <button class="modal-close" onclick="closeModal()">✕</button>
+            <h3>Contanos qué necesitás</h3>
+            <p>Completá estos datos y te enviamos la propuesta por WhatsApp.</p>
+            <div class="modal-form">
+                <label for="modalName">Nombre</label>
+                <input type="text" id="modalName" placeholder="Tu nombre" autocomplete="off">
+                <label for="modalWhatsapp">Tu WhatsApp</label>
+                <input type="text" id="modalWhatsapp" placeholder="Tu número de WhatsApp" autocomplete="off">
+                <label for="modalDesc">Contanos brevemente qué necesitás</label>
+                <textarea id="modalDesc" placeholder="Ej: quiero un bot para turnos de mi consultorio + cobro de seña..."></textarea>
+                <button class="plan-btn primary" onclick="sendCustom()">📤 Enviar consulta por WhatsApp</button>
+            </div>
+        </div>
+    </div>
+
+    <section class="section" style="background:#f0fdf4; border-radius: 14px; max-width: 1100px; margin: 0 auto; padding: 50px 24px;">
+        <h2>🧠 ¿Necesitás algo más avanzado?</h2>
+        <p>Si tu negocio requiere respuestas inteligentes, integración con APIs o flujos con IA, <strong>nosotros te lo configuramos</strong>. Consultanos sin compromiso.</p>
+        <div style="display: flex; gap: 20px; justify-content: center; flex-wrap: wrap; max-width: 800px; margin: 0 auto;">
+            <div style="background: white; border: 1px solid #c8e6c9; border-radius: 12px; padding: 24px; flex: 1; min-width: 200px; text-align: left;">
+                <div style="font-size: 1.5rem; margin-bottom: 8px;">🤖</div>
+                <h4 style="font-size: 1rem; margin-bottom: 6px;">Agregamos IA a tu bot</h4>
+                <p style="font-size: 0.85rem; color: #666; line-height: 1.5;">Respuestas inteligentes con inteligencia artificial para que el bot entienda consultas en lenguaje natural.</p>
+            </div>
+            <div style="background: white; border: 1px solid #c8e6c9; border-radius: 12px; padding: 24px; flex: 1; min-width: 200px; text-align: left;">
+                <div style="font-size: 1.5rem; margin-bottom: 8px;">🔗</div>
+                <h4 style="font-size: 1rem; margin-bottom: 6px;">Integraciones a medida</h4>
+                <p style="font-size: 0.85rem; color: #666; line-height: 1.5;">Conexión con MercadoPago, Google Calendar, APIs externas o tu sistema de gestión.</p>
+            </div>
+            <div style="background: white; border: 1px solid #c8e6c9; border-radius: 12px; padding: 24px; flex: 1; min-width: 200px; text-align: left;">
+                <div style="font-size: 1.5rem; margin-bottom: 8px;">⚙️</div>
+                <h4 style="font-size: 1rem; margin-bottom: 6px;">Flujos personalizados</h4>
+                <p style="font-size: 0.85rem; color: #666; line-height: 1.5;">Armamos la lógica que tu negocio necesite: turnos, encuestas, recordatorios, etc.</p>
+            </div>
+        </div>
+        <a href="mailto:emiliano.haag@gmail.com" style="display: inline-block; margin-top: 28px; padding: 14px 32px; background: #0f6b4f; color: white; border-radius: 8px; text-decoration: none; font-weight: 700;">Consultar servicio →</a>
+    </section>
+
+    <section class="wizard-demo">
+        <h2>🚀 Wizard de Pedidos</h2>
+        <p>Agregá productos a tu menú en segundos con nuestro asistente paso a paso. Sin tocar código ni planillas.</p>
+        <div class="wizard-steps">
+            <div class="wiz-card">
+                <div class="wiz-num">1</div>
+                <div class="wiz-icon">❓</div>
+                <div class="wiz-title">¿Es un item?</div>
+                <div class="wiz-desc">El asistente te pregunta si querés crear un producto para la venta.</div>
+            </div>
+            <div class="wiz-arrow">→</div>
+            <div class="wiz-card">
+                <div class="wiz-num">2</div>
+                <div class="wiz-icon">✏️</div>
+                <div class="wiz-title">Nombre y Precio</div>
+                <div class="wiz-desc">Ingresá el nombre del producto y su precio (opcional).</div>
+            </div>
+            <div class="wiz-arrow">→</div>
+            <div class="wiz-card">
+                <div class="wiz-num">3</div>
+                <div class="wiz-icon">🔢</div>
+                <div class="wiz-title">¿Pedir cantidad?</div>
+                <div class="wiz-desc">Elegí si el bot debe preguntar cuántas unidades quiere el cliente.</div>
+            </div>
+            <div class="wiz-arrow">→</div>
+            <div class="wiz-card">
+                <div class="wiz-num">4</div>
+                <div class="wiz-icon">➕</div>
+                <div class="wiz-title">¿Otro item?</div>
+                <div class="wiz-desc">Repetí el proceso para agregar más productos al mismo grupo.</div>
+            </div>
+            <div class="wiz-arrow">→</div>
+            <div class="wiz-card">
+                <div class="wiz-num">5</div>
+                <div class="wiz-icon">💳</div>
+                <div class="wiz-title">Ir a pagar</div>
+                <div class="wiz-desc">Activá el botón "Ir a pagar" para que el cliente pueda finalizar su compra.</div>
+            </div>
+            <div class="wiz-arrow">→</div>
+            <div class="wiz-card">
+                <div class="wiz-num">6</div>
+                <div class="wiz-icon">📎</div>
+                <div class="wiz-title">¿Comprobante?</div>
+                <div class="wiz-desc">Opcional: pedí una foto del comprobante de pago al finalizar.</div>
+            </div>
+        </div>
+        <div class="wiz-result">
+            <div class="wiz-result-icon">✅</div>
+            <div class="wiz-result-text">¡Todo listo! El wizard crea automáticamente los productos, las variantes, el botón de pago y el flujo de finalización.</div>
         </div>
     </section>
 
@@ -145,37 +1086,304 @@
         <div class="feature">
             <div class="feature-icon">📱</div>
             <h3>Menú Interactivo</h3>
-            <p>Tus clientes navegan el menú con simples comandos numéricos desde WhatsApp. Experiencia fluida e intuitiva.</p>
+            <p>Tus clientes navegan con comandos numéricos desde WhatsApp. Sin apps, sin tiendas online, sin complicaciones.</p>
         </div>
         <div class="feature">
             <div class="feature-icon">🛒</div>
             <h3>Pedidos Automáticos</h3>
-            <p>Recibe pedidos completos con cantidades y datos del cliente directamente al WhatsApp de tu negocio.</p>
+            <p>El cliente elige, el bot calcula el total y te llega el pedido completo con todos los datos al WhatsApp.</p>
         </div>
         <div class="feature">
             <div class="feature-icon">📊</div>
-            <h3>Panel de Control</h3>
-            <p>Administra productos, precios y respuestas desde un editor web sencillo. Sin conocimientos técnicos.</p>
+            <h3>Panel propio</h3>
+            <p>Entrás desde cualquier navegador y editás productos, precios y respuestas al instante. Sin conocimientos técnicos.</p>
         </div>
         <div class="feature">
             <div class="feature-icon">🔗</div>
             <h3>Google Sheets</h3>
-            <p>Toda la configuración se almacena en Google Sheets. Edita desde cualquier lugar, en tiempo real.</p>
+            <p>Toda la configuración se guarda automáticamente. Podés ver y editar desde donde quieras, incluso desde el celular.</p>
         </div>
         <div class="feature">
-            <div class="feature-icon">🤖</div>
+            <div class="feature-icon">🧠</div>
             <h3>Asistente IA</h3>
-            <p>Bot de ayuda integrado con inteligencia artificial para resolver dudas sobre la configuración.</p>
+            <p>Bot de ayuda integrado que responde tus dudas sobre la configuración directamente en el panel.</p>
         </div>
         <div class="feature">
-            <div class="feature-icon">👥</div>
-            <h3>Multi-cliente</h3>
-            <p>Soporte para múltiples negocios. Cada cliente tiene su propio menú, usuarios y sesión de WhatsApp.</p>
+            <div class="feature-icon">⚡</div>
+            <h3>Wizard inteligente</h3>
+            <p>El asistente te guía paso a paso para crear productos con cantidad, variantes y flujo de pago en segundos.</p>
+        </div>
+    </section>
+
+
+    <section class="cta-section">
+        <h2>¿Probamos?</h2>
+        <p>Entrá al panel, conectá tu WhatsApp y armá el menú de tu negocio en minutos. Sin compromiso ni datos de pago.</p>
+        <div class="btn-group">
+            <a href="/app/" class="btn btn-primary">Ir al Panel →</a>
+            <a href="/app/qr" class="btn btn-secondary">Conectar WhatsApp</a>
         </div>
     </section>
 
     <footer class="footer">
         WhatsApp Bot Menu &mdash; Hecho con ❤️
     </footer>
+
+<script>
+var phoneDemoRunning = false;
+var phoneDemoFinished = false;
+var phoneDemoStarted = false;
+var phoneTimer = null;
+var phoneObserver = null;
+var currentScenario = 0;
+
+var scenarios = [
+    {
+        name: 'Pizzería La Esquina', avatar: '🍕',
+        conversation: [
+            { from:'bot', text:'¡Hola! Bienvenido a *Pizzería La Esquina* 🍕\n\nElegí una opción:\n\n1. 🍕 Pizzas\n2. 🥪 Lomitos\n3. 🥗 Ensaladas\n\n🛒 *Ver carrito*\np. *Ir a pagar*', typing:2200 },
+            { from:'user', text:'1', typing:500 },
+            { from:'bot', text:'🍕 *PIZZAS*\n\n1. Mozzarella - $8.000\n2. Especial - $9.500\n3. Napolitana - $9.000\n\n0. ← Volver', typing:1800 },
+            { from:'user', text:'1', typing:500 },
+            { from:'bot', text:'✅ Agregado: *Mozzarella*\n\n¿Cuántos querés?', typing:1200 },
+            { from:'user', text:'2', typing:500 },
+            { from:'bot', text:'✅ Agregaste *2x Mozzarella* al carrito 🛒\n\n1. Seguir comprando\np. Ir a pagar', typing:1800 },
+            { from:'user', text:'p', typing:500 },
+            { from:'bot', text:'📋 *Resumen del pedido*\n\n2x Mozzarella = $16.000\n\n👇 Enviá tu dirección y teléfono', typing:1800 },
+            { from:'user', text:'Av. Siempreviva 742\n11-5555-0101', typing:1400 },
+            { from:'bot', text:'✅ *Datos recibidos*\n\nGracias por tu pedido, en breve te confirmamos la entrega 🎉', typing:1800 }
+        ]
+    },
+    {
+        name: 'Consultorio Dr. López', avatar: '🩺',
+        conversation: [
+            { from:'bot', text:'Bienvenido a *Consultorio Dr. López* 🩺\n\nElegí una opción:\n\n1. 📅 Sacar turno\n2. ❓ Consultas\n3. 📍 Dirección', typing:2000 },
+            { from:'user', text:'1', typing:500 },
+            { from:'bot', text:'📅 *Sacar Turno*\n\nElegí especialidad:\n\n1. Cardiología\n2. Clínica Médica\n3. Pediatría\n\n0. ← Volver', typing:1800 },
+            { from:'user', text:'1', typing:500 },
+            { from:'bot', text:'📅 *Cardiología*\n\nPróximos turnos:\n\n1. Lun 30 Jun - 10:30\n2. Lun 30 Jun - 11:00\n3. Mar 1 Jul - 09:00\n\n0. ← Volver', typing:1800 },
+            { from:'user', text:'1', typing:500 },
+            { from:'bot', text:'✅ Elegiste *Lun 30 Jun - 10:30*\n\n¿Cuál es tu nombre completo?', typing:1200 },
+            { from:'user', text:'María García', typing:800 },
+            { from:'bot', text:'✅ *Turno confirmado* 🎉\n\n📅 Lun 30 Jun - 10:30\n👨‍⚕️ Dr. López - Cardiología\n\nTe enviaremos un recordatorio 24hs antes.', typing:2000 }
+        ]
+    },
+    {
+        name: 'ModaShop', avatar: '👗',
+        conversation: [
+            { from:'bot', text:'¡Hola! Bienvenido a *ModaShop* 👗\n\nElegí una opción:\n\n1. 👕 Remeras\n2. 👖 Pantalones\n3. 👟 Zapatillas\n\n🛒 *Ver carrito*\np. *Ir a pagar*', typing:2200 },
+            { from:'user', text:'1', typing:500 },
+            { from:'bot', text:'👕 *REMERAS*\n\n1. Básica blanca - $8.500\n2. Oversize negra - $10.200\n3. Estampada - $11.800\n\n0. ← Volver', typing:1800 },
+            { from:'user', text:'1', typing:500 },
+            { from:'bot', text:'✅ Agregado: *Básica blanca*\n\n¿Cuántos querés?', typing:1200 },
+            { from:'user', text:'2', typing:500 },
+            { from:'bot', text:'✅ Agregaste *2x Básica blanca* al carrito 🛒\n\n1. Seguir comprando\np. Ir a pagar', typing:1800 },
+            { from:'user', text:'p', typing:500 },
+            { from:'bot', text:'📋 *Resumen del pedido*\n\n2x Básica blanca = $17.000\n\n👇 Enviá tu nombre y dirección', typing:1800 },
+            { from:'user', text:'Ana\nAv. Córdoba 1234', typing:1400 },
+            { from:'bot', text:'✅ *Datos recibidos*\n\nGracias por tu compra, en breve te contactamos 🎉', typing:1800 }
+        ]
+    }
+];
+
+(function() {
+    var section = document.querySelector('.phone-demo');
+    if (!section) return;
+    phoneObserver = new IntersectionObserver(function(entries) {
+        entries.forEach(function(entry) {
+            if (entry.isIntersecting) {
+                if (!phoneDemoStarted && !phoneDemoFinished) {
+                    startPhoneDemo();
+                }
+            } else {
+                if (phoneDemoRunning) {
+                    stopPhoneDemo();
+                }
+            }
+        });
+    }, { threshold: 0.3 });
+    phoneObserver.observe(section);
+    // Fallback: auto-play after 2s if section is visible and demo hasn't started
+    setTimeout(function() {
+        if (!phoneDemoStarted && !phoneDemoFinished) {
+            var rect = section.getBoundingClientRect();
+            if (rect.top < window.innerHeight && rect.bottom > 0) {
+                startPhoneDemo();
+            }
+        }
+    }, 2000);
+})();
+
+function getConvo() { return scenarios[currentScenario].conversation; }
+
+function fmtTime(i) {
+    var h = 10, m = 24 + i;
+    if (m >= 60) { h += Math.floor(m/60); m = m % 60; }
+    return (h%24)+':'+(m<10?'0':'')+m;
+}
+
+function msgHTML(text, from, i) {
+    var t = fmtTime(i);
+    var bold = text.replace(/\*(.*?)\*/g, '<strong>$1</strong>');
+    var breaks = bold.replace(/\n/g, '<br>');
+    var check = from === 'user' ? ' <span class="check">✓✓</span>' : '';
+    return '<div class="msg '+from+'">'+breaks+'<div class="msg-time">'+t+check+'</div></div>';
+}
+
+function typingHTML() {
+    return '<div class="typing-indicator"><span class="typing-dot"></span><span class="typing-dot"></span><span class="typing-dot"></span></div>';
+}
+
+function scrollChat() {
+    var chat = document.getElementById('phoneChat');
+    chat.scrollTop = chat.scrollHeight;
+}
+
+function showInput(text) {
+    var el = document.getElementById('phoneInputField');
+    el.textContent = text;
+}
+
+function stopPhoneDemo() {
+    if (!phoneDemoRunning) return;
+    phoneDemoRunning = false;
+    if (phoneTimer) { clearTimeout(phoneTimer); phoneTimer = null; }
+    var btn = document.getElementById('phonePlayBtn');
+    btn.disabled = false;
+    btn.textContent = '▶ Reanudar demo';
+}
+
+function setScenario(idx) {
+    if (phoneDemoRunning) { stopPhoneDemo(); }
+    currentScenario = idx;
+    var s = scenarios[idx];
+    document.getElementById('phoneAvatar').textContent = s.avatar;
+    document.getElementById('phoneContactName').textContent = s.name;
+    document.querySelectorAll('.scenario-btn').forEach(function(b, i) {
+        b.classList.toggle('active', i === idx);
+    });
+    phoneDemoStarted = false;
+    phoneDemoFinished = false;
+    document.getElementById('phoneChat').innerHTML = '';
+    showInput('Mensaje');
+    var btn = document.getElementById('phonePlayBtn');
+    btn.disabled = false;
+    btn.textContent = '▶ Reproducir demo';
+    // Auto-play if section is in viewport
+    setTimeout(function() {
+        var section = document.querySelector('.phone-demo');
+        if (!section) return;
+        var rect = section.getBoundingClientRect();
+        if (rect.top < window.innerHeight && rect.bottom > 0) {
+            startPhoneDemo();
+        }
+    }, 400);
+}
+
+function startPhoneDemo() {
+    if (phoneDemoRunning) return;
+    var btn = document.getElementById('phonePlayBtn');
+    var conversation = getConvo();
+    if (phoneDemoFinished) {
+        phoneDemoFinished = false;
+        phoneDemoStarted = false;
+        var chat = document.getElementById('phoneChat');
+        chat.innerHTML = '';
+        showInput('Mensaje');
+    }
+    btn.disabled = true;
+    btn.textContent = '⏳ Reproduciendo...';
+    phoneDemoRunning = true;
+    if (!phoneDemoStarted) {
+        phoneDemoStarted = true;
+        var chat = document.getElementById('phoneChat');
+        chat.innerHTML = '';
+        showInput('Mensaje');
+    }
+    var chat = document.getElementById('phoneChat');
+    var idx = chat.querySelectorAll('.msg').length;
+    function next() {
+        if (!phoneDemoRunning) return;
+        if (idx >= conversation.length) {
+            phoneDemoRunning = false;
+            phoneDemoFinished = true;
+            btn.disabled = false;
+            btn.textContent = '↻ Repetir demo';
+            return;
+        }
+        var msg = conversation[idx];
+        if (msg.from === 'bot') {
+            chat.insertAdjacentHTML('beforeend', typingHTML());
+            scrollChat();
+            phoneTimer = setTimeout(function() {
+                if (!phoneDemoRunning) return;
+                chat.removeChild(chat.lastElementChild);
+                chat.insertAdjacentHTML('beforeend', msgHTML(msg.text, 'bot', idx));
+                scrollChat();
+                idx++;
+                phoneTimer = setTimeout(next, 500);
+            }, msg.typing);
+        } else {
+            var typed = '';
+            var pos = 0;
+            showInput('');
+            var interval = setInterval(function() {
+                if (!phoneDemoRunning) { clearInterval(interval); return; }
+                if (pos < msg.text.length) {
+                    var ch = msg.text[pos];
+                    typed += ch;
+                    showInput(typed);
+                    pos++;
+                } else {
+                    clearInterval(interval);
+                    phoneTimer = setTimeout(function() {
+                        if (!phoneDemoRunning) return;
+                        chat.insertAdjacentHTML('beforeend', msgHTML(msg.text, 'user', idx));
+                        scrollChat();
+                        showInput('Mensaje');
+                        idx++;
+                        phoneTimer = setTimeout(next, 400);
+                    }, 300);
+                }
+            }, 40);
+        }
+    }
+    next();
+}
+
+var BOT_PHONE = '5492494249236';
+var PRECIO_ESTANDAR = '22000';
+
+(function() {
+    if (typeof drawRobot === 'function') drawRobot('heroRobotLogo');
+    fetch('/api/config').then(function(r) { return r.json(); }).then(function(d) {
+        if (d.phone) BOT_PHONE = d.phone;
+        if (d.precioEstandar) PRECIO_ESTANDAR = d.precioEstandar;
+        document.getElementById('precioDisplay').textContent = PRECIO_ESTANDAR;
+        var stdBtn = document.getElementById('btnWhatsappStandard');
+        var msg = encodeURIComponent('Quisiera obtener esta promo: Plan Estándar - Bot Menu ($' + PRECIO_ESTANDAR + ' ARS/mes)');
+        stdBtn.href = 'https://wa.me/' + BOT_PHONE + '?text=' + msg;
+    });
+})();
+
+function openModal() {
+    document.getElementById('modalCustom').classList.add('open');
+}
+function closeModal() {
+    document.getElementById('modalCustom').classList.remove('open');
+}
+function sendCustom() {
+    var name = document.getElementById('modalName').value.trim();
+    var wp = document.getElementById('modalWhatsapp').value.trim();
+    var desc = document.getElementById('modalDesc').value.trim();
+    if (!name || !wp || !desc) { alert('Completá todos los campos'); return; }
+    var msg = 'Quiero saber más sobre los servicios para un bot personalizado\n\n' +
+              'Nombre: ' + name + '\n' +
+              'WhatsApp: ' + wp + '\n\n' +
+              'Mi negocio: ' + desc;
+    window.open('https://wa.me/' + BOT_PHONE + '?text=' + encodeURIComponent(msg), '_blank');
+    closeModal();
+}
+</script>
 </body>
 </html>

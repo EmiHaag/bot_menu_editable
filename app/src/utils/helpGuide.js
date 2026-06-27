@@ -237,6 +237,9 @@ const helpGuideHTML = `
                                 <div class="example">
                                     💡 <strong>Ejemplo:</strong> "Nombre" (📝) → "Dirección" (📝) → "Confirmar" (🏁)
                                 </div>
+                                <div class="example">
+                                    ✅ <strong>Confirmación:</strong> Cuando el usuario escribe su dato, el bot responde con <em>"✅ Datos recibidos: [lo que escribió]"</em> para que pueda verificar antes de continuar.
+                                </div>
                             </div>
                         </details>
 
@@ -266,7 +269,10 @@ const helpGuideHTML = `
                                     </div>
                                 </div>
                                 <div class="example">
-                                    📎 <strong>Tip:</strong> El usuario puede enviar el archivo con o sin comentario. El comentario también se recibe.
+                                    📎 <strong>Tip:</strong> El usuario debe enviar el archivo adjunto (imagen o PDF). Si solo escribe texto sin archivo, el bot no lo procesará.
+                                </div>
+                                <div class="example">
+                                    ℹ️ <strong>Después del archivo:</strong> El bot confirma la recepción (<em>"✅ Archivo recibido correctamente."</em>) sin enviar menús automáticos. Cuando el usuario escriba de nuevo, el bot muestra el menú correspondiente.
                                 </div>
                             </div>
                         </details>
@@ -286,7 +292,7 @@ const helpGuideHTML = `
                                     <div class="step-num">2</div>
                                     <div class="step-text">
                                         <strong>Opcional: activá "Pedir cantidad"</strong>
-                                        Si querés que el usuario elija cuántas unidades, marcá también <strong>"Pedir cantidad"</strong> (color celeste). El bot va a preguntar "¿Cuántos?".
+                                        Si querés que el usuario elija cuántas unidades, marcá también <strong>"Pedir cantidad"</strong> (color celeste). El bot muestra el resumen del pedido actual seguido de <em>"✅ Agregado: *Producto*"</em> y abajo <em>"¿Cuántos querés?"</em>.
                                     </div>
                                 </div>
                                 <div class="step">
@@ -300,14 +306,16 @@ const helpGuideHTML = `
                                     <div class="step-num">4</div>
                                     <div class="step-text">
                                         <strong>Opcional: activá "Ir a pagar"</strong>
-                                        En el nodo raíz o categoría, marcá <strong>"Ir a pagar"</strong> (color verde). Cuando haya items, el menú muestra <code>*p*. Ir a pagar</code>. Al escribir <code>p</code>, va al primer hijo con "Finalizar".
+                                        En el nodo raíz o categoría, marcá <strong>"Ir a pagar"</strong> (color verde). Cuando haya items, el menú muestra <code>*p*. Ir a pagar</code> en el pie. Al escribir <code>p</code>, va al primer hijo con "Finalizar".<br>
+                                        <small>ℹ️ Cuando "Ir a pagar" está activado, los nodos "✅ Finalizar" se ocultan de la lista de opciones numeradas para no ocupar triggers innecesariamente.</small>
                                     </div>
                                 </div>
                                 <div class="step">
                                     <div class="step-num">5</div>
                                     <div class="step-text">
                                         <strong>Creá un nodo "Finalizar"</strong>
-                                        Agregá un hijo con el tag <strong>"Finalizar"</strong> (color violeta). El mensaje podría ser <em>"Gracias por tu pedido"</em>. El bot mostrará el resumen con el total antes de finalizar.
+                                        Agregá un hijo con el tag <strong>"Finalizar"</strong> (color violeta). El mensaje podría ser <em>"Gracias por tu pedido"</em>. El bot mostrará el resumen con el total antes de finalizar.<br>
+                                        <small>ℹ️ Si usás el wizard para agregar más items a una categoría que ya tiene "✅ Finalizar", el wizard detecta que ya existe y no crea un duplicado.</small>
                                     </div>
                                 </div>
                                 <div class="example">
@@ -347,21 +355,12 @@ const helpGuideHTML = `
                                         <span class="tag">##CANTIDAD##</span> Pregunta cuántos<br>
                                         <span class="tag">##DATOS##</span> Espera texto del usuario<br>
                                         <span class="tag">##ARCHIVO##</span> Espera archivo/imagen<br>
-                                        <span class="tag">##FINALIZAR##</span> Finaliza el pedido (combinable)<br>
+                                        <span class="tag">##FINALIZAR##</span> Finaliza el pedido (se oculta de la lista si el menú tiene ##PAGAR##)<br>
                                         <span class="tag">##COMPLETAR##</span> Completa item con variante<br>
                                         <span class="tag">##PAGAR##</span> Muestra opción "Ir a pagar" (combinable)
                                     </div>
                                 </div>
-                                <div class="step">
-                                    <div class="step-num">4</div>
-                                    <div class="step-text">
-                                        <strong>Comandos del usuario</strong>
-                                        <code>0</code> — Volver al inicio<br>
-                                        <code>v</code> — Volver atrás<br>
-                                        <code>vaciar</code> — Vaciar carrito<br>
-                                        <code>p</code> — Ir a pagar (si está habilitado)
-                                    </div>
-                                </div>
+
                             </div>
                         </details>
                     </div>`;

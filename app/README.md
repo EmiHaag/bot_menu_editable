@@ -10,6 +10,10 @@ Este es un bot de WhatsApp modular y escalable que utiliza Google Sheets como ba
 - **Dashboard Privado por Cliente**: Cada cliente tiene acceso a su propio panel de edición sin ver los datos de otros.
 - **Simulación Humana**: El bot incluye retrasos artificiales y simulación de "escribiendo" para una experiencia más natural.
 - **Persistencia Avanzada**: Las sesiones de WhatsApp y de la web se mantienen incluso después de reiniciar el servidor (usando volúmenes persistentes en Koyeb).
+- **Wizard de Items**: Asistente paso a paso en el dashboard para crear items de compra con cantidad, variantes y finalización.
+- **Confirmación de Datos**: Al capturar datos del usuario, el bot muestra un eco de confirmación con lo ingresado.
+- **Limpieza Segura de Estado**: Todos los estados intermedios del carrito se limpian correctamente incluso si ocurre un error al guardar el pedido.
+- **Detección de Duplicados**: El wizard evita crear nodos "Finalizar" duplicados en una misma categoría.
 
 ## Configuración de Google Sheets
 
@@ -69,6 +73,11 @@ Es fundamental configurar un **Volumen Persistente** montado en la ruta `/data`.
 - `src/services/userService.js`: Gestión de usuarios y auth (incluye el usuario admin virtual).
 - `src/services/googleSheetsService.js`: Cliente de Sheets y filtrado por cliente.
 - `src/services/googleDriveService.js`: Creación automática de Sheets para nuevos clientes.
-- `src/controllers/menuController.js`: Lógica de navegación con WhatsApp.
-- `src/utils/dashboard.js`: Servidor Express para el panel de administración web.
+- `src/services/stateService.js`: Gestión de estado en memoria (carrito, datos, pendientes).
+- `src/services/orderService.js`: Persistencia de pedidos completados en Google Sheets.
+- `src/controllers/menuController.js`: Lógica de navegación con WhatsApp (wizard, carrito, checkout).
+- `src/utils/dashboard.js`: Servidor Express para el panel de administración web (editor visual + wizard).
+- `src/utils/helpGuide.js`: Guía de ayuda interactiva embebida en el dashboard.
+- `src/utils/geminiHelper.js`: Asistente IA integrado en el dashboard.
 - `src/app.js`: Orquestador de bots dinámicos y punto de entrada.
+- `documentacion.txt`: Guía completa del editor de menú para el usuario final.

@@ -54,6 +54,33 @@ app.use(express.static(path.join(__dirname, 'public'), { index: false }));
 
 app.use(express.static(path.join(__dirname, 'app', 'src', 'public'), { index: false }));
 
+function readConfig() {
+    try {
+        return JSON.parse(fs.readFileSync(path.join(__dirname, 'config.json'), 'utf8'));
+    } catch { return {}; }
+}
+
+function writeConfig(data) {
+    var current = readConfig();
+    Object.assign(current, data);
+    fs.writeFileSync(path.join(__dirname, 'config.json'), JSON.stringify(current, null, 2));
+}
+
+app.get('/api/config', (req, res) => {
+    var cfg = readConfig();
+    res.json({
+        phone: process.env.BOT_PHONE || '5492494249236',
+        precioEstandar: cfg.precio_estandar != null ? cfg.precio_estandar : (process.env.PRECIO_ESTANDAR || '22000')
+    });
+});
+
+app.post('/api/config', (req, res) => {
+    if (req.body.precio_estandar != null) {
+        writeConfig({ precio_estandar: Number(req.body.precio_estandar) });
+    }
+    res.json({ ok: true });
+});
+
 app.get('/health', (req, res) => {
     res.status(200).send('OK');
 });
