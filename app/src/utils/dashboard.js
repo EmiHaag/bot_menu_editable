@@ -1359,9 +1359,12 @@ ${helpGuideJS}
                             parentTitle: 'Raíz',
                             items: [],
                             currentItemIdx: 0,
-                            step: 0, // 0=titulo, 1=precio, 2=cantidad, 3=another
+                            step: 0, // 0=titulo, 1=precio, 2=cantidad, 3=another, 4=catName, 5=irAPagar, 6=pedirArchivo
                             prefix: 'menu',
-                            nextTrigger: 1
+                            nextTrigger: 1,
+                            categoryName: '',
+                            addPagar: false,
+                            addArchivo: false
                         };
 
                         function openAddModal(idx) {
@@ -1393,7 +1396,10 @@ ${helpGuideJS}
                                 currentItemIdx: 0,
                                 step: 0,
                                 prefix: prefix,
-                                nextTrigger: nextNumber
+                                nextTrigger: nextNumber,
+                                categoryName: '',
+                                addPagar: false,
+                                addArchivo: false
                             };
 
                             // Show initial question
@@ -1429,7 +1435,11 @@ ${helpGuideJS}
                             const stepIndicator = document.getElementById('wizStepIndicator');
                             const itemsCount = document.getElementById('wizItemsCount');
                             
-                            stepIndicator.textContent = 'Item #' + (wizardState.currentItemIdx + 1);
+                            if (wizardState.step >= 4) {
+                                stepIndicator.textContent = 'Finalizar configuraci\u00f3n';
+                            } else {
+                                stepIndicator.textContent = 'Item #' + (wizardState.currentItemIdx + 1);
+                            }
                             itemsCount.textContent = wizardState.items.length + ' items agregados';
 
                             const qIdx = wizardState.currentItemIdx;
@@ -1478,7 +1488,45 @@ ${helpGuideJS}
                                     <p style="font-size: 16px; font-weight: 600; margin-bottom: 15px; color: var(--text-main);">\u00bfAgregar otro item?</p>
                                     <div style="display: flex; gap: 15px;">
                                         <button type="button" onclick="wizAddAnother()" style="flex: 1; padding: 15px; background: var(--primary-color); color: white; border: none; border-radius: 8px; font-size: 15px; font-weight: 600; cursor: pointer;">S\u00ed, agregar otro</button>
-                                        <button type="button" onclick="wizFinish()" style="flex: 1; padding: 15px; background: #6f42c1; color: white; border: none; border-radius: 8px; font-size: 15px; font-weight: 600; cursor: pointer;">No, finalizar</button>
+                                        <button type="button" onclick="wizGoFinalSteps()" style="flex: 1; padding: 15px; background: #6f42c1; color: white; border: none; border-radius: 8px; font-size: 15px; font-weight: 600; cursor: pointer;">No, finalizar</button>
+                                    </div>
+                                \`;
+                            } else if (wizardState.step === 4) {
+                                // Ask category name (only if parent is root)
+                                if (wizardState.parentId === 'root') {
+                                    container.innerHTML = \`
+                                        <p style="font-size: 16px; font-weight: 600; margin-bottom: 15px; color: var(--text-main);">\u00bfNombre de la categor\u00eda?</p>
+                                        <p style="font-size: 13px; color: var(--text-muted); margin-bottom: 15px;">Ej: Realizar un pedido, Hacer pedido, Comprar, etc.</p>
+                                        <input type="text" id="wizCategoryInput" placeholder="ej: Realizar un pedido" style="width: 100%; padding: 12px; border: 2px solid var(--border-color); border-radius: 8px; font-size: 15px; box-sizing: border-box;" onkeydown="if(event.key==='Enter') wizNextCatName()" autofocus>
+                                        <div style="margin-top: 15px; display: flex; gap: 10px;">
+                                            <button type="button" onclick="wizBack()" style="flex: 1; padding: 12px; background: var(--bg-box); color: var(--text-muted); border: 2px solid var(--border-color); border-radius: 8px; font-size: 15px; font-weight: 600; cursor: pointer;">\u2190 Atr\u00e1s</button>
+                                            <button type="button" onclick="wizNextCatName()" style="flex: 1; padding: 12px; background: var(--primary-color); color: white; border: none; border-radius: 8px; font-size: 15px; font-weight: 600; cursor: pointer;">Siguiente \u2192</button>
+                                        </div>
+                                    \`;
+                                    setTimeout(() => document.getElementById('wizCategoryInput').focus(), 100);
+                                } else {
+                                    // Not root: skip category question, go straight to pedir archivo
+                                    wizardState.step = 6;
+                                    showWizardQuestion();
+                                }
+                            } else if (wizardState.step === 5) {
+                                // Ask "Ir a pagar"
+                                container.innerHTML = \`
+                                    <p style="font-size: 16px; font-weight: 600; margin-bottom: 15px; color: var(--text-main);">\u00bfAgregar bot\u00f3n "Ir a pagar"?</p>
+                                    <p style="font-size: 13px; color: var(--text-muted); margin-bottom: 15px;">Agrega un acceso directo a pagar desde el men\u00fa de la categor\u00eda.</p>
+                                    <div style="display: flex; gap: 15px;">
+                                        <button type="button" onclick="wizSetPagar(true)" style="flex: 1; padding: 15px; background: var(--primary-color); color: white; border: none; border-radius: 8px; font-size: 15px; font-weight: 600; cursor: pointer;">S\u00ed, agregar</button>
+                                        <button type="button" onclick="wizSetPagar(false)" style="flex: 1; padding: 15px; background: var(--bg-box); color: var(--text-muted); border: 2px solid var(--border-color); border-radius: 8px; font-size: 15px; font-weight: 600; cursor: pointer;">No</button>
+                                    </div>
+                                \`;
+                            } else if (wizardState.step === 6) {
+                                // Ask "Pedir archivo"
+                                container.innerHTML = \`
+                                    <p style="font-size: 16px; font-weight: 600; margin-bottom: 15px; color: var(--text-main);">\u00bfPedir comprobante/archivo al finalizar?</p>
+                                    <p style="font-size: 13px; color: var(--text-muted); margin-bottom: 15px;">El bot\u00f3n "Finalizar" solicitar\u00e1 un archivo (ej: comprobante de pago).</p>
+                                    <div style="display: flex; gap: 15px;">
+                                        <button type="button" onclick="wizSetArchivo(true)" style="flex: 1; padding: 15px; background: var(--primary-color); color: white; border: none; border-radius: 8px; font-size: 15px; font-weight: 600; cursor: pointer;">S\u00ed, pedir archivo</button>
+                                        <button type="button" onclick="wizSetArchivo(false)" style="flex: 1; padding: 15px; background: var(--bg-box); color: var(--text-muted); border: 2px solid var(--border-color); border-radius: 8px; font-size: 15px; font-weight: 600; cursor: pointer;">No</button>
                                     </div>
                                 \`;
                             }
@@ -1504,7 +1552,11 @@ ${helpGuideJS}
                         }
 
                         function wizBack() {
-                            wizardState.step--;
+                            if (wizardState.step === 6 && wizardState.parentId !== 'root') {
+                                wizardState.step = 3;
+                            } else {
+                                wizardState.step--;
+                            }
                             showWizardQuestion();
                         }
 
@@ -1522,14 +1574,69 @@ ${helpGuideJS}
                             showWizardQuestion();
                         }
 
+                        function wizGoFinalSteps() {
+                            wizardState.step = 4;
+                            showWizardQuestion();
+                        }
+
+                        function wizNextCatName() {
+                            const name = document.getElementById('wizCategoryInput').value.trim();
+                            if (!name) { alert('Por favor ingres\u00e1 un nombre para la categor\u00eda.'); return; }
+                            wizardState.categoryName = name;
+                            wizardState.step = 5;
+                            showWizardQuestion();
+                        }
+
+                        function wizSetPagar(addPagar) {
+                            wizardState.addPagar = addPagar;
+                            wizardState.step = 6;
+                            showWizardQuestion();
+                        }
+
+                        function wizSetArchivo(addArchivo) {
+                            wizardState.addArchivo = addArchivo;
+                            wizFinish();
+                        }
+
                         async function wizFinish() {
                             const btnContainer = document.getElementById('wizQuestionContent');
                             btnContainer.innerHTML = '<p style="text-align: center; font-size: 16px; color: var(--text-muted);">Creando items... <span id="wizProgress"></span></p>';
-                            
+
                             const items = wizardState.items;
-                            const parentId = wizardState.parentId;
+                            let parentId = wizardState.parentId;
                             const prefix = wizardState.prefix;
                             let trigger = wizardState.nextTrigger;
+
+                            // If parent is root, create category node first
+                            if (wizardState.parentId === 'root') {
+                                const catId = prefix + '_opcion' + (trigger);
+                                document.getElementById('wizProgress').textContent = 'Creando categor\u00eda...';
+                                let catMessage = '';
+                                if (wizardState.addPagar) {
+                                    catMessage = '##PAGAR##';
+                                }
+                                try {
+                                    await fetch('/app/api/add-node', {
+                                        method: 'POST',
+                                        headers: { 'Content-Type': 'application/json' },
+                                        body: JSON.stringify({
+                                            botId: botId,
+                                            id: catId,
+                                            parentId: 'root',
+                                            trigger: String(trigger),
+                                            title: wizardState.categoryName,
+                                            message: catMessage,
+                                            price: '',
+                                            redirigirA: '',
+                                            disponible: 'true'
+                                        })
+                                    });
+                                } catch (e) {
+                                    console.error('Error creating category:', e);
+                                }
+                                parentId = catId;
+                                trigger++;
+                            }
 
                             for (let i = 0; i < items.length; i++) {
                                 const item = items[i];
@@ -1560,27 +1667,36 @@ ${helpGuideJS}
                                 trigger++;
                             }
 
-                            // Create Finalizar node
-                            document.getElementById('wizProgress').textContent = '(' + (items.length + 1) + '/' + (items.length + 1) + ') - Creando Finalizar...';
-                            const finalId = prefix + '_opcion' + (trigger);
-                            try {
-                                await fetch('/app/api/add-node', {
-                                    method: 'POST',
-                                    headers: { 'Content-Type': 'application/json' },
-                                    body: JSON.stringify({
-                                        botId: botId,
-                                        id: finalId,
-                                        parentId: parentId,
-                                        trigger: String(trigger),
-                                        title: '✅ Finalizar',
-                                        message: '##FINALIZAR##',
-                                        price: '',
-                                        redirigirA: '',
-                                        disponible: 'true'
-                                    })
-                                });
-                            } catch (e) {
-                                console.error('Error creating finalizar node:', e);
+                            // Check if parent already has a FINALIZAR node (avoid duplicates)
+                            const existingFinal = menuData.find(function(n) {
+                                return n.parentId === parentId && n.message && n.message.indexOf('##FINALIZAR##') !== -1;
+                            });
+                            if (!existingFinal) {
+                                document.getElementById('wizProgress').textContent = '(' + (items.length + 1) + '/' + (items.length + 1) + ') - Creando Finalizar...';
+                                const finalId = prefix + '_opcion' + (trigger);
+                                let finalMessage = '##FINALIZAR##';
+                                if (wizardState.addArchivo) {
+                                    finalMessage += '\\n\\n##ARCHIVO##';
+                                }
+                                try {
+                                    await fetch('/app/api/add-node', {
+                                        method: 'POST',
+                                        headers: { 'Content-Type': 'application/json' },
+                                        body: JSON.stringify({
+                                            botId: botId,
+                                            id: finalId,
+                                            parentId: parentId,
+                                            trigger: String(trigger),
+                                            title: '\u2705 Finalizar',
+                                            message: finalMessage,
+                                            price: '',
+                                            redirigirA: '',
+                                            disponible: 'true'
+                                        })
+                                    });
+                                } catch (e) {
+                                    console.error('Error creating finalizar node:', e);
+                                }
                             }
 
                             // Redirect to refresh

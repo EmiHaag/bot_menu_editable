@@ -427,7 +427,6 @@ async function startBot(botConfig, forceStart = false) {
                                 await menuController.handleIncomingMessage(sock, jid, caption);
                             }
                         } else if (text) {
-                            console.log(`[${id}] Message from ${jid}: ${text}`);
                             await menuController.handleIncomingMessage(sock, jid, text);
                         }
                     }

@@ -68,7 +68,7 @@ class MenuController {
                 }
                 const fileTarget = waitingNode?.redirigirA || 'root';
                 await sock.sendMessage(jid, { text: '✅ Archivo recibido correctamente.' });
-                await this.sendMenu(sock, jid, fileTarget);
+                this.stateService.setUserState(jid, fileTarget);
             }
             return;
         }
@@ -85,21 +85,18 @@ class MenuController {
             // Guardar el texto ingresado por el usuario (nombre, dirección, etc.)
             this.stateService.addDatosText(jid, text);
 
+            // Confirmar datos ingresados antes de continuar
             if (children.length > 0) {
-                // Si hay un siguiente paso tras recibir datos, procesamos el primer hijo
-                //console.log("El nodo espera datos pero tiene hijos, procesando el primer hijo #64");
+                await sock.sendMessage(jid, { text: `✅ Datos recibidos: ${text}` });
                 await this.processNode(sock, jid, children[0]);
                 return;
             } else {
-                // Si no hay más hijos, es el final del formulario.
                 if (waitingNode && waitingNode.message && waitingNode.message.includes('##FINALIZAR##')) {
-                    //console.log("nodo no tiene mas hijos #70");
-                    ////console.log(`[Estado] Limpiando pedido de ${jid}. Motivo: Tag ##FINALIZAR## procesado tras recibir datos.`);
                     await this._finalizeOrder(jid);
                 }
 
                 const datosTarget = waitingNode?.redirigirA || 'root';
-                await sock.sendMessage(jid, { text: '✅ Datos recibidos correctamente.' });
+                await sock.sendMessage(jid, { text: `✅ Datos recibidos: ${text}` });
                 await this.sendMenu(sock, jid, datosTarget);
                 return;
             }
@@ -193,8 +190,11 @@ class MenuController {
         
         // Regla de negocio: Ocultar opciones de "Finalizar" si no hay nada en el carrito
         const order = this.stateService.getUserOrder(jid);
+        const currentPagarNode = await this.googleSheetsService.getNodeById(currentStateId);
+        const hasPagar = currentPagarNode && currentPagarNode.message && currentPagarNode.message.includes('##PAGAR##');
         const availableOptions = options.filter(node => {
             if (node.message && node.message.includes('##FINALIZAR##')) {
+                if (hasPagar) return false;
                 return order.length > 0;
             }
             return true;
@@ -258,9 +258,13 @@ class MenuController {
         let menuText = await this.replaceOrderSummary(currentNode.message, jid) + '\n\n';
         //console.log("menuText #202:: ", menuText);
         
-        // Filtrar nodos de finalización (solo visibles si hay pedido)
+        // Filtrar nodos de finalización
+        // Si la categoría tiene ##PAGAR##, ocultamos ##FINALIZAR## de la lista
+        // porque el usuario puede usar "p" del footer para finalizar
+        const hasPagar = currentNode && currentNode.message && currentNode.message.includes('##PAGAR##');
         const visibleNodes = nodes.filter(node => {
             if (node.message && node.message.includes('##FINALIZAR##')) {
+                if (hasPagar) return false;
                 return order.length > 0;
             }
             return true;
@@ -332,7 +336,7 @@ class MenuController {
         if (nodeTags.includes('CANTIDAD')) {
             this.stateService.setPendingQuantityItem(jid, node.title);
             let msg = await this.replaceOrderSummary(node.message, jid);
-            if (!msg) msg = `✅ Agregado: *${node.title}* — ¿Cuántos querés?`;
+            msg += `\n\n✅ Agregado: *${node.title}*\n\n¿Cuántos querés?`;
             msg += `\n\n_Escribe *v* para volver atrás._\n_Escribe *0* para volver al inicio._`;
             await this.sendPresenceTyping(sock, jid);
             await sock.sendMessage(jid, { text: msg });
@@ -343,6 +347,7 @@ class MenuController {
         // 1. DATOS: mostrar prompt siempre, esperar respuesta del usuario
         if (nodeTags.includes('DATOS')) {
             let msg = await this.replaceOrderSummary(node.message, jid);
+            if (!msg) msg = `📝 Por favor, ingresá los datos solicitados:`;
             msg += `\n\n_Escribe *v* para volver atrás._\n_Escribe *0* para volver al inicio._`;
             await this.sendPresenceTyping(sock, jid);
             await sock.sendMessage(jid, { text: msg });
@@ -354,6 +359,7 @@ class MenuController {
         // 1b. ARCHIVO: mostrar prompt, esperar que el usuario envíe un archivo/imagen
         if (nodeTags.includes('ARCHIVO')) {
             let msg = await this.replaceOrderSummary(node.message, jid);
+            if (!msg) msg = `📎 Por favor, enviá el archivo solicitado:`;
             msg += `\n\n_Escribe *v* para volver atrás._\n_Escribe *0* para volver al inicio._`;
             await this.sendPresenceTyping(sock, jid);
             await sock.sendMessage(jid, { text: msg });
@@ -508,23 +514,28 @@ class MenuController {
     }
 
     async _finalizeOrder(jid) {
-        if (!this.orderService) {
+        try {
+            if (!this.orderService) return;
+            const order = this.stateService.getUserOrder(jid);
+            if (order.length > 0) {
+                const datosText = this.stateService.getDatosText(jid);
+                await this.orderService.saveOrder(
+                    this.stateService.clientId,
+                    jid,
+                    order,
+                    datosText
+                );
+            }
+        } catch (error) {
+            console.error(`[ERROR] _finalizeOrder failed for ${jid}:`, error);
+        } finally {
             this.stateService.clearUserOrder(jid);
             this.stateService.clearDatosText(jid);
-            return;
+            this.stateService.clearPendingQuantityItem(jid);
+            this.stateService.clearPendingOrderItem(jid);
+            this.stateService.clearWaitingForData(jid);
+            this.stateService.clearWaitingForFile(jid);
         }
-        const order = this.stateService.getUserOrder(jid);
-        if (order.length > 0) {
-            const datosText = this.stateService.getDatosText(jid);
-            await this.orderService.saveOrder(
-                this.stateService.clientId,
-                jid,
-                order,
-                datosText
-            );
-        }
-        this.stateService.clearUserOrder(jid);
-        this.stateService.clearDatosText(jid);
     }
 }
 
