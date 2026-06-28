@@ -141,7 +141,7 @@ app.post('/api/mercadopago/create-subscription', async (req, res) => {
             });
         } catch (mpErr) {
             const testBuyer = process.env.TEST_BUYER_EMAIL || 'test_user_123@testuser.com';
-            if (process.env.MERCADOPAGO_ACCESS_TOKEN?.startsWith('TEST-') || process.env.TEST_MODE === 'true') {
+            if (process.env.MERCADOPAGO_ACCESS_TOKEN?.startsWith('TEST-')) {
                 console.warn(`[MercadoPago] Reintentando con email de test: ${testBuyer}`);
                 preapproval = await mercadoPagoService.createPreapproval({
                     reason: 'Suscripción Bot Menu - Plan Estándar',
