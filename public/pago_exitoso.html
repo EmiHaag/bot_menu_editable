@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pago exitoso - Bot Menu</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet">
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Inter', -apple-system, sans-serif;
+            background: linear-gradient(135deg, #f0fdf4 0%, #e8f5e9 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 24px;
+        }
+        .card {
+            background: white;
+            border-radius: 20px;
+            padding: 48px 40px;
+            max-width: 460px;
+            width: 100%;
+            text-align: center;
+            box-shadow: 0 8px 40px rgba(0,0,0,0.06), 0 0 0 1px rgba(0,0,0,0.02);
+        }
+        .check {
+            width: 72px;
+            height: 72px;
+            border-radius: 50%;
+            background: #0f6b4f;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin: 0 auto 24px;
+            font-size: 2rem;
+            color: white;
+        }
+        h1 {
+            font-size: 1.6rem;
+            font-weight: 800;
+            color: #222;
+            margin-bottom: 8px;
+        }
+        .sub {
+            color: #666;
+            font-size: 1rem;
+            line-height: 1.5;
+            margin-bottom: 32px;
+        }
+        .details {
+            background: #f8fdfb;
+            border: 1px solid #d4ede3;
+            border-radius: 12px;
+            padding: 20px;
+            text-align: left;
+            margin-bottom: 32px;
+        }
+        .details dt {
+            font-size: 0.75rem;
+            font-weight: 700;
+            color: #888;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-top: 12px;
+        }
+        .details dt:first-child { margin-top: 0; }
+        .details dd {
+            font-size: 0.95rem;
+            color: #333;
+            font-weight: 600;
+            margin-top: 2px;
+        }
+        .btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 14px 32px;
+            background: #0f6b4f;
+            color: white;
+            border: none;
+            border-radius: 10px;
+            font-size: 1rem;
+            font-weight: 700;
+            font-family: inherit;
+            cursor: pointer;
+            text-decoration: none;
+            transition: background 0.2s, transform 0.15s;
+        }
+        .btn:hover { background: #0c5841; transform: translateY(-1px); }
+        .btn-outline {
+            background: transparent;
+            color: #0f6b4f;
+            border: 1px solid #0f6b4f;
+            margin-left: 8px;
+        }
+        .btn-outline:hover { background: #f0fdf4; }
+        .footer-text {
+            margin-top: 24px;
+            font-size: 0.8rem;
+            color: #aaa;
+        }
+    </style>
+</head>
+<body>
+    <div class="card">
+        <div class="check">✓</div>
+        <h1>¡Pago exitoso!</h1>
+        <p class="sub">Tu suscripción se activó correctamente.<br>Ya podés usar todas las funciones de Bot Menu.</p>
+
+        <div class="details" id="details">
+            <dl>
+                <dt>Estado</dt>
+                <dd id="dd-status">Aprobado</dd>
+                <dt>ID de pago</dt>
+                <dd id="dd-id">—</dd>
+                <dt>Plan</dt>
+                <dd id="dd-plan">Estándar</dd>
+            </dl>
+        </div>
+
+        <div>
+            <a href="/app/" class="btn">Ir al Panel →</a>
+        </div>
+        <p class="footer-text">Bot Menu &mdash; WhatsApp Business</p>
+    </div>
+
+    <script>
+        (function() {
+            var params = new URLSearchParams(window.location.search);
+            var status = params.get('status') || 'approved';
+            var paymentId = params.get('payment_id') || params.get('collection_id') || '—';
+            var plan = params.get('plan') || 'Estándar';
+
+            document.getElementById('dd-status').textContent = status === 'approved' || status === 'success' ? 'Aprobado' : status;
+            document.getElementById('dd-id').textContent = paymentId;
+            document.getElementById('dd-plan').textContent = plan;
+        })();
+    </script>
+</body>
+</html>

@@ -4,6 +4,10 @@ const session = require('express-session');
 const FileStore = require('session-file-store')(session);
 const path = require('path');
 const fs = require('fs');
+const crypto = require('crypto');
+const userService = require('./app/src/services/userService');
+const mercadoPagoService = require('./app/src/services/mercadoPagoService');
+const emailService = require('./app/src/services/emailService');
 
 const app = express();
 const port = process.env.PORT || 8000;
@@ -87,6 +91,367 @@ app.get('/health', (req, res) => {
 
 app.get('/', (req, res) => {
     res.sendFile(path.join(__dirname, 'public', 'index.html'));
+});
+
+function generatePassword(length = 10) {
+    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789';
+    return Array.from(crypto.randomBytes(length), b => chars[b % chars.length]).join('');
+}
+
+function generateUsername(email) {
+    const prefix = email.split('@')[0].replace(/[^a-zA-Z0-9]/g, '').slice(0, 8);
+    const suffix = crypto.randomBytes(3).toString('hex');
+    return `${prefix}_${suffix}`;
+}
+
+function generateClientId() {
+    return 'cli_' + crypto.randomBytes(4).toString('hex');
+}
+
+// MercadoPago: Crear suscripción
+app.post('/api/mercadopago/create-subscription', async (req, res) => {
+    try {
+        const { name, email } = req.body;
+        if (!name || !email) {
+            return res.status(400).json({ error: 'Faltan nombre o email' });
+        }
+
+        const cfg = readConfig();
+        const precio = cfg.precio_estandar != null ? cfg.precio_estandar : (process.env.PRECIO_ESTANDAR || '23000');
+        const siteUrl = process.env.SITE_URL || `http://localhost:${port}`;
+
+        // MP requiere una URL pública válida en back_url
+        // Si estamos en localhost, usamos un placeholder y advertimos
+        let mpBackUrl = `${siteUrl}/pago_exitoso`;
+        if (mpBackUrl.includes('localhost') || mpBackUrl.includes('127.0.0.1')) {
+            console.warn('[MercadoPago] Usando placeholder para back_url (localhost no es válido para MP).');
+            console.warn('[MercadoPago] Para pruebas completas usá ngrok: https://ngrok.com');
+            mpBackUrl = 'https://www.mercadopago.com.ar';
+        }
+
+        // En sandbox (TEST), MP solo acepta emails de test users.
+        // Intentamos con el email real; si falla, usamos test_user y guardamos el original en refs.
+        let preapproval;
+        let payerEmail = email;
+        try {
+            preapproval = await mercadoPagoService.createPreapproval({
+                reason: 'Suscripción Bot Menu - Plan Estándar',
+                amount: Number(precio),
+                payerEmail,
+                backUrl: mpBackUrl
+            });
+        } catch (mpErr) {
+            // Si es 500 en TEST, reintentamos con un email de test de sandbox
+            if (process.env.MERCADOPAGO_ACCESS_TOKEN?.startsWith('TEST-')) {
+                console.warn('[MercadoPago] Reintentando con email de test (sandbox). Tu email real se usará al crear el usuario.');
+                preapproval = await mercadoPagoService.createPreapproval({
+                    reason: 'Suscripción Bot Menu - Plan Estándar',
+                    amount: Number(precio),
+                    payerEmail: 'test_user_123@testuser.com',
+                    backUrl: mpBackUrl
+                });
+            } else {
+                throw mpErr;
+            }
+        }
+
+        // Guardar referencia del nombre asociado al preapproval
+        const preapprovalRefs = JSON.parse(fs.readFileSync(path.join(__dirname, 'config.json'), 'utf8')).preapproval_refs || {};
+        preapprovalRefs[preapproval.id] = { name, email: payerEmail, fecha: new Date().toISOString() };
+        writeConfig({ preapproval_refs: preapprovalRefs });
+
+        res.json({
+            init_point: preapproval.init_point,
+            preapproval_id: preapproval.id
+        });
+    } catch (error) {
+        console.error('[MercadoPago] Error creating subscription:', error);
+        res.status(500).json({ error: 'Error al crear la suscripción' });
+    }
+});
+
+// MercadoPago: Retorno de pago exitoso
+app.get('/pago_exitoso', async (req, res) => {
+    const { preapproval_id, status, collection_id, payment_id } = req.query;
+    const paymentId = preapproval_id || collection_id || payment_id;
+
+    // Si no viene de un pago, mostrar página estática
+    if (!paymentId) {
+        return res.sendFile(path.join(__dirname, 'public', 'pago_exitoso.html'));
+    }
+
+    try {
+        // Obtener la preaprobación de MP
+        const preapproval = await mercadoPagoService.getPreapproval(paymentId);
+
+        const mpStatus = preapproval.status;
+
+        // Recuperar datos desde las referencias guardadas (prioridad sobre lo que devuelve MP)
+        const cfg = readConfig();
+        const refs = cfg.preapproval_refs || {};
+        const ref = refs[paymentId] || {};
+        const payerEmail = ref.email || preapproval.payer_email || req.query.email;
+        const payerName = ref.name || preapproval.reason || 'Cliente';
+
+        // Limpiar referencia guardada
+        if (refs[paymentId]) {
+            delete refs[paymentId];
+            writeConfig({ preapproval_refs: refs });
+        }
+
+        if (mpStatus === 'authorized' || mpStatus === 'approved') {
+            // Generar credenciales
+            const username = generateUsername(payerEmail);
+            const password = generatePassword();
+            const idCliente = generateClientId();
+
+            // Guardar usuario en Google Sheets
+            await userService.addUser({
+                idCliente,
+                nombreCliente: payerName,
+                user: username,
+                password,
+                spreadsheetId: process.env.SPREADSHEET_ID
+            });
+
+            console.log(`[Suscripción] Usuario creado: ${username} (${payerEmail})`);
+
+            // Enviar email de bienvenida
+            try {
+                await emailService.sendWelcomeEmail({
+                    to: payerEmail,
+                    username,
+                    password,
+                    name: payerName
+                });
+                console.log(`[Suscripción] Email enviado a ${payerEmail}`);
+            } catch (emailErr) {
+                console.error('[Suscripción] Error enviando email:', emailErr);
+            }
+
+            // Redirigir a página de éxito con credenciales
+            return res.redirect(`/suscripcion_exitosa?username=${encodeURIComponent(username)}&password=${encodeURIComponent(password)}&email=${encodeURIComponent(payerEmail)}`);
+        } else {
+            return res.send(`
+                <html><body style="font-family:sans-serif;display:flex;align-items:center;justify-content:center;min-height:100vh;background:#f8f9fa;">
+                    <div style="text-align:center;background:white;padding:48px;border-radius:16px;max-width:420px;">
+                        <div style="font-size:3rem;margin-bottom:16px;">⏳</div>
+                        <h2 style="color:#333;">Pago pendiente</h2>
+                        <p style="color:#666;line-height:1.6;">El pago está en estado: <strong>${mpStatus}</strong>. Te notificaremos cuando se confirme.</p>
+                        <a href="/" style="display:inline-block;margin-top:20px;color:#0f6b4f;">Volver al inicio</a>
+                    </div>
+                </body></html>
+            `);
+        }
+    } catch (error) {
+        console.error('[MercadoPago] Error processing payment:', error);
+        res.status(500).send(`
+            <html><body style="font-family:sans-serif;display:flex;align-items:center;justify-content:center;min-height:100vh;background:#f8f9fa;">
+                <div style="text-align:center;background:white;padding:48px;border-radius:16px;max-width:420px;">
+                    <div style="font-size:3rem;margin-bottom:16px;">❌</div>
+                    <h2 style="color:#333;">Error procesando el pago</h2>
+                    <p style="color:#666;line-height:1.6;">Ocurrió un error al procesar tu suscripción. Contactanos por WhatsApp.</p>
+                    <a href="/" style="display:inline-block;margin-top:20px;color:#0f6b4f;">Volver al inicio</a>
+                </div>
+            </body></html>
+        `);
+    }
+});
+
+// MercadoPago: Endpoint de prueba para simular pago exitoso (solo en desarrollo local)
+app.post('/api/mercadopago/test-complete', async (req, res) => {
+    const { preapproval_id } = req.body;
+    if (!preapproval_id) return res.status(400).json({ error: 'Falta preapproval_id' });
+
+    try {
+        // Recuperar datos de la preaprobación desde MP
+        const preapproval = await mercadoPagoService.getPreapproval(preapproval_id);
+
+        // Recuperar datos desde config.json (prioridad sobre lo que devuelve MP)
+        const cfg = readConfig();
+        const refs = cfg.preapproval_refs || {};
+        const ref = refs[preapproval_id] || {};
+        const payerEmail = ref.email || preapproval.payer_email;
+        const name = ref.name || preapproval.reason || 'Cliente';
+
+        // Generar credenciales
+        const username = generateUsername(payerEmail || 'test@test.com');
+        const password = generatePassword();
+        const idCliente = generateClientId();
+
+        // Guardar usuario
+        await userService.addUser({
+            idCliente,
+            nombreCliente: name,
+            user: username,
+            password,
+            spreadsheetId: process.env.SPREADSHEET_ID
+        });
+        console.log(`[Test] Usuario creado: ${username} (${payerEmail})`);
+
+        // Enviar email
+        try {
+            if (payerEmail) {
+                await emailService.sendWelcomeEmail({ to: payerEmail, username, password, name });
+            }
+        } catch (emailErr) {
+            console.error('[Test] Error enviando email:', emailErr);
+        }
+
+        // Limpiar referencia guardada
+        if (refs[preapproval_id]) {
+            delete refs[preapproval_id];
+            writeConfig({ preapproval_refs: refs });
+        }
+
+        res.json({ success: true, username, password, email: payerEmail, name });
+    } catch (error) {
+        console.error('[Test] Error:', error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// MercadoPago: IPN Webhook
+app.post('/api/mercadopago/webhook', async (req, res) => {
+    console.log('[MercadoPago Webhook] Received:', JSON.stringify(req.body));
+    res.sendStatus(200);
+});
+
+// Página de suscripción exitosa
+app.get('/suscripcion_exitosa', (req, res) => {
+    const { username, password, email } = req.query;
+    res.send(`
+        <!DOCTYPE html>
+        <html lang="es">
+        <head>
+            <meta charset="UTF-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            <title>Suscripción exitosa - Bot Menu</title>
+            <style>
+                * { margin: 0; padding: 0; box-sizing: border-box; }
+                body {
+                    font-family: 'Segoe UI', -apple-system, sans-serif;
+                    background: linear-gradient(135deg, #f0fdf4 0%, #e8f5e9 100%);
+                    min-height: 100vh;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    padding: 24px;
+                }
+                .card {
+                    background: white;
+                    border-radius: 20px;
+                    padding: 48px 40px;
+                    max-width: 480px;
+                    width: 100%;
+                    text-align: center;
+                    box-shadow: 0 8px 40px rgba(0,0,0,0.06), 0 0 0 1px rgba(0,0,0,0.02);
+                }
+                .check {
+                    width: 72px; height: 72px;
+                    border-radius: 50%;
+                    background: #0f6b4f;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    margin: 0 auto 24px;
+                    font-size: 2rem;
+                    color: white;
+                }
+                h1 { font-size: 1.6rem; font-weight: 800; color: #222; margin-bottom: 8px; }
+                .sub { color: #666; font-size: 1rem; line-height: 1.5; margin-bottom: 32px; }
+                .creds {
+                    background: #f8fdfb;
+                    border: 1px solid #d4ede3;
+                    border-radius: 12px;
+                    padding: 20px;
+                    text-align: left;
+                    margin-bottom: 24px;
+                }
+                .creds p { font-size: 0.75rem; font-weight: 700; color: #888; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 12px; }
+                .creds .row {
+                    display: flex;
+                    justify-content: space-between;
+                    align-items: center;
+                    padding: 8px 0;
+                    border-bottom: 1px solid #e8f5e9;
+                    font-size: 0.92rem;
+                }
+                .creds .row:last-child { border-bottom: none; }
+                .creds .label { color: #555; }
+                .creds .value { font-family: monospace; background: #e8f5e9; padding: 3px 8px; border-radius: 4px; font-weight: 600; color: #0f6b4f; font-size: 0.85rem; }
+                .alert {
+                    background: #fff3e0;
+                    border: 1px solid #ffe0b2;
+                    border-radius: 8px;
+                    padding: 14px;
+                    font-size: 0.85rem;
+                    color: #e65100;
+                    margin-bottom: 24px;
+                    text-align: left;
+                    line-height: 1.5;
+                }
+                .btn {
+                    display: inline-flex;
+                    align-items: center;
+                    gap: 8px;
+                    padding: 14px 32px;
+                    background: #0f6b4f;
+                    color: white;
+                    border: none;
+                    border-radius: 10px;
+                    font-size: 1rem;
+                    font-weight: 700;
+                    font-family: inherit;
+                    cursor: pointer;
+                    text-decoration: none;
+                    transition: background 0.2s, transform 0.15s;
+                }
+                .btn:hover { background: #0c5841; transform: translateY(-1px); }
+                .footer-text { margin-top: 24px; font-size: 0.8rem; color: #aaa; }
+            </style>
+        </head>
+        <body>
+            <div class="card">
+                <div class="check">✓</div>
+                <h1>¡Suscripción exitosa! 🎉</h1>
+                <p class="sub">Tu suscripción se activó correctamente.<br>Te enviamos un email con tus credenciales.</p>
+
+                <div class="creds">
+                    <p>Tus credenciales de acceso</p>
+                    <div class="row">
+                        <span class="label">Usuario</span>
+                        <span class="value" id="displayUser">${username || '—'}</span>
+                    </div>
+                    <div class="row">
+                        <span class="label">Contraseña</span>
+                        <span class="value" id="displayPass">${password || '—'}</span>
+                    </div>
+                    ${email ? `<div class="row">
+                        <span class="label">Email</span>
+                        <span class="value" style="font-family:inherit;background:transparent;color:#555;">${email}</span>
+                    </div>` : ''}
+                </div>
+
+                <div class="alert">
+                    ⚠️ <strong>Importante:</strong> Guardá tus credenciales. No podremos recuperar tu contraseña.
+                    Por seguridad, te recomendamos cambiar la contraseña después del primer ingreso.
+                </div>
+
+                <a href="/app/login" class="btn">Ir al Panel →</a>
+                <p class="footer-text">Bot Menu &mdash; WhatsApp Business Automation</p>
+            </div>
+        </body>
+        </html>
+    `);
+});
+
+app.get('/pago_pendiente', (req, res) => {
+    res.send('<html><body style="font-family:sans-serif;display:flex;align-items:center;justify-content:center;min-height:100vh;"><h2>⏳ Pago pendiente</h2></body></html>');
+});
+
+app.get('/pago_fallido', (req, res) => {
+    res.send('<html><body style="font-family:sans-serif;display:flex;align-items:center;justify-content:center;min-height:100vh;"><h2>❌ Pago fallido</h2></body></html>');
 });
 
 const { appRouter, main } = require('./app/src/app');

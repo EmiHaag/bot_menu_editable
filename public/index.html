@@ -50,10 +50,14 @@
             line-height: 1.1;
         }
         .hero h1 span {
-            background: rgba(255,255,255,0.15);
-            padding: 0 8px;
-            border-radius: 4px;
-            line-height: 1;
+               background: rgba(255, 255, 255, 0.15);
+                padding: 0 10px;
+                border-radius: 4px;
+                line-height: 1.2;
+                display: inline-block;
+                height: auto;
+                overflow: visible;
+                margin-top: 10px;
         }
         .hero p {
             font-size: 1.15rem;
@@ -838,7 +842,7 @@
             <div class="step-card">
                 <div class="step-num">1</div>
                 <h3>Creá tu cuenta</h3>
-                <p>Solicitá tu suscripción y luego con el usuario y clave que te proporcionaremos ingresá al panel y vinculá tu número de WhatsApp escaneando el código QR. No necesitas instalar nada.</p>
+                <p>Solicitá tu suscripción (primer mes GRATIS) y luego con el usuario y clave que te proporcionaremos ingresá al panel y vinculá tu número de WhatsApp escaneando el código QR. No necesitas instalar nada.</p>
             </div>
             <div class="step-card">
                 <div class="step-num">2</div>
@@ -970,7 +974,7 @@
                     <li><span class="ck">✓</span> Captura de datos del cliente</li>
                     <li><span class="ck">✓</span> Soporte por WhatsApp incluido</li>
                 </ul>
-                <a class="plan-btn primary" id="btnWhatsappStandard" target="_blank" href="#">📲 Quisiera obtener esta promo</a>
+                <button class="plan-btn primary" id="btnSubscribeStandard" onclick="openSubscribeModal()">💳 Suscribirme ahora</button>
             </div>
             <div class="plan-card">
                 <div class="plan-badge" style="background:#e3f2fd; color:#1565c0;">⚡ A medida</div>
@@ -989,6 +993,27 @@
             </div>
         </div>
     </section>
+
+    <!-- Modal de Suscripción MercadoPago -->
+    <div class="modal-overlay" id="modalSubscribe">
+        <div class="modal">
+            <button class="modal-close" onclick="closeSubscribeModal()">✕</button>
+            <h3>💳 Suscribite al Plan Estándar</h3>
+            <p>Completá tus datos para iniciar la suscripción mensual por <strong>$<span id="modalSubscribePrice"></span> ARS/mes</strong>.</p>
+            <p style="font-size:0.78rem;color:#999;margin-top:-12px;margin-bottom:16px;">El primer mes es gratis 🎁</p>
+            <div class="modal-form">
+                <label for="subscribeName">Nombre</label>
+                <input type="text" id="subscribeName" placeholder="Tu nombre" autocomplete="off" required>
+                <label for="subscribeEmail">Email</label>
+                <input type="email" id="subscribeEmail" placeholder="tu@email.com" autocomplete="off" required>
+                <div id="subscribeError" style="color:#d32f2f;font-size:0.82rem;margin-bottom:10px;display:none;"></div>
+                <button class="plan-btn primary" id="btnSubscribeSubmit" onclick="startSubscription()">
+                    🔄 Ir a MercadoPago
+                </button>
+                <p style="font-size:0.72rem;color:#aaa;margin-top:12px;">Serás redirigido a MercadoPago para completar el pago de forma segura.</p>
+            </div>
+        </div>
+    </div>
 
     <div class="modal-overlay" id="modalCustom">
         <div class="modal">
@@ -1360,11 +1385,50 @@ var PRECIO_ESTANDAR = '22000';
         if (d.phone) BOT_PHONE = d.phone;
         if (d.precioEstandar) PRECIO_ESTANDAR = d.precioEstandar;
         document.getElementById('precioDisplay').textContent = PRECIO_ESTANDAR;
-        var stdBtn = document.getElementById('btnWhatsappStandard');
-        var msg = encodeURIComponent('Quisiera obtener esta promo: Plan Estándar - Bot Menu ($' + PRECIO_ESTANDAR + ' ARS/mes)');
-        stdBtn.href = 'https://wa.me/' + BOT_PHONE + '?text=' + msg;
     });
 })();
+
+// Modal de suscripción MercadoPago
+function openSubscribeModal() {
+    document.getElementById('modalSubscribePrice').textContent = PRECIO_ESTANDAR;
+    document.getElementById('subscribeError').style.display = 'none';
+    document.getElementById('modalSubscribe').classList.add('open');
+}
+function closeSubscribeModal() {
+    document.getElementById('modalSubscribe').classList.remove('open');
+}
+
+async function startSubscription() {
+    var name = document.getElementById('subscribeName').value.trim();
+    var email = document.getElementById('subscribeEmail').value.trim();
+    var errorEl = document.getElementById('subscribeError');
+    var btn = document.getElementById('btnSubscribeSubmit');
+
+    if (!name) { errorEl.textContent = 'Ingresá tu nombre'; errorEl.style.display = 'block'; return; }
+    if (!email || !email.includes('@')) { errorEl.textContent = 'Ingresá un email válido'; errorEl.style.display = 'block'; return; }
+
+    errorEl.style.display = 'none';
+    btn.disabled = true;
+    btn.textContent = '⏳ Creando suscripción...';
+
+    try {
+        var res = await fetch('/api/mercadopago/create-subscription', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name: name, email: email })
+        });
+        var data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Error del servidor');
+
+        // Redirigir a MercadoPago
+        window.location.href = data.init_point;
+    } catch (err) {
+        errorEl.textContent = 'Error: ' + err.message;
+        errorEl.style.display = 'block';
+        btn.disabled = false;
+        btn.textContent = '🔄 Ir a MercadoPago';
+    }
+}
 
 function openModal() {
     document.getElementById('modalCustom').classList.add('open');
