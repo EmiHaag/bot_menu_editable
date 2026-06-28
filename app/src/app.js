@@ -137,7 +137,7 @@ appRouter.get('/login', (req, res) => {
         </head>
         <body>
             <div class="login-box" style="position: relative;">
-                <canvas id="botLogoLogin" width="200" height="200" style="position: absolute; top: -90px; left: 50%; transform: translateX(-50%); width: 140px; height: 140px; pointer-events: none; filter: drop-shadow(0 5px 15px rgba(0,0,0,0.1));"></canvas>
+                <canvas id="botLogoLogin" width="155" height="155" style="position: absolute; top: -50px; left: 4%; transform: translateX(-50%); width: 140px; height: 140px; pointer-events: none; filter: drop-shadow(0 5px 15px rgba(0,0,0,0.1));"></canvas>
                 <h2>Editor de Menú de WhatsApp</h2>
                 ${errorMsg}
                 <form action="/app/login" method="POST">
@@ -343,7 +343,7 @@ async function startBot(botConfig, forceStart = false) {
                 const statusCode = (lastDisconnect.error instanceof Boom) ?
                     lastDisconnect.error.output.statusCode : 0;
 
-                const shouldReconnect = statusCode !== DisconnectReason.loggedOut;
+                const shouldReconnect = statusCode !== DisconnectReason.loggedOut && statusCode !== DisconnectReason.connectionReplaced;
 
                 console.log(`[${id}] Connection closed. Status: ${statusCode}. Reconnecting: ${shouldReconnect}`);
 
@@ -362,16 +362,16 @@ async function startBot(botConfig, forceStart = false) {
                     console.log(`[${id}] Attempting to reconnect in 5s...`);
                     setTimeout(() => startBot(botConfig), 5000);
                 } else {
-                    console.log(`[${id}] Logged out. session deleted.`);
+                    console.log(`[${id}] Logged out or session replaced. Session deleted.`);
                     botQRs[id].status = 'logged_out';
                     
-                    // Borrar carpeta de sesión si fue un logout explícito (401)
+                    // Borrar carpeta de sesión si fue logout (401) o sesión reemplazada (440)
                     if (fs.existsSync(authFolder)) {
                         try {
                             fs.rmSync(authFolder, { recursive: true, force: true });
-                            console.log(`[${id}] Auth folder deleted due to logout.`);
+                            console.log(`[${id}] Auth folder deleted due to logout/replaced.`);
                         } catch (err) {
-                            console.error(`[${id}] Error deleting auth folder on logout: ${err.message}`);
+                            console.error(`[${id}] Error deleting auth folder: ${err.message}`);
                         }
                     }
                 }
