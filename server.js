@@ -129,8 +129,6 @@ app.post('/api/mercadopago/create-subscription', async (req, res) => {
             mpBackUrl = 'https://www.mercadopago.com.ar';
         }
 
-        // En sandbox (TEST), MP solo acepta emails de test users.
-        // Intentamos con el email real; si falla, usamos test_user y guardamos el original en refs.
         let preapproval;
         let payerEmail = email;
         try {
@@ -138,32 +136,60 @@ app.post('/api/mercadopago/create-subscription', async (req, res) => {
                 reason: 'Suscripción Bot Menu - Plan Estándar',
                 amount: Number(precio),
                 payerEmail,
-                backUrl: mpBackUrl
+                backUrl: mpBackUrl,
+                notificationUrl: `${siteUrl}/api/mercadopago/webhook`
             });
         } catch (mpErr) {
-            // Si es 500 en TEST, reintentamos con un email de test de sandbox
-            if (process.env.MERCADOPAGO_ACCESS_TOKEN?.startsWith('TEST-')) {
-                console.warn('[MercadoPago] Reintentando con email de test (sandbox). Tu email real se usará al crear el usuario.');
+            const testBuyer = process.env.TEST_BUYER_EMAIL || 'test_user_123@testuser.com';
+            if (process.env.MERCADOPAGO_ACCESS_TOKEN?.startsWith('TEST-') || process.env.TEST_MODE === 'true') {
+                console.warn(`[MercadoPago] Reintentando con email de test: ${testBuyer}`);
                 preapproval = await mercadoPagoService.createPreapproval({
                     reason: 'Suscripción Bot Menu - Plan Estándar',
                     amount: Number(precio),
-                    payerEmail: 'test_user_123@testuser.com',
-                    backUrl: mpBackUrl
+                    payerEmail: testBuyer,
+                    backUrl: mpBackUrl,
+                    notificationUrl: `${siteUrl}/api/mercadopago/webhook`
                 });
             } else {
                 throw mpErr;
             }
         }
 
-        // Guardar referencia del nombre asociado al preapproval
+        // Guardar referencia del nombre asociado al preapproval (usar email original del formulario)
         const preapprovalRefs = JSON.parse(fs.readFileSync(path.join(__dirname, 'config.json'), 'utf8')).preapproval_refs || {};
-        preapprovalRefs[preapproval.id] = { name, email: payerEmail, fecha: new Date().toISOString() };
+        preapprovalRefs[preapproval.id] = { name, email, fecha: new Date().toISOString() };
         writeConfig({ preapproval_refs: preapprovalRefs });
 
         res.json({
             init_point: preapproval.init_point,
             preapproval_id: preapproval.id
         });
+
+        // Polling automático: verificar cada 5s si se aprobó el pago
+        (async function pollPayment(pid, attempts) {
+            if (attempts <= 0) return;
+            await new Promise(r => setTimeout(r, 5000));
+            try {
+                const pa = await mercadoPagoService.getPreapproval(pid);
+                if (pa.status === 'authorized' || pa.status === 'approved') {
+                    const cfg = readConfig();
+                    const refs = cfg.preapproval_refs || {};
+                    const ref = refs[pid] || {};
+                    if (ref.email) {
+                        const username = generateUsername(ref.email);
+                        const password = generatePassword();
+                        const idCliente = generateClientId();
+                        await userService.addUser({ idCliente, nombreCliente: ref.name || 'Cliente', user: username, password, spreadsheetId: process.env.SPREADSHEET_ID });
+                        try { await emailService.sendWelcomeEmail({ to: ref.email, username, password, name: ref.name }); } catch {}
+                        delete refs[pid];
+                        writeConfig({ preapproval_refs: refs });
+                        console.log(`[AutoPoll] Usuario creado: ${username} (${ref.email})`);
+                    }
+                } else {
+                    pollPayment(pid, attempts - 1);
+                }
+            } catch { pollPayment(pid, attempts - 1); }
+        })(preapproval.id, 120); // 120 intentos × 5s = 10 minutos
     } catch (error) {
         console.error('[MercadoPago] Error creating subscription:', error);
         res.status(500).json({ error: 'Error al crear la suscripción' });
@@ -193,10 +219,12 @@ app.get('/pago_exitoso', async (req, res) => {
         const payerEmail = ref.email || preapproval.payer_email || req.query.email;
         const payerName = ref.name || preapproval.reason || 'Cliente';
 
-        // Limpiar referencia guardada
-        if (refs[paymentId]) {
-            delete refs[paymentId];
-            writeConfig({ preapproval_refs: refs });
+        // Si no hay referencia, ya fue procesado (evitar duplicados)
+        const yaProcesado = cfg.pagos_procesados && cfg.pagos_procesados[paymentId];
+        if (!ref.email || yaProcesado) {
+            if (refs[paymentId]) { delete refs[paymentId]; writeConfig({ preapproval_refs: refs }); }
+            if (yaProcesado) return res.redirect(`/suscripcion_exitosa?username=${encodeURIComponent(cfg.pagos_procesados[paymentId].username)}&password=${encodeURIComponent(cfg.pagos_procesados[paymentId].password)}&email=${encodeURIComponent(cfg.pagos_procesados[paymentId].email)}`);
+            return res.redirect('/');
         }
 
         if (mpStatus === 'authorized' || mpStatus === 'approved') {
@@ -216,6 +244,16 @@ app.get('/pago_exitoso', async (req, res) => {
 
             console.log(`[Suscripción] Usuario creado: ${username} (${payerEmail})`);
 
+            // Marcar como procesado y limpiar referencia
+            const pagosProc = cfg.pagos_procesados || {};
+            pagosProc[paymentId] = { username, password: password, email: payerEmail };
+            if (refs[paymentId]) {
+                delete refs[paymentId];
+                writeConfig({ preapproval_refs: refs, pagos_procesados: pagosProc });
+            } else {
+                writeConfig({ pagos_procesados: pagosProc });
+            }
+
             // Enviar email de bienvenida
             try {
                 await emailService.sendWelcomeEmail({
@@ -230,7 +268,25 @@ app.get('/pago_exitoso', async (req, res) => {
             }
 
             // Redirigir a página de éxito con credenciales
-            return res.redirect(`/suscripcion_exitosa?username=${encodeURIComponent(username)}&password=${encodeURIComponent(password)}&email=${encodeURIComponent(payerEmail)}`);
+            const successUrl = `/suscripcion_exitosa?username=${encodeURIComponent(username)}&password=${encodeURIComponent(password)}&email=${encodeURIComponent(payerEmail)}`;
+            return res.send(`
+                <html><body style="font-family:sans-serif;display:flex;align-items:center;justify-content:center;min-height:100vh;background:#f0fdf4;">
+                <div style="text-align:center;background:white;padding:40px;border-radius:16px;max-width:400px;">
+                    <div style="font-size:3rem;margin-bottom:12px;">✅</div>
+                    <h2 style="color:#222;">¡Pago exitoso!</h2>
+                    <p style="color:#666;">Redirigiendo al panel...</p>
+                </div>
+                <script>
+                    if (window.opener) {
+                        window.opener.postMessage('pago_ok', '*');
+                        window.opener.location.href = '${successUrl}';
+                    } else {
+                        window.location.href = '${successUrl}';
+                    }
+                    setTimeout(function() { window.close(); }, 500);
+                <\/script>
+                </body></html>
+            `);
         } else {
             return res.send(`
                 <html><body style="font-family:sans-serif;display:flex;align-items:center;justify-content:center;min-height:100vh;background:#f8f9fa;">
@@ -315,6 +371,55 @@ app.post('/api/mercadopago/test-complete', async (req, res) => {
 app.post('/api/mercadopago/webhook', async (req, res) => {
     console.log('[MercadoPago Webhook] Received:', JSON.stringify(req.body));
     res.sendStatus(200);
+
+    try {
+        const { type, data } = req.body;
+        if (type === 'subscription_preapproval' && data?.id) {
+            const preapproval = await mercadoPagoService.getPreapproval(data.id);
+            if (preapproval.status === 'authorized' || preapproval.status === 'approved') {
+                const cfg = readConfig();
+                const refs = cfg.preapproval_refs || {};
+                const ref = refs[data.id] || {};
+                if (ref.email) {
+                    const username = generateUsername(ref.email);
+                    const password = generatePassword();
+                    const idCliente = generateClientId();
+
+                    await userService.addUser({
+                        idCliente,
+                        nombreCliente: ref.name || 'Cliente',
+                        user: username,
+                        password,
+                        spreadsheetId: process.env.SPREADSHEET_ID
+                    });
+
+                    try {
+                        await emailService.sendWelcomeEmail({ to: ref.email, username, password, name: ref.name });
+                    } catch (emailErr) {
+                        console.error('[Webhook] Error enviando email:', emailErr);
+                    }
+
+                    delete refs[data.id];
+                    writeConfig({ preapproval_refs: refs });
+                    console.log(`[Webhook] Usuario creado: ${username} (${ref.email})`);
+                }
+            }
+        }
+    } catch (err) {
+        console.error('[Webhook] Error processing:', err);
+    }
+});
+
+// Endpoint para que el frontend consulte estado del pago
+app.get('/api/mercadopago/check-status', async (req, res) => {
+    const { preapproval_id } = req.query;
+    if (!preapproval_id) return res.json({ status: 'unknown' });
+    try {
+        const pa = await mercadoPagoService.getPreapproval(preapproval_id);
+        res.json({ status: pa.status });
+    } catch {
+        res.json({ status: 'unknown' });
+    }
 });
 
 // Página de suscripción exitosa

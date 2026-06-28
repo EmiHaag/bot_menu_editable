@@ -108,35 +108,28 @@
     <div class="card">
         <div class="check">✓</div>
         <h1>¡Pago exitoso!</h1>
-        <p class="sub">Tu suscripción se activó correctamente.<br>Ya podés usar todas las funciones de Bot Menu.</p>
-
-        <div class="details" id="details">
-            <dl>
-                <dt>Estado</dt>
-                <dd id="dd-status">Aprobado</dd>
-                <dt>ID de pago</dt>
-                <dd id="dd-id">—</dd>
-                <dt>Plan</dt>
-                <dd id="dd-plan">Estándar</dd>
-            </dl>
-        </div>
-
-        <div>
-            <a href="/app/" class="btn">Ir al Panel →</a>
-        </div>
-        <p class="footer-text">Bot Menu &mdash; WhatsApp Business</p>
+        <p class="sub">Tu suscripción se activó correctamente.<br>Redirigiendo...</p>
+        <p style="font-size:0.85rem;color:#888;">Esperá un momento mientras preparamos tu cuenta.</p>
+        <div id="processing" style="margin:20px 0;font-size:0.9rem;color:#0f6b4f;">⏳ Procesando...</div>
     </div>
 
     <script>
         (function() {
             var params = new URLSearchParams(window.location.search);
-            var status = params.get('status') || 'approved';
-            var paymentId = params.get('payment_id') || params.get('collection_id') || '—';
-            var plan = params.get('plan') || 'Estándar';
-
-            document.getElementById('dd-status').textContent = status === 'approved' || status === 'success' ? 'Aprobado' : status;
-            document.getElementById('dd-id').textContent = paymentId;
-            document.getElementById('dd-plan').textContent = plan;
+            var preapprovalId = params.get('preapproval_id');
+            if (preapprovalId) {
+                // Enviar mensaje a la ventana padre inmediatamente
+                if (window.opener) {
+                    window.opener.postMessage('pago_ok', '*');
+                }
+                // Redirigir el opener a la página de éxito
+                if (window.opener) {
+                    window.opener.location.href = '/pago_exitoso?preapproval_id=' + preapprovalId;
+                }
+                setTimeout(function() { window.close(); }, 1000);
+            } else {
+                document.getElementById('processing').textContent = '✅ Pago confirmado';
+            }
         })();
     </script>
 </body>

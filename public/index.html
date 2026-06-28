@@ -1398,6 +1398,10 @@ function closeSubscribeModal() {
     document.getElementById('modalSubscribe').classList.remove('open');
 }
 
+var pollTimer = null;
+var currentPreapprovalId = null;
+var pagoOk = false;
+
 async function startSubscription() {
     var name = document.getElementById('subscribeName').value.trim();
     var email = document.getElementById('subscribeEmail').value.trim();
@@ -1420,8 +1424,26 @@ async function startSubscription() {
         var data = await res.json();
         if (!res.ok) throw new Error(data.error || 'Error del servidor');
 
-        // Redirigir a MercadoPago
-        window.location.href = data.init_point;
+        currentPreapprovalId = data.preapproval_id;
+        btn.textContent = '⏳ Esperando pago...';
+
+        // Abrir MP en popup
+        var mpWindow = window.open(data.init_point, '_blank', 'width=800,height=700');
+
+        // Polling cada 2s para detectar el pago (via servidor que consulta MP API)
+        pollTimer = setInterval(async function() {
+            try {
+                var r = await fetch('/api/mercadopago/check-status?preapproval_id=' + currentPreapprovalId);
+                var st = await r.json();
+                if (st.status === 'authorized' || st.status === 'approved') {
+                    pagoOk = true;
+                    clearInterval(pollTimer);
+                    btn.textContent = '✅ Pago confirmado';
+                    if (mpWindow && !mpWindow.closed) mpWindow.close();
+                    window.location.href = '/pago_exitoso?preapproval_id=' + currentPreapprovalId;
+                }
+            } catch(e) {}
+        }, 2000);
     } catch (err) {
         errorEl.textContent = 'Error: ' + err.message;
         errorEl.style.display = 'block';
