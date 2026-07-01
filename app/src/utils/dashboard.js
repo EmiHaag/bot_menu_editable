@@ -111,7 +111,7 @@ class Dashboard {
                                 --error-color: #dc3545;
                             }
                             body { font-family: 'Segoe UI', sans-serif; margin: 40px; background: var(--bg-white); }
-                            .header { display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid var(--border-color); padding-bottom: 20px; }
+                            .header { display: flex; flex-wrap: wrap;  margin-right: -15px;  margin-left: -15px; }
                             table { width: 100%; border-collapse: collapse; margin-top: 20px; }
                             th, td { padding: 12px; border: 1px solid var(--border-color); text-align: left; }
                             th { background: var(--bg-box); }
@@ -435,6 +435,7 @@ class Dashboard {
                             margin-bottom: 16px;
                             padding-bottom: 20px;
                             border-bottom: 2px solid var(--border-color);
+                            flex-wrap: wrap;
                         }
 
                         table { 
@@ -920,9 +921,9 @@ ${helpGuideCSS}
                 <body>
                     <div class="header">
                         <div style="display: flex; align-items: center; gap: 15px;">
-                            <canvas id="botLogoDash" width="200" height="200" style="width: 50px; height: 50px;"></canvas>
+                            <a href="/" style="display:block;"><img src="/img/wamenu_logo_name.png" alt="WaMenu Banner" style="width:100%;max-width:10em;height:auto;margin-bottom:10px;display:block;margin-left:auto;margin-right:auto;object-fit:contain;"></a>
                             <div>
-                                <h2 style="margin:0;">Editor de Menú de WhatsApp</h2>
+                                <h3 style="margin:0;">(Modo: Editor)</h3>
                                 <div class="status-box" id="statusBox"><span class="status-dot off" id="statusDot"></span> <span id="statusLabel">Verificando...</span></div>
                             </div>
                         </div>
