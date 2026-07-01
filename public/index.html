@@ -13,8 +13,8 @@
             min-height: 100vh;
         }
         .hero {
-            background: linear-gradient(135deg, #0f6b4f 0%, #0c5841 100%);
-            color: white;
+            background-color:#ffffff; 
+            color: rgb(0, 0, 0);
             padding: 80px 24px 70px;
             text-align: center;
             position: relative;
@@ -107,7 +107,7 @@
             border: 2px solid transparent;
         }
         .btn-primary {
-            background: white;
+            background: #e8f5e9;
             color: #0f6b4f;
         }
         .btn-primary:hover {
@@ -807,11 +807,11 @@
             .section h2, .wizard-demo h2, .cta-section h2 { font-size: 1.5rem; }
         }
     </style>
-    <script src="/js/robot-logo.js"></script>
+    <link rel="icon" type="image/x-icon" href="/img/favicon.png">
 </head>
 <body>
     <section class="hero">
-        <canvas id="heroRobotLogo" width="80" height="80" style="width:60px;height:60px;margin-bottom:10px;display:block;margin-left:auto;margin-right:auto;"></canvas>
+        <img src="/img/wamenu_logo_name.png" alt="WaMenu Banner" style="width:100%;max-width:600px;height:auto;margin-bottom:10px;display:block;margin-left:auto;margin-right:auto;object-fit:contain;">
         <div class="hero-badge">🔥 Sin programar · Lo manejás vos</div>
         <h1>Tu negocio en WhatsApp<br>lo creás <span>vos mismo</span></h1>
         <p>Menú de pedidos, reserva de turnos, consultas, promociones — lo que necesite tu negocio. El panel lo tenés siempre disponible en tu navegador.</p>
@@ -831,7 +831,6 @@
         </div>
         <div class="btn-group">
             <a href="/app/" class="btn btn-primary">Ir al Panel →</a>
-            <a href="/app/qr" class="btn btn-secondary">Conectar WhatsApp</a>
         </div>
     </section>
 
@@ -1055,57 +1054,7 @@
         <a href="mailto:emiliano.haag@gmail.com" style="display: inline-block; margin-top: 28px; padding: 14px 32px; background: #0f6b4f; color: white; border-radius: 8px; text-decoration: none; font-weight: 700;">Consultar servicio →</a>
     </section>
 
-    <section class="wizard-demo">
-        <h2>🚀 Wizard de Pedidos</h2>
-        <p>Agregá productos a tu menú en segundos con nuestro asistente paso a paso. Sin tocar código ni planillas.</p>
-        <div class="wizard-steps">
-            <div class="wiz-card">
-                <div class="wiz-num">1</div>
-                <div class="wiz-icon">❓</div>
-                <div class="wiz-title">¿Es un item?</div>
-                <div class="wiz-desc">El asistente te pregunta si querés crear un producto para la venta.</div>
-            </div>
-            <div class="wiz-arrow">→</div>
-            <div class="wiz-card">
-                <div class="wiz-num">2</div>
-                <div class="wiz-icon">✏️</div>
-                <div class="wiz-title">Nombre y Precio</div>
-                <div class="wiz-desc">Ingresá el nombre del producto y su precio (opcional).</div>
-            </div>
-            <div class="wiz-arrow">→</div>
-            <div class="wiz-card">
-                <div class="wiz-num">3</div>
-                <div class="wiz-icon">🔢</div>
-                <div class="wiz-title">¿Pedir cantidad?</div>
-                <div class="wiz-desc">Elegí si el bot debe preguntar cuántas unidades quiere el cliente.</div>
-            </div>
-            <div class="wiz-arrow">→</div>
-            <div class="wiz-card">
-                <div class="wiz-num">4</div>
-                <div class="wiz-icon">➕</div>
-                <div class="wiz-title">¿Otro item?</div>
-                <div class="wiz-desc">Repetí el proceso para agregar más productos al mismo grupo.</div>
-            </div>
-            <div class="wiz-arrow">→</div>
-            <div class="wiz-card">
-                <div class="wiz-num">5</div>
-                <div class="wiz-icon">💳</div>
-                <div class="wiz-title">Ir a pagar</div>
-                <div class="wiz-desc">Activá el botón "Ir a pagar" para que el cliente pueda finalizar su compra.</div>
-            </div>
-            <div class="wiz-arrow">→</div>
-            <div class="wiz-card">
-                <div class="wiz-num">6</div>
-                <div class="wiz-icon">📎</div>
-                <div class="wiz-title">¿Comprobante?</div>
-                <div class="wiz-desc">Opcional: pedí una foto del comprobante de pago al finalizar.</div>
-            </div>
-        </div>
-        <div class="wiz-result">
-            <div class="wiz-result-icon">✅</div>
-            <div class="wiz-result-text">¡Todo listo! El wizard crea automáticamente los productos, las variantes, el botón de pago y el flujo de finalización.</div>
-        </div>
-    </section>
+    
 
     <section class="features">
         <div class="feature">
@@ -1146,12 +1095,11 @@
         <p>Entrá al panel, conectá tu WhatsApp y armá el menú de tu negocio en minutos. Sin compromiso ni datos de pago.</p>
         <div class="btn-group">
             <a href="/app/" class="btn btn-primary">Ir al Panel →</a>
-            <a href="/app/qr" class="btn btn-secondary">Conectar WhatsApp</a>
         </div>
     </section>
 
     <footer class="footer">
-        WhatsApp Bot Menu &mdash; Hecho con ❤️
+        wamenu &mdash; Hecho con ❤️
     </footer>
 
 <script>
