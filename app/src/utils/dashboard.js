@@ -1702,7 +1702,7 @@ ${helpGuideJS}
                                 const finalId = prefix + '_opcion' + (trigger);
                                 let finalMessage = '##FINALIZAR##';
                                 if (wizardState.addArchivo) {
-                                    finalMessage += '\\n\\n##ARCHIVO##';
+                                    finalMessage = 'Enviame captura de comprobante de pago por favor.\\n\\n##FINALIZAR##\\n\\n##ARCHIVO##';
                                 }
                                 try {
                                     await fetch('/app/api/add-node', {
