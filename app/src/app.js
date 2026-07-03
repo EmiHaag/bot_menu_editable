@@ -51,6 +51,48 @@ try {
     console.error(`[System] Error creating session directories: ${err.message}`);
 }
 
+// Rate limiting para login: max 5 intentos por minuto por IP
+const loginAttempts = new Map();
+const LOGIN_MAX_ATTEMPTS = 5;
+const LOGIN_WINDOW_MS = 60 * 1000;
+
+function getLoginAttempts(ip) {
+    const record = loginAttempts.get(ip);
+    if (!record || Date.now() - record.start > LOGIN_WINDOW_MS) {
+        loginAttempts.set(ip, { start: Date.now(), count: 0 });
+        return 0;
+    }
+    return record.count;
+}
+
+function incrementLoginAttempts(ip) {
+    const record = loginAttempts.get(ip);
+    if (!record || Date.now() - record.start > LOGIN_WINDOW_MS) {
+        loginAttempts.set(ip, { start: Date.now(), count: 1 });
+        return 1;
+    }
+    record.count++;
+    return record.count;
+}
+
+// Verificar token de Cloudflare Turnstile
+async function verifyTurnstile(token, ip) {
+    const secretKey = process.env.TURNSTILE_SECRET_KEY;
+    if (!secretKey) return true; // Si no está configurado, skip (solo dev)
+
+    const formData = new URLSearchParams();
+    formData.append('secret', secretKey);
+    formData.append('response', token);
+    formData.append('remoteip', ip);
+
+    const result = await fetch('https://challenges.cloudflare.com/turnstile/v0/siteverify', {
+        method: 'POST',
+        body: formData
+    });
+    const data = await result.json();
+    return data.success;
+}
+
 // Ruta de Login (GET) - montada en /app
 appRouter.get('/login', (req, res) => {
     let errorMsg = '';
@@ -58,7 +100,14 @@ appRouter.get('/login', (req, res) => {
         errorMsg = '<div class="error-msg">Usuario o contraseña incorrectos</div>';
     } else if (req.query.error === '2') {
         errorMsg = '<div class="error-msg">Tu cuenta está inactiva. Contacta al administrador.</div>';
+    } else if (req.query.error === '3') {
+        errorMsg = '<div class="error-msg">Demasiados intentos. Esperá un minuto.</div>';
     }
+
+    const turnstileSiteKey = process.env.TURNSTILE_SITE_KEY || '';
+    const turnstileHtml = turnstileSiteKey
+        ? `<div class="cf-turnstile" data-sitekey="${turnstileSiteKey}" data-theme="light" style="margin-bottom:20px;display:flex;justify-content:center;"></div>`
+        : '';
 
     res.send(`
         <!DOCTYPE html>
@@ -68,6 +117,7 @@ appRouter.get('/login', (req, res) => {
             <meta name="viewport" content="width=device-width, initial-scale=1.0">
             <title>Login - Editor de Menú de WhatsApp</title>
             <script src="/js/robot-logo.js"></script>
+            ${turnstileSiteKey ? '<script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>' : ''}
             <style>
                 body {
                     font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
@@ -137,10 +187,10 @@ appRouter.get('/login', (req, res) => {
         </head>
         <body>
             <div class="login-box" style="position: relative;">
-                <canvas id="botLogoLogin" width="155" height="155" style="position: absolute; top: -50px; left: 4%; transform: translateX(-50%); width: 140px; height: 140px; pointer-events: none; filter: drop-shadow(0 5px 15px rgba(0,0,0,0.1));"></canvas>
+                <img src="/img/wamenu_logo_name.png" alt="WaMenu Banner" width="1408" height="768" style="width:100%;max-width:240px;height:auto;margin-bottom:10px;display:block;margin-left:auto;margin-right:auto;object-fit:contain;">
                 <h2>Editor de Menú de WhatsApp</h2>
                 ${errorMsg}
-                <form action="/app/login" method="POST">
+                <form action="/app/login" method="POST" id="loginForm">
                     <div class="form-group">
                         <label for="username">Usuario</label>
                         <input type="text" id="username" name="username" required autofocus>
@@ -149,6 +199,7 @@ appRouter.get('/login', (req, res) => {
                         <label for="password">Contraseña</label>
                         <input type="password" id="password" name="password" required>
                     </div>
+                    ${turnstileHtml}
                     <button type="submit" class="btn-login">Login</button>
                 </form>
             </div>
@@ -163,10 +214,25 @@ appRouter.get('/login', (req, res) => {
 
 // Ruta de Login (POST)
 appRouter.post('/login', async (req, res) => {
-    const {
-        username,
-        password
-    } = req.body;
+    const clientIp = req.headers['x-forwarded-for']?.split(',')[0]?.trim() || req.socket.remoteAddress;
+
+    // Rate limiting
+    if (getLoginAttempts(clientIp) >= LOGIN_MAX_ATTEMPTS) {
+        return res.redirect('/app/login?error=3');
+    }
+
+    const { username, password, 'cf-turnstile-response': turnstileToken } = req.body;
+
+    // Verificar Turnstile
+    if (turnstileToken) {
+        const turnstileValid = await verifyTurnstile(turnstileToken, clientIp);
+        if (!turnstileValid) {
+            return res.redirect('/app/login?error=1');
+        }
+    }
+
+    incrementLoginAttempts(clientIp);
+
     try {
         const user = await userService.getUserByUsername(username);
 
@@ -179,6 +245,9 @@ appRouter.post('/login', async (req, res) => {
         if (!user.activo) {
             return res.redirect('/app/login?error=2');
         }
+
+        // Reset intentos exitosos
+        loginAttempts.delete(clientIp);
 
         // Si todo está bien, iniciar sesión
         req.session.user = user;
