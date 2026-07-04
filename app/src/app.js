@@ -2,6 +2,11 @@ require('dotenv').config();
 // Also try loading .env from parent directory (for monorepo local dev)
 require('dotenv').config({ path: require('path').join(__dirname, '..', '..', '.env') });
 const fs = require('fs');
+
+function ts() {
+    const d = new Date();
+    return `[${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}]`;
+}
 const path = require('path');
 const {
     default: makeWASocket,
@@ -32,23 +37,23 @@ const AUTH_SESSIONS_DIR = path.resolve(
         : path.join(process.cwd(), 'auth_sessions'))
 );
 
-console.log(`[System] Auth sessions directory: ${AUTH_SESSIONS_DIR}`);
+console.log(`${ts()} [System] Auth sessions directory: ${AUTH_SESSIONS_DIR}`);
 
 // Asegurar que la carpeta de sesiones existe desde el inicio
 try {
     if (!fs.existsSync(AUTH_SESSIONS_DIR)) {
-        console.log(`[System] Creating directory: ${AUTH_SESSIONS_DIR}`);
+        console.log(`${ts()} [System] Creating directory: ${AUTH_SESSIONS_DIR}`);
         fs.mkdirSync(AUTH_SESSIONS_DIR, { recursive: true });
     }
 
     // Asegurar que la carpeta de sesiones web existe
     const WEB_SESSIONS_DIR = path.join(AUTH_SESSIONS_DIR, 'web_sessions');
     if (!fs.existsSync(WEB_SESSIONS_DIR)) {
-        console.log(`[System] Creating directory: ${WEB_SESSIONS_DIR}`);
+        console.log(`${ts()} [System] Creating directory: ${WEB_SESSIONS_DIR}`);
         fs.mkdirSync(WEB_SESSIONS_DIR, { recursive: true });
     }
 } catch (err) {
-    console.error(`[System] Error creating session directories: ${err.message}`);
+    console.error(`${ts()} [System] Error creating session directories: ${err.message}`);
 }
 
 // Rate limiting para login: max 5 intentos por minuto por IP
@@ -253,7 +258,7 @@ appRouter.post('/login', async (req, res) => {
         req.session.user = user;
         return res.redirect('/app/');
     } catch (error) {
-        console.error('Login Error:', error);
+        console.error(`${ts()} Login Error:`, error);
         res.redirect('/app/login?error=1');
     }
 });
@@ -262,7 +267,7 @@ appRouter.post('/login', async (req, res) => {
 appRouter.get('/logout', (req, res) => {
     req.session.destroy((err) => {
         if (err) {
-            console.error('Error destroying session:', err);
+            console.error(`${ts()} Error destroying session:`, err);
         }
         res.clearCookie('connect.sid'); // Nombre por defecto de la cookie de session
         res.redirect('/app/login');
@@ -319,7 +324,7 @@ async function startBot(botConfig, forceStart = false) {
         if (!forceStart) return;
     }
 
-    console.log(`[${id}] Starting initialization...`);
+    console.log(`${ts()} [${id}] Starting initialization...`);
     botQRs[id] = {
         ...botQRs[id],
         status: 'starting',
@@ -358,7 +363,7 @@ async function startBot(botConfig, forceStart = false) {
             version
         } = await fetchLatestBaileysVersion();
 
-        console.log(`[${id}] Using Baileys version: ${version.join('.')}`);
+        console.log(`${ts()} [${id}] Using Baileys version: ${version.join('.')}`);
 
         const sock = makeWASocket({
             version,
@@ -388,7 +393,7 @@ async function startBot(botConfig, forceStart = false) {
             botQRs[id].lastUpdate = new Date().toLocaleTimeString();
 
             if (qr) {
-                console.log(`[${id}] New QR code received`);
+                console.log(`${ts()} [${id}] New QR code received`);
                 botQRs[id].rawQr = qr;
 
                 // Si es la primera vez que recibimos el QR en este ciclo, guardamos el timestamp
@@ -403,7 +408,7 @@ async function startBot(botConfig, forceStart = false) {
                     try {
                         botQRs[id].qr = await QRCode.toDataURL(qr);
                     } catch (err) {
-                        console.error(`[${id}] Error generating QR DataURL:`, err);
+                        console.error(`${ts()} [${id}] Error generating QR DataURL:`, err);
                     }
                 }
             }
@@ -414,11 +419,11 @@ async function startBot(botConfig, forceStart = false) {
 
                 const shouldReconnect = statusCode !== DisconnectReason.loggedOut && statusCode !== DisconnectReason.connectionReplaced;
 
-                console.log(`[${id}] Connection closed. Status: ${statusCode}. Reconnecting: ${shouldReconnect}`);
+                console.log(`${ts()} [${id}] Connection closed. Status: ${statusCode}. Reconnecting: ${shouldReconnect}`);
 
                 // Si fue cerrado por inactividad o timeout, no intentar reconectar automáticamente
                 if (botQRs[id].status === 'stopped_inactivity' || botQRs[id].status === 'timeout_qr') {
-                    console.log(`[${id}] Connection stopped due to inactivity/timeout. Waiting for manual start.`);
+                    console.log(`${ts()} [${id}] Connection stopped due to inactivity/timeout. Waiting for manual start.`);
                     return;
                 }
 
@@ -428,31 +433,31 @@ async function startBot(botConfig, forceStart = false) {
                 botQRs[id].qrReadyTimestamp = null;
 
                 if (shouldReconnect) {
-                    console.log(`[${id}] Attempting to reconnect in 5s...`);
+                    console.log(`${ts()} [${id}] Attempting to reconnect in 5s...`);
                     setTimeout(() => startBot(botConfig), 5000);
                 } else {
-                    console.log(`[${id}] Logged out or session replaced. Session deleted.`);
+                    console.log(`${ts()} [${id}] Logged out or session replaced. Session deleted.`);
                     botQRs[id].status = 'logged_out';
                     
                     // Borrar carpeta de sesión si fue logout (401) o sesión reemplazada (440)
                     if (fs.existsSync(authFolder)) {
                         try {
                             fs.rmSync(authFolder, { recursive: true, force: true });
-                            console.log(`[${id}] Auth folder deleted due to logout/replaced.`);
+                            console.log(`${ts()} [${id}] Auth folder deleted due to logout/replaced.`);
                         } catch (err) {
-                            console.error(`[${id}] Error deleting auth folder: ${err.message}`);
+                            console.error(`${ts()} [${id}] Error deleting auth folder: ${err.message}`);
                         }
                     }
                 }
             } else if (connection === 'open') {
-                console.log(`[${id}] ✅ Connection opened successfully!`);
+                console.log(`${ts()} [${id}] ✅ Connection opened successfully!`);
                 botQRs[id].status = 'connected';
                 botQRs[id].qr = null;
                 botQRs[id].rawQr = null;
                 botQRs[id].qrReadyTimestamp = null;
             } else if (connection) {
                 botQRs[id].status = connection;
-                console.log(`[${id}] Connection state: ${connection}`);
+                console.log(`${ts()} [${id}] Connection state: ${connection}`);
             }
         });
 
@@ -478,7 +483,7 @@ async function startBot(botConfig, forceStart = false) {
                             const caption = image?.caption || document?.caption || '';
                             const filename = image ? 'imagen.jpg' : (document.fileName || 'documento.pdf');
                             const waitingFile = stateService.getWaitingForFile(jid);
-                            console.log(`[${id}] Media from ${jid}: type=${image?'image':'document'}, waitingFile=${waitingFile}, caption="${caption}"`);
+                            console.log(`${ts()} [${id}] Media from ${jid}: type=${image?'image':'document'}, waitingFile=${waitingFile}, caption="${caption}"`);
 
                             if (waitingFile) {
                                 try {
@@ -490,7 +495,7 @@ async function startBot(botConfig, forceStart = false) {
                                         mimetype: media.mimetype
                                     });
                                 } catch (err) {
-                                    console.error(`[${id}] Error descargando archivo de ${jid}:`, err);
+                                    console.error(`${ts()} [${id}] Error descargando archivo de ${jid}:`, err);
                                     await menuController.handleIncomingMessage(sock, jid, caption);
                                 }
                             } else if (caption) {
@@ -505,7 +510,7 @@ async function startBot(botConfig, forceStart = false) {
         });
 
     } catch (error) {
-        console.error(`[${id}] Critical error during startup:`, error);
+        console.error(`${ts()} [${id}] Critical error during startup:`, error);
         botQRs[id].status = 'error';
         setTimeout(() => startBot(botConfig), 10000);
     }
@@ -536,7 +541,7 @@ async function main() {
             try {
                 data.qr = await QRCode.toDataURL(data.rawQr);
             } catch (err) {
-                console.error(`[${id}] Error lazy-generating QR:`, err);
+                console.error(`${ts()} [${id}] Error lazy-generating QR:`, err);
             }
         }
 
@@ -595,7 +600,7 @@ async function main() {
 
         // Solo detener si está en estados de "espera de QR"
         if (data.status === 'qr_ready' || data.status === 'starting' || data.status === 'connecting') {
-            console.log(`[${id}] Stopping connection explicitly (User left page)`);
+            console.log(`${ts()} [${id}] Stopping connection explicitly (User left page)`);
             if (data.sock) {
                 try {
                     data.sock.end();
@@ -869,7 +874,7 @@ async function main() {
                     recursive: true,
                     force: true
                 });
-                console.log(`[${botId}] Session deleted manually`);
+                console.log(`${ts()} [${botId}] Session deleted manually`);
             }
 
             botQRs[botId].status = 'logged_out';
@@ -880,7 +885,7 @@ async function main() {
                 success: true
             });
         } catch (error) {
-            console.error(`[${botId}] Error during session deletion:`, error);
+            console.error(`${ts()} [${botId}] Error during session deletion:`, error);
             res.status(500).json({
                 error: 'Error'
             });
@@ -889,7 +894,7 @@ async function main() {
 
     // Iniciar bots dinámicamente desde Sheets
     const activeClients = await userService.getUsers(); // Obtener todos para inicializar config
-    console.log(`[System] Loading ${activeClients.length} potential clients...`);
+    console.log(`${ts()} [System] Loading ${activeClients.length} potential clients...`);
 
     for (const client of activeClients) {
         if (client.idCliente === 'admin') continue;
@@ -899,10 +904,10 @@ async function main() {
 
         // Solo iniciar automáticamente si tiene sesión activa Y el cliente está marcado como activo
         if (fs.existsSync(credsFile) && client.activo) {
-            console.log(`[System] Auto-starting active session for ${client.idCliente}`);
+            console.log(`${ts()} [System] Auto-starting active session for ${client.idCliente}`);
             startBot(entry.config);
         } else {
-            console.log(`[System] Bot ${client.idCliente} waiting for manual start (No active session or inactive).`);
+            console.log(`${ts()} [System] Bot ${client.idCliente} waiting for manual start (No active session or inactive).`);
         }
     }
 
@@ -913,7 +918,7 @@ async function main() {
             // 1. Timeout de escaneo (30 segundos en estado qr_ready)
             if (data.status === 'qr_ready' && data.qrReadyTimestamp) {
                 if (now - data.qrReadyTimestamp > 30000) {
-                    console.log(`[${id}] QR Scan Timeout (30s exceeded). Stopping...`);
+                    console.log(`${ts()} [${id}] QR Scan Timeout (30s exceeded). Stopping...`);
                     data.status = 'timeout_qr';
                     if (data.sock) {
                         try {
@@ -930,7 +935,7 @@ async function main() {
             // 2. Detener por inactividad de visor (45 segundos)
             if (data.status === 'qr_ready' || data.status === 'starting' || data.status === 'connecting') {
                 if (now - (data.lastActiveViewer || 0) > 45000) {
-                    console.log(`[${id}] Stopping connection due to inactive viewer (Saving memory)`);
+                    console.log(`${ts()} [${id}] Stopping connection due to inactive viewer (Saving memory)`);
                     if (data.sock) {
                         try {
                             data.sock.end();
@@ -945,7 +950,7 @@ async function main() {
 
             // Si el bot está en qr_ready pero no hay visor activo hace 15 segundos, limpiar la imagen Base64 para liberar memoria
             if (data.status === 'qr_ready' && data.qr && (now - (data.lastActiveViewer || 0) > 15000)) {
-                console.log(`[${id}] Clearing QR image from memory (Still in qr_ready state)`);
+                console.log(`${ts()} [${id}] Clearing QR image from memory (Still in qr_ready state)`);
                 data.qr = null;
             }
         });
