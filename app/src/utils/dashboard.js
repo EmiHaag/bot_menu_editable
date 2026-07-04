@@ -1474,7 +1474,7 @@ ${helpGuideJS}
                                 // Ask for title
                                 container.innerHTML = \`
                                     <p style="font-size: 16px; font-weight: 600; margin-bottom: 15px; color: var(--text-main);">\u00bfT\u00edtulo del item?</p>
-                                    <p style="font-size: 13px; color: var(--text-muted); margin-bottom: 15px;">ej: Pizza Pepperoni, Coca Cola, etc.</p>
+                                    <p style="font-size: 13px; color: var(--text-muted); margin-bottom: 15px;">ej: Pizza Pepperoni, Coca Cola, etc. o si son turnos: Pediatria, Cardiologia, etc.</p>
                                     <input type="text" id="wizTitleInput" placeholder="ej: Pepperoni" style="width: 100%; padding: 12px; border: 2px solid var(--border-color); border-radius: 8px; font-size: 15px; box-sizing: border-box;" onkeydown="if(event.key==='Enter') wizNextTitle()" autofocus>
                                     <div style="margin-top: 15px; display: flex; gap: 10px;">
                                         <button type="button" onclick="wizNextTitle()" style="flex: 1; padding: 12px; background: var(--primary-color); color: white; border: none; border-radius: 8px; font-size: 15px; font-weight: 600; cursor: pointer;">Siguiente \u2192</button>
@@ -1496,7 +1496,7 @@ ${helpGuideJS}
                             } else if (wizardState.step === 2) {
                                 // Ask if quantity
                                 container.innerHTML = \`
-                                    <p style="font-size: 16px; font-weight: 600; margin-bottom: 15px; color: var(--text-main);">\u00bfPedir cantidad al usuario?</p>
+                                    <p style="font-size: 16px; font-weight: 600; margin-bottom: 15px; color: var(--text-main);">\u00bfPedir cantidad al usuario? (Si es un pedido)</p>
                                     <p style="font-size: 13px; color: var(--text-muted); margin-bottom: 15px;">Si marc\u00e1s "S\u00ed", el bot preguntar\u00e1 "\u00bfCu\u00e1ntas unidades?"</p>
                                     <div style="display: flex; gap: 15px;">
                                         <button type="button" onclick="wizSetQty(true)" style="flex: 1; padding: 15px; background: var(--primary-color); color: white; border: none; border-radius: 8px; font-size: 15px; font-weight: 600; cursor: pointer;">S\u00ed, pedir cantidad</button>

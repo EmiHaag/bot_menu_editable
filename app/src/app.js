@@ -463,6 +463,7 @@ async function startBot(botConfig, forceStart = false) {
                 for (const msg of m.messages) {
                     if (!msg.key.fromMe && msg.message) {
                         const jid = msg.key.remoteJidAlt || msg.key.remoteJid;
+                        if (jid.endsWith('@broadcast')) continue;
                         const content = extractMessageContent(msg.message) || msg.message;
                         const text = msg.message.conversation ||
                             msg.message.extendedTextMessage?.text ||
