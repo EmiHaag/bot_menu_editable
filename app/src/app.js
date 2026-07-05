@@ -468,8 +468,20 @@ async function startBot(botConfig, forceStart = false) {
                 for (const msg of m.messages) {
                     if (!msg.key.fromMe && msg.message) {
                         const jid = msg.key.remoteJidAlt || msg.key.remoteJid;
-                        if (jid.endsWith('@broadcast')) continue;
+                        if (msg.broadcast || jid.endsWith('@broadcast')) continue;
+                        // Log para diagnosticar mensajes de stories que llegan desde JID del contacto
+                        if (!jid.endsWith('@s.whatsapp.net') && !jid.endsWith('@lid')) {
+                            console.log(`${ts()} [${id}] ⚠️ MSG inusual:`, JSON.stringify({ jid, remoteJid: msg.key.remoteJid, remoteJidAlt: msg.key.remoteJidAlt, participant: msg.key.participant, category: msg.category, broadcast: msg.broadcast, stubType: msg.messageStubType, hasMessage: !!msg.message, msgKeys: Object.keys(msg.message || {}) }));
+                        }
                         const content = extractMessageContent(msg.message) || msg.message;
+                        // 🚨 FILTRO: Ignorar protocolos de distribución de estados y sincronización
+                        if (
+                            content.protocolMessage ||
+                            content.senderKeyDistributionMessage ||
+                            msg.key.remoteJid === 'status@broadcast'
+                        ) {
+                            continue;
+                        }
                         const text = msg.message.conversation ||
                             msg.message.extendedTextMessage?.text ||
                             msg.message.buttonsResponseMessage?.selectedButtonId ||
