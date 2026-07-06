@@ -101,6 +101,7 @@ class Dashboard {
                     <html>
                     <head>
                         <title>Panel de Administración - Bots</title>
+                        <meta name="viewport" content="width=device-width, initial-scale=1.0">
                         <style>
                             :root {
                                 --primary-color: #00bc7d;
@@ -419,6 +420,7 @@ class Dashboard {
                 <html>
                 <head>
                     <title>Editor de Menú de WhatsApp - ${botId}</title>
+                    <meta name="viewport" content="width=device-width, initial-scale=1.0">
                     <style>
                         :root {
                             --primary-color: #00bc7d;
