@@ -188,6 +188,10 @@ appRouter.get('/login', (req, res) => {
                     text-align: center;
                     font-size: 14px;
                 }
+                @media (max-width: 480px) {
+                    .login-box { padding: 24px 16px; margin: 10px; box-sizing: border-box; }
+                    .login-box h2 { font-size: 18px; }
+                }
             </style>
         </head>
         <body>
@@ -717,6 +721,14 @@ async function main() {
                     .btn-action.btn-danger { background: var(--error-color); }
                     .btn-action:disabled { background: #ccc; cursor: not-allowed; }
                     .last-update { font-size: 11px; color: #999; margin-top: 15px; }
+                    @media (max-width: 768px) {
+                        body { padding: 12px; }
+                        .header-nav { flex-direction: column; gap: 12px; }
+                        .header-nav h1 { font-size: 20px; }
+                        .bot-card { width: 100%; max-width: 100%; box-sizing: border-box; padding: 16px; }
+                        .qr-img { width: 200px; height: 200px; }
+                        .btn-back { width: 100%; justify-content: center; box-sizing: border-box; }
+                    }
                 </style>
             </head>
             <body>

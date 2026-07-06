@@ -124,21 +124,33 @@ class Dashboard {
                             .form-group { margin-bottom: 15px; }
                             .form-group label { display: block; margin-bottom: 5px; font-weight: bold; }
                             .form-group input { width: 100%; padding: 10px; border: 1px solid var(--border-color); border-radius: 6px; box-sizing: border-box; }
+                        @media (max-width: 768px) {
+                            body { margin: 16px; }
+                            .header { flex-direction: column; align-items: stretch; gap: 12px; }
+                            .header > div { justify-content: center; }
+                            .header .btn { width: 100%; text-align: center; box-sizing: border-box; }
+                            .table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+                            table { font-size: 12px; min-width: 600px; }
+                            th, td { padding: 8px 6px; white-space: nowrap; }
+                            .modal-content { width: 95% !important; margin: 5% auto; padding: 20px; box-sizing: border-box; }
+                            .form-group input { font-size: 16px; }
+                        }
                         </style>
                         <script src="/js/robot-logo.js"></script>
                     </head>
                     <body>
                         <div class="header">
-                            <div style="display: flex; align-items: center; gap: 15px;">
+                            <div style="display: flex; align-items: center; gap: 15px; flex-wrap: wrap;">
                                 <canvas id="botLogoAdmin" width="200" height="200" style="width: 50px; height: 50px;"></canvas>
                                 <h2>Administración de Clientes</h2>
                             </div>
-                            <div>
+                            <div style="display: flex; gap: 8px; flex-wrap: wrap;">
                                 <button onclick="document.getElementById('addClientModal').style.display='block'" class="btn btn-green">+ Nuevo Cliente</button>
                                 <a href="/app/" class="btn" style="border: 1px solid #ccc">Volver al Editor</a>
                             </div>
                         </div>
 
+                        <div class="table-wrap">
                         <table>
                             <thead>
                                 <tr>
@@ -154,6 +166,7 @@ class Dashboard {
                                 ${rowsHtml}
                             </tbody>
                         </table>
+                        </div>
 
                         <div style="margin-top: 30px; padding-top: 20px; border-top: 2px solid #e7e3e4;">
                             <h3>⚙️ Configuración General</h3>
@@ -915,6 +928,58 @@ ${helpGuideCSS}
                             transition: all 0.2s;
                         }
                         .support-footer .chip:hover { background: var(--primary-color); color: white; border-color: var(--primary-color); }
+
+                        /* Mobile Responsive */
+                        @media (max-width: 768px) {
+                            body { margin: 12px; }
+                            .header { flex-direction: column; align-items: stretch; gap: 12px; }
+                            .header > div { justify-content: center; }
+                            .header h3 { text-align: center; font-size: 16px; }
+                            .toolbar { justify-content: center; }
+                            .toolbar .btn, .toolbar select { width: 100%; min-width: unset; box-sizing: border-box; }
+                            .toolbar select { font-size: 14px; }
+                            .table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; margin: 0 -4px; }
+                            .table-wrap table { min-width: 900px; }
+                            .modal-content { width: 95% !important; max-width: 100% !important; margin: 10px auto; padding: 16px; box-sizing: border-box; }
+                            .modal { padding: 10px 0; }
+                            .modal-body-wrapper { flex-direction: column; }
+                            .form-column { flex: 1 1 auto !important; }
+                            .chat-column { flex: 1 1 auto !important; position: static !important; }
+                            .chat-column .whatsapp-container { position: static !important; }
+                            .whatsapp-body { height: 250px; }
+                            #wizardContainer > div { flex-direction: column; }
+                            .info-icon .tooltip { width: 200px; margin-left: -100px; font-size: 11px; }
+                            #wizardAsk { padding: 20px 10px; }
+                            #wizardAsk p { font-size: 16px; }
+                            #wizardAsk button { padding: 12px 20px !important; font-size: 14px !important; width: 100%; }
+                            .support-modal { right: 10px; bottom: 80px; width: calc(100% - 20px); height: 60vh; }
+                            .support-toggle { right: 10px; bottom: 10px; }
+                            .btn { min-width: unset; }
+                            #editTriggerGroup { flex-direction: column; }
+                            #editTriggerGroup .form-group { flex: 1 1 auto; }
+                            #addFullForm .modal-body-wrapper .form-column > form > div:first-child { flex-direction: column; }
+                            #addFullForm .modal-body-wrapper .form-column > form .tags-flex-row,
+                            #editTagsGroup .tags-flex-row { flex-direction: column; }
+                            .help-sidebar { width: 280px; left: -280px; }
+                            .help-toggle.open { left: 280px; }
+                        }
+                        @media (max-width: 480px) {
+                            body { margin: 8px; }
+                            .table-wrap table { font-size: 12px; }
+                            .header h3 { font-size: 14px; }
+                            .status-box { font-size: 10px; padding: 2px 8px; }
+                            .modal-content { padding: 12px; }
+                            .form-group input, .form-group textarea { font-size: 16px; padding: 10px; }
+                            .form-group label { font-size: 13px; }
+                            .whatsapp-body { height: 200px; }
+                            .wa-bubble, .wa-bubble-user { max-width: 90%; font-size: 13px; }
+                            .support-modal { width: calc(100% - 10px); right: 5px; bottom: 75px; height: 55vh; }
+                            .support-toggle { right: 5px; bottom: 5px; padding: 8px 10px 6px 10px; }
+                            .support-toggle canvas { width: 32px; height: 32px; }
+                            .help-sidebar { width: 240px; left: -240px; }
+                            .help-toggle.open { left: 240px; }
+                            #wizardAsk button { padding: 10px 16px !important; font-size: 13px !important; }
+                        }
                     </style>
                     <script src="/js/robot-logo.js"></script>
                 </head>
@@ -941,6 +1006,7 @@ ${helpGuideCSS}
 
 ${helpGuideHTML}
 
+                    <div class="table-wrap">
                     <table>
                         <thead>
                             <tr>
@@ -963,6 +1029,7 @@ ${helpGuideHTML}
                             ${rowsHtml}
                         </tbody>
                     </table>
+                    </div>
 
                     <!-- Visual Modal -->
                     <div id="visualModal" class="modal">
@@ -1027,7 +1094,7 @@ ${helpGuideHTML}
                                             <div class="form-group" style="margin-bottom: 20px;">
                                                 <div style="border:1px solid var(--border-color);border-radius:8px;padding:12px 12px 8px 12px;">
                                                     <div style="font-size:12px;font-weight:700;color:var(--text-main);margin-bottom:8px;">Carrito de compras</div>
-                                                    <div style="display:flex;gap:10px;">
+                                                    <div class="tags-flex-row" style="display:flex;gap:10px;">
                                                         <div style="flex:1;display:flex;align-items:center;gap:10px;background:#f8f9fa;padding:10px;border-radius:6px;border:1px dashed var(--border-color);">
                                                             <input type="checkbox" id="addIsOrder" onchange="toggleOrderTag('add', '##PEDIDO##')" style="width:16px;height:16px;cursor:pointer;">
                                                             <label for="addIsOrder" style="margin-bottom:0;cursor:pointer;font-size:13px;">¿Crear pedido?<span class="info-icon" style="margin-left:4px;">i<span class="tooltip">Agrega "1 x Título" al carrito de compras.</span></span></label>
@@ -1041,7 +1108,7 @@ ${helpGuideHTML}
                                                             <label for="addIsFinal" style="margin-bottom:0;cursor:pointer;font-size:13px;">¿Finalizar?<span class="info-icon" style="margin-left:4px;">i<span class="tooltip">Muestra el resumen y vacía el carrito. Combinable con otros tags.</span></span></label>
                                                         </div>
                                                     </div>
-                                                    <div style="display:flex;gap:10px;margin-top:6px;">
+                                                    <div class="tags-flex-row" style="display:flex;gap:10px;margin-top:6px;">
                                                         <div style="flex:1;display:flex;align-items:center;gap:10px;background:#fff4e5;padding:10px;border-radius:6px;border:1px dashed #ff9800;">
                                                             <input type="checkbox" id="addIsData" onchange="toggleOrderTag('add', '##DATOS##')" style="width:16px;height:16px;cursor:pointer;">
                                                             <label for="addIsData" style="margin-bottom:0;cursor:pointer;font-size:13px;">Capturar dato y continuar<span class="info-icon" style="margin-left:4px;">i<span class="tooltip">Espera que el usuario escriba texto libre (nombre, dirección, etc.).</span></span></label>
@@ -1051,7 +1118,7 @@ ${helpGuideHTML}
                                                             <label for="addIsArchivo" style="margin-bottom:0;cursor:pointer;font-size:13px;">Solicitar archivo<span class="info-icon" style="margin-left:4px;">i<span class="tooltip">Espera que el usuario envíe una imagen o archivo.</span></span></label>
                                                         </div>
                                                     </div>
-                                                    <div style="display:flex;gap:10px;margin-top:6px;">
+                                                    <div class="tags-flex-row" style="display:flex;gap:10px;margin-top:6px;">
                                                         <div style="flex:1;display:flex;align-items:center;gap:10px;background:#f0fdf4;padding:10px;border-radius:6px;border:1px dashed #86efac;">
                                                             <input type="checkbox" id="addIsPagar" onchange="toggleOrderTag('add', '##PAGAR##')" style="width:16px;height:16px;cursor:pointer;">
                                                             <label for="addIsPagar" style="margin-bottom:0;cursor:pointer;font-size:13px;">Ir a pagar<span class="info-icon" style="margin-left:4px;">i<span class="tooltip">Muestra "p. Ir a pagar" cuando hay items en el carrito. Al escribir p va al primer hijo con Finalizar.</span></span></label>
@@ -1189,7 +1256,7 @@ ${helpGuideHTML}
                                         <div class="form-group" id="editTagsGroup" style="margin-bottom: 20px;">
                                             <div style="border:1px solid var(--border-color);border-radius:8px;padding:12px 12px 8px 12px;margin:12px;">
                                                 <div style="font-size:12px;font-weight:700;color:var(--text-main);margin-bottom:8px;">Carrito de compras</div>
-                                                <div style="display:flex;gap:10px;">
+                                                <div class="tags-flex-row" style="display:flex;gap:10px;">
                                                     <div style="flex:1;display:flex;align-items:center;gap:10px;background:#fff3cd;padding:10px;border-radius:6px;border:1px dashed #ffc107;">
                                                     <input type="checkbox" id="editIsOrder" onchange="toggleOrderTag('edit', '##PEDIDO##')" style="width:16px;height:16px;cursor:pointer;">
                                                     <label for="editIsOrder" style="margin-bottom:0;cursor:pointer;color:#856404;font-size:13px;">¿Crear pedido?<span class="info-icon" style="margin-left:4px;">i<span class="tooltip">Agrega "1 x Título" al carrito de compras.</span></span></label>
@@ -1203,7 +1270,7 @@ ${helpGuideHTML}
                                                     <label for="editIsFinal" style="margin-bottom:0;cursor:pointer;color:#5227cc;font-size:13px;">¿Finalizar?<span class="info-icon" style="margin-left:4px;">i<span class="tooltip">Muestra el resumen y vacía el carrito. Combinable con otros tags.</span></span></label>
                                                     </div>
                                                 </div>
-                                                <div style="display:flex;gap:10px;margin-top:6px;">
+                                                <div class="tags-flex-row" style="display:flex;gap:10px;margin-top:6px;">
                                                     <div style="flex:1;display:flex;align-items:center;gap:10px;background:#fff4e5;padding:10px;border-radius:6px;border:1px dashed #ff9800;">
                                                         <input type="checkbox" id="editIsData" onchange="toggleOrderTag('edit', '##DATOS##')" style="width:16px;height:16px;cursor:pointer;">
                                                         <label for="editIsData" style="margin-bottom:0;cursor:pointer;color:#856404;font-size:13px;">¿Capturar dato?<span class="info-icon" style="margin-left:4px;">i<span class="tooltip">Espera que el usuario escriba texto libre (nombre, dirección, etc.).</span></span></label>
@@ -1213,7 +1280,7 @@ ${helpGuideHTML}
                                                         <label for="editIsArchivo" style="margin-bottom:0;cursor:pointer;color:#2e7d32;font-size:13px;">¿Solicitar archivo?<span class="info-icon" style="margin-left:4px;">i<span class="tooltip">Espera que el usuario envíe una imagen o archivo.</span></span></label>
                                                     </div>
                                                 </div>
-                                                <div style="display:flex;gap:10px;margin-top:6px;">
+                                                <div class="tags-flex-row" style="display:flex;gap:10px;margin-top:6px;">
                                                     <div style="flex:1;display:flex;align-items:center;gap:10px;background:#f0fdf4;padding:10px;border-radius:6px;border:1px dashed #86efac;">
                                                         <input type="checkbox" id="editIsPagar" onchange="toggleOrderTag('edit', '##PAGAR##')" style="width:16px;height:16px;cursor:pointer;">
                                                         <label for="editIsPagar" style="margin-bottom:0;cursor:pointer;color:#166534;font-size:13px;">Ir a pagar<span class="info-icon" style="margin-left:4px;">i<span class="tooltip">Muestra "p. Ir a pagar" cuando hay items en el carrito. Al escribir p va al primer hijo con Finalizar.</span></span></label>
