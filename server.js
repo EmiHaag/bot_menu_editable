@@ -97,13 +97,9 @@ app.get('/health', (req, res) => {
 // Contacto: enviar email a info@wamenu.com.ar
 app.post('/api/contact', async (req, res) => {
     const { name, email, message } = req.body;
-    console.log('[Contact] Request recibido:', { name, email, messageLength: message?.length });
     if (!name || !email || !message) {
-        console.log('[Contact] Faltan campos:', { name: !!name, email: !!email, message: !!message });
         return res.status(400).json({ error: 'Faltan campos' });
     }
-    console.log('[Contact] RESEND_API_KEY configurada:', !!process.env.RESEND_API_KEY, process.env.RESEND_API_KEY?.substring(0, 6) + '...');
-    console.log('[Contact] CONTACT_EMAIL_FROM:', process.env.CONTACT_EMAIL_FROM);
     try {
         const html = `
             <div style="font-family: Arial, sans-serif; max-width: 560px; margin: 0 auto; padding: 24px;">
@@ -120,7 +116,6 @@ app.post('/api/contact', async (req, res) => {
         `;
         const from = process.env.CONTACT_EMAIL_FROM || 'no-reply@wamenu.com.ar';
         const to = 'emilianohaag10@gmail.com';
-        console.log('[Contact] Enviando email:', { from, to, reply_to: email });
         const result = await resend.emails.send({
             from,
             to,
@@ -128,11 +123,9 @@ app.post('/api/contact', async (req, res) => {
             subject: `📩 Contacto: ${name}`,
             html
         });
-        console.log('[Contact] Resend respuesta:', JSON.stringify(result));
         res.json({ ok: true });
     } catch (err) {
         console.error('[Contact] Error enviando email:', err);
-        console.error('[Contact] Error details:', JSON.stringify(err));
         res.status(500).json({ error: 'Error al enviar el mensaje' });
     }
 });
