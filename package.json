@@ -23,6 +23,7 @@
     "nodemailer": "^9.0.1",
     "pino": "^10.3.1",
     "qrcode": "^1.5.4",
+    "resend": "^6.17.2",
     "session-file-store": "^1.5.0",
     "uuid": "^14.0.1"
   },

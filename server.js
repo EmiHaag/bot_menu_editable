@@ -8,6 +8,8 @@ const crypto = require('crypto');
 const userService = require('./app/src/services/userService');
 const mercadoPagoService = require('./app/src/services/mercadoPagoService');
 const emailService = require('./app/src/services/emailService');
+const { Resend } = require('resend');
+const resend = new Resend(process.env.RESEND_API_KEY);
 
 const app = express();
 const port = process.env.PORT || 8000;
@@ -90,6 +92,49 @@ app.post('/api/config', (req, res) => {
 
 app.get('/health', (req, res) => {
     res.status(200).send('OK');
+});
+
+// Contacto: enviar email a info@wamenu.com.ar
+app.post('/api/contact', async (req, res) => {
+    const { name, email, message } = req.body;
+    console.log('[Contact] Request recibido:', { name, email, messageLength: message?.length });
+    if (!name || !email || !message) {
+        console.log('[Contact] Faltan campos:', { name: !!name, email: !!email, message: !!message });
+        return res.status(400).json({ error: 'Faltan campos' });
+    }
+    console.log('[Contact] RESEND_API_KEY configurada:', !!process.env.RESEND_API_KEY, process.env.RESEND_API_KEY?.substring(0, 6) + '...');
+    console.log('[Contact] CONTACT_EMAIL_FROM:', process.env.CONTACT_EMAIL_FROM);
+    try {
+        const html = `
+            <div style="font-family: Arial, sans-serif; max-width: 560px; margin: 0 auto; padding: 24px;">
+                <div style="background: #0f6b4f; color: white; padding: 20px; border-radius: 12px 12px 0 0; text-align: center;">
+                    <h1 style="margin: 0; font-size: 1.3rem;">📩 Nuevo mensaje de contacto</h1>
+                </div>
+                <div style="background: #f8f9fa; padding: 24px; border-radius: 0 0 12px 12px; border: 1px solid #e0e0e0; border-top: none;">
+                    <p style="font-size: 0.95rem; color: #333; margin: 0 0 12px;"><strong>Nombre:</strong> ${name}</p>
+                    <p style="font-size: 0.95rem; color: #333; margin: 0 0 12px;"><strong>Email:</strong> ${email}</p>
+                    <hr style="border: none; border-top: 1px solid #e0e0e0; margin: 16px 0;">
+                    <p style="font-size: 0.95rem; color: #555; line-height: 1.6; white-space: pre-wrap;">${message}</p>
+                </div>
+            </div>
+        `;
+        const from = process.env.CONTACT_EMAIL_FROM || 'no-reply@wamenu.com.ar';
+        const to = 'emilianohaag10@gmail.com';
+        console.log('[Contact] Enviando email:', { from, to, reply_to: email });
+        const result = await resend.emails.send({
+            from,
+            to,
+            reply_to: email,
+            subject: `📩 Contacto: ${name}`,
+            html
+        });
+        console.log('[Contact] Resend respuesta:', JSON.stringify(result));
+        res.json({ ok: true });
+    } catch (err) {
+        console.error('[Contact] Error enviando email:', err);
+        console.error('[Contact] Error details:', JSON.stringify(err));
+        res.status(500).json({ error: 'Error al enviar el mensaje' });
+    }
 });
 
 app.get('/', (req, res) => {

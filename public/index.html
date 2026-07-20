@@ -792,6 +792,27 @@
             border-color: #0f6b4f;
         }
         .modal-form textarea { resize: vertical; min-height: 80px; }
+        .contact-btn {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            z-index: 999;
+            background: #0f6b4f;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            padding: 10px 22px;
+            font-weight: 700;
+            font-size: 0.9rem;
+            cursor: pointer;
+            transition: all 0.2s;
+            font-family: inherit;
+            box-shadow: 0 4px 14px rgba(15,107,79,0.3);
+        }
+        .contact-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(15,107,79,0.4);
+        }
         @media (max-width: 768px) {
             .hero h1 { font-size: 2.2rem; }
             .hero-stats { gap: 20px; }
@@ -811,6 +832,27 @@
     <link rel="icon" type="image/x-icon" href="/img/favicon.png">
 </head>
 <body>
+    <button class="contact-btn" onclick="openContactModal()">Contacto</button>
+
+    <div class="modal-overlay modal-contact" id="modalContact">
+        <div class="modal">
+            <button class="modal-close" onclick="closeContactModal()">✕</button>
+            <h3>Contacto</h3>
+            <p>Completá el formulario y te responderemos a la brevedad.</p>
+            <div class="modal-form">
+                <label for="contactName">Nombre</label>
+                <input type="text" id="contactName" placeholder="Tu nombre" autocomplete="off" required>
+                <label for="contactEmail">Email</label>
+                <input type="email" id="contactEmail" placeholder="tu@email.com" autocomplete="off" required>
+                <label for="contactMessage">Mensaje</label>
+                <textarea id="contactMessage" placeholder="Escribí tu consulta..." required></textarea>
+                <div id="contactError" style="color:#d32f2f;font-size:0.82rem;margin-bottom:10px;display:none;"></div>
+                <div id="contactSuccess" style="color:#2e7d32;font-size:0.82rem;margin-bottom:10px;display:none;">✅ Mensaje enviado correctamente. Te responderemos pronto.</div>
+                <button class="plan-btn primary" id="btnContactSubmit" onclick="sendContact()">📤 Enviar mensaje</button>
+            </div>
+        </div>
+    </div>
+
     <section class="hero">
         <img src="/img/wamenu_logo_name.png" alt="WaMenu Banner" width="1408" height="768" style="width:100%;max-width:600px;height:auto;margin-bottom:10px;display:block;margin-left:auto;margin-right:auto;object-fit:contain;">
         <div class="hero-badge">🔥 Sin programar · Lo manejás vos</div>
@@ -1418,6 +1460,58 @@ function sendCustom() {
               'Mi negocio: ' + desc;
     window.open('https://wa.me/' + BOT_PHONE + '?text=' + encodeURIComponent(msg), '_blank');
     closeModal();
+}
+
+function openContactModal() {
+    document.getElementById('modalContact').classList.add('open');
+}
+function closeContactModal() {
+    document.getElementById('modalContact').classList.remove('open');
+    document.getElementById('contactName').value = '';
+    document.getElementById('contactEmail').value = '';
+    document.getElementById('contactMessage').value = '';
+    document.getElementById('contactError').style.display = 'none';
+    document.getElementById('contactSuccess').style.display = 'none';
+}
+async function sendContact() {
+    var name = document.getElementById('contactName').value.trim();
+    var email = document.getElementById('contactEmail').value.trim();
+    var message = document.getElementById('contactMessage').value.trim();
+    var errorEl = document.getElementById('contactError');
+    var successEl = document.getElementById('contactSuccess');
+    var btn = document.getElementById('btnContactSubmit');
+
+    errorEl.style.display = 'none';
+    successEl.style.display = 'none';
+
+    if (!name) { errorEl.textContent = 'Ingresá tu nombre'; errorEl.style.display = 'block'; return; }
+    if (!email || !email.includes('@')) { errorEl.textContent = 'Ingresá un email válido'; errorEl.style.display = 'block'; return; }
+    if (!message) { errorEl.textContent = 'Escribí tu mensaje'; errorEl.style.display = 'block'; return; }
+
+    btn.disabled = true;
+    btn.textContent = '⏳ Enviando...';
+
+    try {
+        var res = await fetch('/api/contact', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name: name, email: email, message: message })
+        });
+        var data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Error del servidor');
+
+        successEl.style.display = 'block';
+        btn.textContent = '✅ Enviado';
+        document.getElementById('contactName').value = '';
+        document.getElementById('contactEmail').value = '';
+        document.getElementById('contactMessage').value = '';
+    } catch (err) {
+        errorEl.textContent = 'Error: ' + err.message;
+        errorEl.style.display = 'block';
+    }
+
+    btn.disabled = false;
+    btn.textContent = '📤 Enviar mensaje';
 }
 </script>
 </body>
