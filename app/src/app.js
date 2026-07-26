@@ -299,6 +299,7 @@ appRouter.get('/login', (req, res) => {
                     .login-box h2 { font-size: 18px; }
                 }
             </style>
+            <meta http-equiv="Content-Security-Policy" content="script-src 'self' 'unsafe-inline' 'unsafe-eval' https://challenges.cloudflare.com;">
         </head>
         <body>
             <div class="login-box" style="position: relative;">
