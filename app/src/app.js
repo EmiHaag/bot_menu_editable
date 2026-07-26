@@ -551,8 +551,11 @@ appRouter.post('/api/password-reset/request', async (req, res) => {
     if (!email) return res.status(400).json({ error: 'Ingresá tu email' });
 
     try {
+        userService.clearCache();
         const user = await userService.getUserByEmail(email);
-        if (user) {
+        if (!user) {
+            console.log(`${ts()} [PasswordReset] No user found for email: ${email}`);
+        } else {
             const token = crypto.randomBytes(32).toString('hex');
             const expiresAt = Date.now() + 15 * 60 * 1000;
             passwordResetTokens.set(token, { idCliente: user.idCliente, email: user.email, expiresAt });
@@ -560,15 +563,16 @@ appRouter.post('/api/password-reset/request', async (req, res) => {
             const siteUrl = process.env.SITE_URL || 'http://localhost:8000';
             const resetUrl = `${siteUrl}/app/reset-password?token=${token}`;
 
+            console.log(`${ts()} [PasswordReset] Sending reset email to ${user.email} (${user.nombreCliente})...`);
             await emailService.sendPasswordResetEmail({
                 to: user.email,
                 name: user.nombreCliente,
                 resetUrl
             });
-            console.log(`${ts()} [PasswordReset] Token generated for ${user.email}`);
+            console.log(`${ts()} [PasswordReset] Email sent successfully for ${user.email}`);
         }
     } catch (err) {
-        console.error(`${ts()} [PasswordReset] Error:`, err.message);
+        console.error(`${ts()} [PasswordReset] Error:`, err.message, err.stack);
     }
 
     // Siempre responder lo mismo (no revelar si el email existe)
@@ -951,10 +955,9 @@ async function startBot(botConfig, forceStart = false) {
 }
 
 async function main() {
-    // Initialize Neon DB table for terms approvals
+    // Initialize Neon DB
     await termsService.ensureTable();
-    // Ensure Usuarios sheet headers are up to date
-    await userService.ensureHeaders();
+    await userService.init();
 
     // API: Check terms approval status
     appRouter.get('/api/terms/status/:userId', async (req, res) => {
