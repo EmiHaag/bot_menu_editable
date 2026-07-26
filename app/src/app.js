@@ -701,6 +701,9 @@ appRouter.use((req, res, next) => {
         req.user = req.session.user;
         return next();
     }
+    if (req.path.startsWith('/api/')) {
+        return res.status(401).json({ error: 'Unauthorized' });
+    }
     res.redirect('/app/login');
 });
 

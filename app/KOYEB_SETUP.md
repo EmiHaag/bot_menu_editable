@@ -12,9 +12,33 @@ Verifica que el volumen persistente esté configurado con:
 ### Variables de Entorno
 Por defecto, la app usa la carpeta local `auth_sessions` dentro del proyecto. 
 
-Para entornos de producción como **Koyeb**, es **obligatorio** configurar la variable de entorno para usar el volumen persistente:
+Para entornos de producción como **Koyeb**, es **obligatorio** configurar las siguientes variables de entorno:
+
+### Variables de volumen y sesión
 ```
 AUTH_SESSIONS_DIR=/data/auth_sessions
+SESSION_SECRET=<clave-secreta-aleatoria>
+```
+
+### Neon PostgreSQL (Términos y Condiciones)
+```
+NEON_DATABASE_URL=postgresql://neondb_owner:<password>@<endpoint>.neon.tech/<dbname>?sslmode=require
+```
+La tabla `terms_approvals` se crea automáticamente al iniciar el servidor.
+
+### Email (SMTP) - Recuperación de contraseña y bienvenida
+```
+SMTP_HOST=smtp.gmail.com
+SMTP_PORT=587
+SMTP_SECURE=false
+SMTP_USER=tu-email@gmail.com
+SMTP_PASS=tu-app-password
+```
+
+### MercadoPago y URL del sitio
+```
+MERCADOPAGO_ACCESS_TOKEN=APP_USR-...
+SITE_URL=https://tu-dominio.koyeb.app
 ```
 
 ## Verificación
@@ -23,6 +47,15 @@ Después de configurar el volumen:
 2. Escanea un código QR para autenticar
 3. Reinicia el contenedor nuevamente
 4. Verifica que la sesión se mantuvo (no debe pedir escanear QR nuevamente)
+
+## Planilla Google Sheets
+Los encabezados de la pestaña `Usuarios` se crean/actualizan automáticamente al iniciar el servidor. Columnas actuales:
+
+| A | B | C | D | E | F | G | H | I |
+|---|---|---|---|---|---|---|---|---|
+| id_cliente | nombre_cliente | activo | user | password | fecha_suscripcion | spreadsheetId | email | fecha_terminos |
+
+No es necesario crear los encabezados manualmente.
 
 ## Manejo de la carpeta
 La aplicación (`app.js`) se asegura de que la carpeta configurada en `AUTH_SESSIONS_DIR` exista cuando inicia. 
