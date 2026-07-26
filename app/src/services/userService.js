@@ -8,7 +8,7 @@ class UserService extends GoogleAuthBase {
     constructor() {
         super();
         this.spreadsheetId = process.env.SPREADSHEET_ID;
-        this.range = 'Usuarios!A2:G'; // id_cliente, nombre_cliente, activo, user, password, fecha_suscripcion, spreadsheetId
+        this.range = 'Usuarios!A2:I'; // id_cliente, nombre_cliente, activo, user, password, fecha_suscripcion, spreadsheetId, email, fecha_terminos
     }
 
     get sheets() {
@@ -53,7 +53,9 @@ class UserService extends GoogleAuthBase {
                             user: row[3] || '',
                             password: row[4] || '',
                             fechaSuscripcion: row[5] || '',
-                            spreadsheetId: row[6] || process.env.SPREADSHEET_ID
+                            spreadsheetId: row[6] || process.env.SPREADSHEET_ID,
+                            email: row[7] || '',
+                            fechaTerminos: row[8] || ''
                         });
                     }
                 });
@@ -72,6 +74,41 @@ class UserService extends GoogleAuthBase {
         return users.find(u => u.user === username);
     }
 
+    async getUserByEmail(email) {
+        const users = await this.getUsers();
+        return users.find(u => u.email && u.email.toLowerCase() === email.toLowerCase());
+    }
+
+    async updatePassword(idCliente, newPassword) {
+        try {
+            const sheets = this.sheets;
+            const response = await sheets.spreadsheets.values.get({
+                spreadsheetId: this.spreadsheetId,
+                range: 'Usuarios!A:A',
+            });
+
+            const rows = response.data.values || [];
+            const rowIndex = rows.findIndex(row => row[0] === idCliente);
+
+            if (rowIndex === -1) return false;
+
+            const cellRange = 'Usuarios!E' + (rowIndex + 1);
+
+            await sheets.spreadsheets.values.update({
+                spreadsheetId: this.spreadsheetId,
+                range: cellRange,
+                valueInputOption: 'USER_ENTERED',
+                requestBody: { values: [[newPassword]] }
+            });
+
+            this.clearCache();
+            return true;
+        } catch (error) {
+            console.error('[UserService] Error updating password:', error.message);
+            return false;
+        }
+    }
+
     async getActiveClients() {
         const users = await this.getUsers();
         return users.filter(u => u.activo && u.idCliente !== 'admin');
@@ -79,16 +116,18 @@ class UserService extends GoogleAuthBase {
 
     async addUser(userData) {
         try {
+            await this.ensureHeaders();
+
             const sheets = this.sheets;
-            const { idCliente, nombreCliente, user, password, spreadsheetId } = userData;
+            const { idCliente, nombreCliente, user, password, spreadsheetId, email } = userData;
             const fecha = new Date().toLocaleDateString();
             
             await sheets.spreadsheets.values.append({
                 spreadsheetId: this.spreadsheetId,
-                range: 'Usuarios!A2:G',
+                range: 'Usuarios!A2:I',
                 valueInputOption: 'USER_ENTERED',
                 requestBody: {
-                    values: [[idCliente, nombreCliente, 'TRUE', user, password, fecha, spreadsheetId]]
+                    values: [[idCliente, nombreCliente, 'TRUE', user, password, fecha, spreadsheetId, email || '', '']]
                 }
             });
             this.clearCache();
@@ -149,6 +188,72 @@ class UserService extends GoogleAuthBase {
 
     clearCache() {
         cache.del('all_users');
+    }
+
+    async ensureHeaders() {
+        try {
+            const sheets = this.sheets;
+            const expected = ['id_cliente', 'nombre_cliente', 'activo', 'user', 'password', 'fecha_suscripcion', 'spreadsheetId', 'email', 'fecha_terminos'];
+
+            let existing = [];
+            try {
+                const res = await sheets.spreadsheets.values.get({
+                    spreadsheetId: this.spreadsheetId,
+                    range: 'Usuarios!A1:I1',
+                });
+                existing = (res.data.values && res.data.values[0]) || [];
+            } catch (e) {
+                // Sheet might not exist yet, will be created by first append
+            }
+
+            const needsUpdate = expected.length > existing.length ||
+                expected.some((h, i) => existing[i] !== h);
+
+            if (needsUpdate) {
+                await sheets.spreadsheets.values.update({
+                    spreadsheetId: this.spreadsheetId,
+                    range: 'Usuarios!A1:I1',
+                    valueInputOption: 'USER_ENTERED',
+                    requestBody: { values: [expected] }
+                });
+                console.log('[UserService] Headers Usuarios sheet updated');
+            }
+        } catch (error) {
+            console.error('[UserService] Error ensuring headers:', error.message);
+        }
+    }
+
+    async updateTermsDate(idCliente) {
+        try {
+            const sheets = this.sheets;
+            const response = await sheets.spreadsheets.values.get({
+                spreadsheetId: this.spreadsheetId,
+                range: 'Usuarios!A:A',
+            });
+
+            const rows = response.data.values || [];
+            const rowIndex = rows.findIndex(row => row[0] === idCliente);
+
+            if (rowIndex === -1) return false;
+
+            const fecha = new Date().toLocaleDateString();
+            const cellRange = 'Usuarios!I' + (rowIndex + 1);
+
+            await sheets.spreadsheets.values.update({
+                spreadsheetId: this.spreadsheetId,
+                range: cellRange,
+                valueInputOption: 'USER_ENTERED',
+                requestBody: {
+                    values: [[fecha]]
+                }
+            });
+
+            this.clearCache();
+            return true;
+        } catch (error) {
+            console.error('Error updating terms date:', error);
+            return false;
+        }
     }
 }
 

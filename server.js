@@ -280,7 +280,8 @@ app.get('/pago_exitoso', async (req, res) => {
                 nombreCliente: payerName,
                 user: username,
                 password,
-                spreadsheetId: process.env.SPREADSHEET_ID
+                spreadsheetId: process.env.SPREADSHEET_ID,
+                email: payerEmail
             });
 
             console.log(`[Suscripción] Usuario creado: ${username} (${payerEmail})`);

@@ -28,6 +28,9 @@ const MenuController = require('./controllers/menuController');
 const orderService = require('./services/orderService');
 const dashboard = require('./utils/dashboard');
 const userService = require('./services/userService');
+const termsService = require('./services/termsService');
+const emailService = require('./services/emailService');
+const crypto = require('crypto');
 
 const appRouter = express.Router();
 const AUTH_SESSIONS_DIR = path.resolve(
@@ -109,6 +112,11 @@ appRouter.get('/login', (req, res) => {
         errorMsg = '<div class="error-msg">Demasiados intentos. Esperá un minuto.</div>';
     }
 
+    let successMsg = '';
+    if (req.query.reset === '1') {
+        successMsg = '<div class="success-msg">Contraseña actualizada. Ingresá con tu nueva contraseña.</div>';
+    }
+
     const turnstileSiteKey = process.env.TURNSTILE_SITE_KEY || '';
     const turnstileHtml = turnstileSiteKey
         ? `<div class="cf-turnstile" data-sitekey="${turnstileSiteKey}" data-theme="light" style="margin-bottom:20px;display:flex;justify-content:center;"></div>`
@@ -188,6 +196,104 @@ appRouter.get('/login', (req, res) => {
                     text-align: center;
                     font-size: 14px;
                 }
+                .success-msg {
+                    color: #2e7d32;
+                    background: #e8f5e9;
+                    padding: 10px;
+                    border-radius: 4px;
+                    margin-bottom: 20px;
+                    text-align: center;
+                    font-size: 14px;
+                }
+                .register-link {
+                    text-align: center;
+                    margin-top: 20px;
+                    font-size: 14px;
+                    color: #666;
+                }
+                .register-link a {
+                    color: #00bc7d;
+                    cursor: pointer;
+                    font-weight: 600;
+                    text-decoration: none;
+                }
+                .register-link a:hover {
+                    text-decoration: underline;
+                }
+                .modal-overlay {
+                    display: none;
+                    position: fixed;
+                    top: 0; left: 0; right: 0; bottom: 0;
+                    background: rgba(0,0,0,0.5);
+                    z-index: 1000;
+                    align-items: center;
+                    justify-content: center;
+                    padding: 20px;
+                }
+                .modal-overlay.open { display: flex; }
+                .modal {
+                    background: white;
+                    border-radius: 16px;
+                    padding: 32px 28px;
+                    max-width: 480px;
+                    width: 100%;
+                    box-shadow: 0 20px 60px rgba(0,0,0,0.2);
+                    text-align: left;
+                    position: relative;
+                }
+                .modal h3 { font-size: 1.2rem; font-weight: 700; color: #222; margin-bottom: 4px; }
+                .modal p { font-size: 0.88rem; color: #666; margin-bottom: 20px; }
+                .modal-close {
+                    position: absolute;
+                    top: 12px; right: 16px;
+                    font-size: 1.4rem;
+                    cursor: pointer;
+                    color: #999;
+                    background: none;
+                    border: none;
+                }
+                .modal-form label {
+                    display: block;
+                    font-size: 0.82rem;
+                    font-weight: 600;
+                    color: #444;
+                    margin-bottom: 4px;
+                }
+                .modal-form input {
+                    width: 100%;
+                    padding: 10px 12px;
+                    border: 1px solid #ddd;
+                    border-radius: 8px;
+                    font-size: 0.88rem;
+                    font-family: inherit;
+                    margin-bottom: 14px;
+                    transition: border-color 0.2s;
+                    box-sizing: border-box;
+                }
+                .modal-form input:focus {
+                    outline: none;
+                    border-color: #00bc7d;
+                }
+                .plan-btn {
+                    display: inline-flex;
+                    align-items: center;
+                    justify-content: center;
+                    gap: 6px;
+                    padding: 12px 20px;
+                    border-radius: 8px;
+                    font-weight: 700;
+                    font-size: 0.9rem;
+                    text-decoration: none;
+                    transition: all 0.2s;
+                    cursor: pointer;
+                    border: none;
+                    font-family: inherit;
+                    width: 100%;
+                    text-align: center;
+                }
+                .plan-btn.primary { background: #0f6b4f; color: white; }
+                .plan-btn.primary:hover { background: #0c5841; }
+                .plan-btn:disabled { background: #ccc; cursor: default; transform: none; box-shadow: none; }
                 @media (max-width: 480px) {
                     .login-box { padding: 24px 16px; margin: 10px; box-sizing: border-box; }
                     .login-box h2 { font-size: 18px; }
@@ -199,6 +305,7 @@ appRouter.get('/login', (req, res) => {
                 <img src="/img/wamenu_logo_name.png" alt="WaMenu Banner" width="1408" height="768" style="width:100%;max-width:240px;height:auto;margin-bottom:10px;display:block;margin-left:auto;margin-right:auto;object-fit:contain;">
                 <h2>Editor de Menú de WhatsApp</h2>
                 ${errorMsg}
+                ${successMsg}
                 <form action="/app/login" method="POST" id="loginForm">
                     <div class="form-group">
                         <label for="username">Usuario</label>
@@ -211,10 +318,167 @@ appRouter.get('/login', (req, res) => {
                     ${turnstileHtml}
                     <button type="submit" class="btn-login">Login</button>
                 </form>
+                <div style="text-align:center;margin-top:12px;font-size:13px;">
+                    <a onclick="openResetModal()" style="color:#00bc7d;cursor:pointer;font-weight:600;text-decoration:none;">¿Olvidaste tu contraseña?</a>
+                </div>
+                <div class="register-link">
+                    Aún no tenés usuario? <a onclick="openSubscribeModal()">Hacé click acá</a>
+                </div>
+            </div>
+
+            <!-- Modal Suscripción -->
+            <div class="modal-overlay" id="modalSubscribe">
+                <div class="modal">
+                    <button class="modal-close" onclick="closeSubscribeModal()">✕</button>
+                    <h3>Suscribite al Plan Estándar</h3>
+                    <p>Completá tus datos para iniciar la suscripción mensual por <strong>$<span id="modalSubscribePrice"></span> ARS/mes</strong>.</p>
+                    <p style="font-size:0.78rem;color:#999;margin-top:-12px;margin-bottom:16px;">El primer mes es gratis</p>
+                    <div class="modal-form">
+                        <label for="subscribeName">Nombre</label>
+                        <input type="text" id="subscribeName" placeholder="Tu nombre" autocomplete="off" required>
+                        <label for="subscribeEmail">Email</label>
+                        <input type="email" id="subscribeEmail" placeholder="tu@email.com" autocomplete="off" required>
+                        <div id="subscribeError" style="color:#d32f2f;font-size:0.82rem;margin-bottom:10px;display:none;"></div>
+                        <button class="plan-btn primary" id="btnSubscribeSubmit" onclick="startSubscription()">
+                            Ir a MercadoPago
+                        </button>
+                        <p style="font-size:0.72rem;color:#aaa;margin-top:12px;">Serás redirigido a MercadoPago para completar el pago de forma segura.</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Modal Recuperar Contraseña -->
+            <div class="modal-overlay" id="modalReset">
+                <div class="modal">
+                    <button class="modal-close" onclick="closeResetModal()">✕</button>
+                    <h3>Recuperar contraseña</h3>
+                    <p>Ingresá el email asociado a tu cuenta y te enviaremos un link para restablecer tu contraseña.</p>
+                    <div class="modal-form">
+                        <label for="resetEmail">Email</label>
+                        <input type="email" id="resetEmail" placeholder="tu@email.com" autocomplete="off" required>
+                        <div id="resetError" style="color:#d32f2f;font-size:0.82rem;margin-bottom:10px;display:none;"></div>
+                        <div id="resetSuccess" style="color:#2e7d32;font-size:0.82rem;margin-bottom:10px;display:none;"></div>
+                        <button class="plan-btn primary" id="btnResetRequest" onclick="requestPasswordReset()">
+                            Enviar link de recuperación
+                        </button>
+                    </div>
+                </div>
             </div>
 
             <script>
                 drawRobot('botLogoLogin');
+
+                var PRECIO_ESTANDAR = '22000';
+                fetch('/api/config').then(function(r) { return r.json(); }).then(function(d) {
+                    if (d.precioEstandar) PRECIO_ESTANDAR = d.precioEstandar;
+                }).catch(function() {});
+
+                function openSubscribeModal() {
+                    document.getElementById('modalSubscribePrice').textContent = PRECIO_ESTANDAR;
+                    document.getElementById('subscribeError').style.display = 'none';
+                    document.getElementById('subscribeName').value = '';
+                    document.getElementById('subscribeEmail').value = '';
+                    document.getElementById('btnSubscribeSubmit').disabled = false;
+                    document.getElementById('btnSubscribeSubmit').textContent = 'Ir a MercadoPago';
+                    document.getElementById('modalSubscribe').classList.add('open');
+                }
+                function closeSubscribeModal() {
+                    document.getElementById('modalSubscribe').classList.remove('open');
+                }
+
+                function openResetModal() {
+                    document.getElementById('resetError').style.display = 'none';
+                    document.getElementById('resetSuccess').style.display = 'none';
+                    document.getElementById('resetEmail').value = '';
+                    document.getElementById('btnResetRequest').disabled = false;
+                    document.getElementById('btnResetRequest').textContent = 'Enviar link de recuperación';
+                    document.getElementById('modalReset').classList.add('open');
+                }
+                function closeResetModal() {
+                    document.getElementById('modalReset').classList.remove('open');
+                }
+
+                async function requestPasswordReset() {
+                    var email = document.getElementById('resetEmail').value.trim();
+                    var errorEl = document.getElementById('resetError');
+                    var successEl = document.getElementById('resetSuccess');
+                    var btn = document.getElementById('btnResetRequest');
+
+                    errorEl.style.display = 'none';
+                    successEl.style.display = 'none';
+
+                    if (!email || !email.includes('@')) { errorEl.textContent = 'Ingresá un email válido'; errorEl.style.display = 'block'; return; }
+
+                    btn.disabled = true;
+                    btn.textContent = 'Enviando...';
+
+                    try {
+                        var res = await fetch('/app/api/password-reset/request', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ email: email })
+                        });
+                        var data = await res.json();
+                        successEl.textContent = data.message || 'Si el email existe, recibirás un link de recuperación.';
+                        successEl.style.display = 'block';
+                        btn.textContent = 'Enviado';
+                    } catch(err) {
+                        errorEl.textContent = 'Error de conexión';
+                        errorEl.style.display = 'block';
+                        btn.disabled = false;
+                        btn.textContent = 'Enviar link de recuperación';
+                    }
+                }
+
+                var pollTimer = null;
+                var currentPreapprovalId = null;
+
+                async function startSubscription() {
+                    var name = document.getElementById('subscribeName').value.trim();
+                    var email = document.getElementById('subscribeEmail').value.trim();
+                    var errorEl = document.getElementById('subscribeError');
+                    var btn = document.getElementById('btnSubscribeSubmit');
+
+                    if (!name) { errorEl.textContent = 'Ingresá tu nombre'; errorEl.style.display = 'block'; return; }
+                    if (!email || !email.includes('@')) { errorEl.textContent = 'Ingresá un email válido'; errorEl.style.display = 'block'; return; }
+
+                    errorEl.style.display = 'none';
+                    btn.disabled = true;
+                    btn.textContent = 'Creando suscripción...';
+
+                    try {
+                        var res = await fetch('/api/mercadopago/create-subscription', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ name: name, email: email })
+                        });
+                        var data = await res.json();
+                        if (!res.ok) throw new Error(data.error || 'Error del servidor');
+
+                        currentPreapprovalId = data.preapproval_id;
+                        btn.textContent = 'Esperando pago...';
+
+                        var mpWindow = window.open(data.init_point, '_blank', 'width=800,height=700');
+
+                        pollTimer = setInterval(async function() {
+                            try {
+                                var r = await fetch('/api/mercadopago/check-status?preapproval_id=' + currentPreapprovalId);
+                                var st = await r.json();
+                                if (st.status === 'authorized' || st.status === 'approved') {
+                                    clearInterval(pollTimer);
+                                    btn.textContent = 'Pago confirmado';
+                                    if (mpWindow && !mpWindow.closed) mpWindow.close();
+                                    window.location.href = '/pago_exitoso?preapproval_id=' + currentPreapprovalId;
+                                }
+                            } catch(e) {}
+                        }, 2000);
+                    } catch (err) {
+                        errorEl.textContent = 'Error: ' + err.message;
+                        errorEl.style.display = 'block';
+                        btn.disabled = false;
+                        btn.textContent = 'Ir a MercadoPago';
+                    }
+                }
             </script>
         </body>
         </html>
@@ -278,9 +542,159 @@ appRouter.get('/logout', (req, res) => {
     });
 });
 
+// --- Password Reset ---
+const passwordResetTokens = new Map(); // token -> { idCliente, email, expiresAt }
+
+appRouter.post('/api/password-reset/request', async (req, res) => {
+    const { email } = req.body;
+    if (!email) return res.status(400).json({ error: 'Ingresá tu email' });
+
+    try {
+        const user = await userService.getUserByEmail(email);
+        if (user) {
+            const token = crypto.randomBytes(32).toString('hex');
+            const expiresAt = Date.now() + 15 * 60 * 1000;
+            passwordResetTokens.set(token, { idCliente: user.idCliente, email: user.email, expiresAt });
+
+            const siteUrl = process.env.SITE_URL || 'http://localhost:8000';
+            const resetUrl = `${siteUrl}/app/reset-password?token=${token}`;
+
+            await emailService.sendPasswordResetEmail({
+                to: user.email,
+                name: user.nombreCliente,
+                resetUrl
+            });
+            console.log(`${ts()} [PasswordReset] Token generated for ${user.email}`);
+        }
+    } catch (err) {
+        console.error(`${ts()} [PasswordReset] Error:`, err.message);
+    }
+
+    // Siempre responder lo mismo (no revelar si el email existe)
+    res.json({ success: true, message: 'Si el email existe, recibirás un link de recuperación.' });
+});
+
+appRouter.get('/reset-password', (req, res) => {
+    const { token } = req.query;
+    if (!token) return res.redirect('/app/login?error=1');
+
+    const data = passwordResetTokens.get(token);
+    if (!data || Date.now() > data.expiresAt) {
+        passwordResetTokens.delete(token);
+        return res.send(`
+            <!DOCTYPE html>
+            <html lang="es">
+            <head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+            <title>Link expirado</title>
+            <style>body{font-family:'Segoe UI',sans-serif;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0;background:#fff;}
+            .box{text-align:center;padding:40px;max-width:400px;}.box h2{color:#333;margin-bottom:8px;}.box p{color:#666;margin-bottom:20px;}
+            .box a{color:#00bc7d;text-decoration:none;font-weight:600;}</style></head>
+            <body><div class="box"><h2>Link expirado</h2><p>El link de recuperación expiró o ya fue utilizado.</p><a href="/app/login">Volver al login</a></div></body></html>
+        `);
+    }
+
+    res.send(`
+        <!DOCTYPE html>
+        <html lang="es">
+        <head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Restablecer contraseña</title>
+        <style>
+            body{font-family:'Segoe UI',sans-serif;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0;background:#fff;}
+            .login-box{background:#fbfbfb;border:1px solid #e7e3e4;padding:40px;border-radius:8px;width:100%;max-width:400px;box-shadow:0 4px 6px rgba(0,0,0,0.05);box-sizing:border-box;}
+            .login-box h2{margin-top:0;color:#333;text-align:center;margin-bottom:30px;}
+            .form-group{margin-bottom:20px;}
+            .form-group label{display:block;margin-bottom:5px;color:#666;}
+            .form-group input{width:100%;padding:12px;border:1px solid #e7e3e4;border-radius:4px;box-sizing:border-box;font-size:16px;}
+            .btn-login{background-color:#00bc7d;color:white;border:none;padding:12px;width:100%;border-radius:4px;font-size:16px;font-weight:bold;cursor:pointer;transition:background-color 0.3s;}
+            .btn-login:hover{background-color:#00a56d;}
+            .error-msg{color:#d32f2f;background:#ffcdd2;padding:10px;border-radius:4px;margin-bottom:20px;text-align:center;font-size:14px;}
+            .success-msg{color:#2e7d32;background:#e8f5e9;padding:10px;border-radius:4px;margin-bottom:20px;text-align:center;font-size:14px;}
+            .back-link{text-align:center;margin-top:16px;font-size:14px;color:#666;}
+            .back-link a{color:#00bc7d;font-weight:600;text-decoration:none;}
+            .back-link a:hover{text-decoration:underline;}
+        </style></head>
+        <body>
+            <div class="login-box">
+                <h2>Restablecer contraseña</h2>
+                <div id="msg"></div>
+                <form onsubmit="return resetPassword(event)">
+                    <div class="form-group">
+                        <label for="newPassword">Nueva contraseña</label>
+                        <input type="password" id="newPassword" required minlength="6">
+                    </div>
+                    <div class="form-group">
+                        <label for="confirmPassword">Confirmar contraseña</label>
+                        <input type="password" id="confirmPassword" required minlength="6">
+                    </div>
+                    <button type="submit" class="btn-login" id="btnReset">Guardar contraseña</button>
+                </form>
+                <div class="back-link"><a href="/app/login">Volver al login</a></div>
+            </div>
+            <script>
+                async function resetPassword(e) {
+                    e.preventDefault();
+                    var pass = document.getElementById('newPassword').value;
+                    var confirm = document.getElementById('confirmPassword').value;
+                    var msg = document.getElementById('msg');
+                    var btn = document.getElementById('btnReset');
+                    if (pass !== confirm) {
+                        msg.innerHTML = '<div class="error-msg">Las contraseñas no coinciden</div>';
+                        return false;
+                    }
+                    btn.disabled = true;
+                    btn.textContent = 'Guardando...';
+                    try {
+                        var res = await fetch('/app/reset-password', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ token: '${token}', password: pass })
+                        });
+                        var data = await res.json();
+                        if (data.success) {
+                            msg.innerHTML = '<div class="success-msg">Contraseña actualizada. Redirigiendo...</div>';
+                            setTimeout(function() { window.location.href = '/app/login?reset=1'; }, 1500);
+                        } else {
+                            msg.innerHTML = '<div class="error-msg">' + (data.error || 'Error al actualizar') + '</div>';
+                            btn.disabled = false;
+                            btn.textContent = 'Guardar contraseña';
+                        }
+                    } catch(err) {
+                        msg.innerHTML = '<div class="error-msg">Error de conexión</div>';
+                        btn.disabled = false;
+                        btn.textContent = 'Guardar contraseña';
+                    }
+                    return false;
+                }
+            </script>
+        </body></html>
+    `);
+});
+
+appRouter.post('/reset-password', async (req, res) => {
+    const { token, password } = req.body;
+    if (!token || !password) return res.status(400).json({ error: 'Datos incompletos' });
+    if (password.length < 6) return res.status(400).json({ error: 'La contraseña debe tener al menos 6 caracteres' });
+
+    const data = passwordResetTokens.get(token);
+    if (!data || Date.now() > data.expiresAt) {
+        passwordResetTokens.delete(token);
+        return res.status(400).json({ error: 'Link expirado o inválido' });
+    }
+
+    const ok = await userService.updatePassword(data.idCliente, password);
+    passwordResetTokens.delete(token);
+
+    if (ok) {
+        console.log(`${ts()} [PasswordReset] Password updated for ${data.email}`);
+        res.json({ success: true });
+    } else {
+        res.status(500).json({ error: 'Error al actualizar la contraseña' });
+    }
+});
+
 // Middleware de Autenticación para rutas de /app
 appRouter.use((req, res, next) => {
-    if (req.path === '/login' || req.path === '/health') {
+    if (req.path === '/login' || req.path === '/health' || req.path.startsWith('/reset-password') || req.path === '/api/password-reset/request') {
         return next();
     }
     if (req.session && req.session.user) {
@@ -533,6 +947,37 @@ async function startBot(botConfig, forceStart = false) {
 }
 
 async function main() {
+    // Initialize Neon DB table for terms approvals
+    await termsService.ensureTable();
+    // Ensure Usuarios sheet headers are up to date
+    await userService.ensureHeaders();
+
+    // API: Check terms approval status
+    appRouter.get('/api/terms/status/:userId', async (req, res) => {
+        const loggedUser = req.user;
+        const userId = req.params.userId;
+        if (loggedUser.idCliente !== 'admin' && loggedUser.idCliente !== userId && loggedUser.idCliente !== loggedUser.username) {
+            return res.status(403).json({ error: 'Unauthorized' });
+        }
+        const approved = await termsService.hasApproved(userId);
+        res.json({ approved });
+    });
+
+    // API: Approve terms
+    appRouter.post('/api/terms/approve', async (req, res) => {
+        const loggedUser = req.user;
+        const userId = String(loggedUser.idCliente || loggedUser.username);
+        const ip = req.headers['x-forwarded-for']?.split(',')[0]?.trim() || req.socket.remoteAddress;
+        const ua = req.headers['user-agent'] || '';
+        const ok = await termsService.approve(userId, loggedUser.username, 'v1.1', ip, ua);
+        if (ok) {
+            await userService.updateTermsDate(userId);
+            res.json({ success: true });
+        } else {
+            res.status(500).json({ error: 'Failed to save approval' });
+        }
+    });
+
     // API: Obtener estado de un bot
     appRouter.get('/api/bot/status/:id', async (req, res) => {
         const id = req.params.id;
@@ -721,6 +1166,29 @@ async function main() {
                     .btn-action.btn-danger { background: var(--error-color); }
                     .btn-action:disabled { background: #ccc; cursor: not-allowed; }
                     .last-update { font-size: 11px; color: #999; margin-top: 15px; }
+                    .terms-summary { width: 100%; max-width: 1000px; margin-top: 30px; padding: 20px 25px; background: var(--bg-box); border: 1px solid var(--border-color); border-radius: 12px; font-size: 13px; color: var(--text-muted); line-height: 1.6; }
+                    .terms-summary strong { color: var(--text-main); }
+                    .terms-summary a { color: var(--primary-color); text-decoration: none; font-weight: 600; }
+                    .terms-summary a:hover { text-decoration: underline; }
+                    .terms-notice { display: none; width: 100%; max-width: 1000px; margin-bottom: 20px; padding: 14px 20px; background: #fff3cd; border: 1px solid #ffc107; border-radius: 8px; font-size: 14px; color: #856404; text-align: center; }
+                    .terms-notice a { color: #856404; font-weight: 700; cursor: pointer; text-decoration: underline; }
+                    .terms-modal-overlay { display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.6); z-index: 2000; align-items: center; justify-content: center; padding: 20px; }
+                    .terms-modal-overlay.open { display: flex; }
+                    .terms-modal { background: white; border-radius: 16px; padding: 0; max-width: 560px; width: 100%; max-height: 85vh; display: flex; flex-direction: column; box-shadow: 0 20px 60px rgba(0,0,0,0.3); overflow: hidden; }
+                    .terms-modal-header { padding: 20px 24px 12px; border-bottom: 1px solid var(--border-color); }
+                    .terms-modal-header h3 { margin: 0; font-size: 18px; color: var(--text-main); }
+                    .terms-modal-body { flex: 1; overflow-y: auto; padding: 16px 24px; font-size: 13px; color: var(--text-muted); line-height: 1.7; }
+                    .terms-modal-body h4 { color: var(--text-main); margin: 16px 0 8px; font-size: 14px; }
+                    .terms-modal-body p, .terms-modal-body li { margin: 6px 0; }
+                    .terms-modal-body ul { padding-left: 20px; }
+                    .terms-modal-footer { padding: 16px 24px; border-top: 1px solid var(--border-color); display: flex; gap: 10px; justify-content: flex-end; }
+                    .terms-modal-footer button { padding: 10px 24px; border-radius: 6px; font-weight: 600; font-size: 14px; cursor: pointer; border: none; transition: all 0.2s; }
+                    .terms-btn-approve { background: var(--primary-color); color: white; }
+                    .terms-btn-approve:hover:not(:disabled) { background: var(--primary-hover); }
+                    .terms-btn-approve:disabled { background: #ccc; cursor: not-allowed; }
+                    .terms-btn-cancel { background: var(--bg-box); color: var(--text-muted); border: 1px solid var(--border-color) !important; }
+                    .terms-btn-cancel:hover { background: #eee; }
+                    .terms-scroll-hint { font-size: 11px; color: #999; padding: 0 24px 8px; text-align: center; }
                     @media (max-width: 768px) {
                         body { padding: 12px; }
                         .header-nav { flex-direction: column; gap: 12px; }
@@ -728,6 +1196,10 @@ async function main() {
                         .bot-card { width: 100%; max-width: 100%; box-sizing: border-box; padding: 16px; }
                         .qr-img { width: 200px; height: 200px; }
                         .btn-back { width: 100%; justify-content: center; box-sizing: border-box; }
+                        .terms-modal { max-height: 90vh; margin: 10px; }
+                        .terms-modal-body { padding: 12px 16px; font-size: 12px; }
+                        .terms-modal-footer { flex-direction: column; }
+                        .terms-modal-footer button { width: 100%; }
                     }
                 </style>
             </head>
@@ -760,10 +1232,128 @@ async function main() {
                     `).join('')}
                 </div>
 
+                <div class="terms-notice" id="termsNotice">
+                    Debes aceptar los Términos y Condiciones antes de poder usar el bot. <a onclick="openTermsModal()">Revisar ahora</a>
+                </div>
+
+                <div class="terms-summary">
+                    <strong>Resumen de Términos y Condiciones (v1.1):</strong> Wamenu actúa exclusivamente como proveedor SaaS e intermediario técnico para la automatización y recepción de pedidos por WhatsApp, deslindándose de toda responsabilidad sobre las operaciones comerciales del negocio o eventuales bloqueos de línea aplicados por WhatsApp/Meta. Las planillas de Google Sheets con los pedidos se alojan en la infraestructura asignada por Wamenu, actuando la empresa como custodio técnico y confidencial de la información conforme a la Ley 25.326. El comercio conserva la propiedad de sus datos y asume la responsabilidad del pago puntual de la suscripción periódica para evitar la suspensión del servicio.
+                    <br><br>
+                    <a href="/terminos_condiciones/terminos_y_condiciones_wamenu_v1.1.pdf" target="_blank">Ver Términos y Condiciones completos (PDF)</a>
+                </div>
+
+                <div class="terms-modal-overlay" id="termsModal">
+                    <div class="terms-modal">
+                        <div class="terms-modal-header">
+                            <h3>Términos y Condiciones del Servicio Wamenu (v1.1)</h3>
+                        </div>
+                        <div class="terms-modal-body" id="termsModalBody">
+                            <h4>1. Naturaleza del Servicio</h4>
+                            <p>Wamenu actúa exclusivamente como un proveedor SaaS (Software como Servicio) e intermediario técnico para la automatización y recepción de pedidos por WhatsApp. La plataforma no participa ni es responsable de las operaciones comerciales, transacciones, entregas, devoluciones ni de cualquier aspecto de la relación comercial entre el comercio y sus clientes.</p>
+
+                            <h4>2. Responsabilidad sobre Bloqueos</h4>
+                            <p>Wamenu se deslinda de toda responsabilidad sobre eventuales bloqueos, restricciones o suspensiones de líneas de WhatsApp aplicados por WhatsApp/Meta. El comercio es el único responsable del cumplimiento de las políticas de uso de WhatsApp y de las consecuencias que pudieran derivarse del uso de la plataforma.</p>
+
+                            <h4>3. Almacenamiento de Datos</h4>
+                            <p>Las planillas de Google Sheets que contienen los pedidos se alojan en la infraestructura asignada por Wamenu. La empresa actúa como custodio técnico y confidencial de la información conforme a la Ley 25.326 (Protección de Datos Personales). El comercio conserva la propiedad total de sus datos.</p>
+
+                            <h4>4. Suscripción y Pagos</h4>
+                            <p>El comercio asume la responsabilidad del pago puntual de la suscripción periódica. El incumplimiento del pago podrá dar lugar a la suspensión temporal o definitiva del servicio, sin que ello genere derecho a indemnización o reembolso.</p>
+
+                            <h4>5. Uso Aceptable</h4>
+                            <p>El comercio se compromete a utilizar la plataforma de manera lícita y conforme a las condiciones establecidas. Queda prohibido el uso de la plataforma para fines ilegales, fraudulentos o que vulneren derechos de terceros.</p>
+
+                            <h4>6. Disponibilidad del Servicio</h4>
+                            <p>Wamenu no garantiza la disponibilidad ininterrumpida del servicio. Podrán existir interrupciones por mantenimiento, actualizaciones o causas ajenas al control de la empresa.</p>
+
+                            <h4>7. Limitación de Responsabilidad</h4>
+                            <p>En ningún caso Wamenu será responsable por daños indirectos, incidentales, especiales o consecuentes que pudieran derivarse del uso o imposibilidad de uso de la plataforma.</p>
+
+                            <h4>8. Modificaciones</h4>
+                            <p>Wamenu se reserva el derecho de modificar los presentes Términos y Condiciones en cualquier momento. Las modificaciones serán notificadas a los usuarios y el uso continuado de la plataforma implicará la aceptación de las mismas.</p>
+
+                            <h4>9. Ley Aplicable</h4>
+                            <p>Los presentes Términos y Condiciones se rigen por las leyes de la República Argentina. Toda controversia será sometida a los tribunales competentes de la ciudad de Bahía Blanca, Provincia de Buenos Aires.</p>
+                        </div>
+                        <div class="terms-scroll-hint" id="termsScrollHint">Desplázate hasta el final para habilitar la aprobación</div>
+                        <div class="terms-modal-footer">
+                            <button class="terms-btn-cancel" onclick="closeTermsModal()">Cancelar</button>
+                            <button class="terms-btn-approve" id="termsApproveBtn" disabled onclick="approveTerms()">Aprobar</button>
+                        </div>
+                    </div>
+                </div>
+
                 <script>
                     drawRobot('botLogoQR');
 
                     const botIds = ${JSON.stringify(bots.map(([id]) => id))};
+                    const currentUserId = '${String(loggedUser.idCliente || loggedUser.username)}';
+                    let termsApproved = false;
+
+                    // --- Terms & Conditions Logic ---
+                    async function checkTermsApproval() {
+                        try {
+                            const res = await fetch('/app/api/terms/status/' + currentUserId);
+                            if (!res.ok) return;
+                            const data = await res.json();
+                            termsApproved = data.approved;
+                            const notice = document.getElementById('termsNotice');
+                            if (!termsApproved) {
+                                notice.style.display = 'block';
+                            } else {
+                                notice.style.display = 'none';
+                            }
+                        } catch (e) {
+                            console.error('Error checking terms:', e);
+                        }
+                    }
+
+                    function openTermsModal() {
+                        document.getElementById('termsModal').classList.add('open');
+                        document.getElementById('termsApproveBtn').disabled = true;
+                        document.getElementById('termsScrollHint').style.display = 'block';
+                        const body = document.getElementById('termsModalBody');
+                        body.scrollTop = 0;
+                    }
+
+                    function closeTermsModal() {
+                        document.getElementById('termsModal').classList.remove('open');
+                    }
+
+                    document.getElementById('termsModalBody').addEventListener('scroll', function() {
+                        const el = this;
+                        const atBottom = el.scrollHeight - el.scrollTop <= el.clientHeight + 10;
+                        if (atBottom) {
+                            document.getElementById('termsApproveBtn').disabled = false;
+                            document.getElementById('termsScrollHint').style.display = 'none';
+                        }
+                    });
+
+                    async function approveTerms() {
+                        const btn = document.getElementById('termsApproveBtn');
+                        btn.disabled = true;
+                        btn.textContent = 'Guardando...';
+                        try {
+                            const res = await fetch('/app/api/terms/approve', { method: 'POST' });
+                            if (res.ok) {
+                                termsApproved = true;
+                                document.getElementById('termsNotice').style.display = 'none';
+                                closeTermsModal();
+                            } else {
+                                alert('Error al guardar la aprobación. Intenta nuevamente.');
+                                btn.disabled = false;
+                                btn.textContent = 'Aprobar';
+                            }
+                        } catch (e) {
+                            alert('Error de conexión. Intenta nuevamente.');
+                            btn.disabled = false;
+                            btn.textContent = 'Aprobar';
+                        }
+                    }
+
+                    // Check terms on page load
+                    checkTermsApproval();
+                    // --- End Terms Logic ---
 
                     async function updateBotStatus(id) {
                         try {
@@ -809,6 +1399,10 @@ async function main() {
                     }
 
                     async function startBot(id) {
+                        if (!termsApproved) {
+                            openTermsModal();
+                            return;
+                        }
                         const btn = document.querySelector('#actions-' + id + ' button');
                         if (btn) btn.disabled = true;
                         await fetch('/app/api/bot/start/' + id, { method: 'POST' });

@@ -69,6 +69,47 @@ class EmailService {
     console.log(`[Email] Welcome email sent to ${to}: ${info.messageId}`);
     return info;
   }
+
+  async sendPasswordResetEmail({ to, name, resetUrl }) {
+    const html = `
+      <div style="font-family: Arial, sans-serif; max-width: 560px; margin: 0 auto; padding: 24px;">
+        <div style="background: #0f6b4f; color: white; padding: 24px; border-radius: 12px 12px 0 0; text-align: center;">
+          <h1 style="margin: 0; font-size: 1.4rem;">Recuperar Contraseña</h1>
+        </div>
+        <div style="background: #f8f9fa; padding: 24px; border-radius: 0 0 12px 12px; border: 1px solid #e0e0e0; border-top: none;">
+          <p style="font-size: 1rem; color: #333;">Hola <strong>${name || ''}</strong>,</p>
+          <p style="font-size: 0.95rem; color: #555; line-height: 1.6;">
+            Recibimos una solicitud para restablecer tu contraseña. Hacé clic en el botón de abajo para crear una nueva:
+          </p>
+
+          <div style="text-align: center; margin: 28px 0;">
+            <a href="${resetUrl}" style="display: inline-block; padding: 14px 32px; background: #0f6b4f; color: white; border-radius: 8px; text-decoration: none; font-weight: 700; font-size: 1rem;">
+              Restablecer contraseña
+            </a>
+          </div>
+
+          <p style="font-size: 0.88rem; color: #888; line-height: 1.5;">
+            Este link expira en 15 minutos. Si no solicitaste este cambio, podés ignorar este email.
+          </p>
+
+          <hr style="border: none; border-top: 1px solid #e0e0e0; margin: 20px 0;">
+          <p style="font-size: 0.8rem; color: #999; text-align: center;">
+            Bot Menu — WhatsApp Business Automation
+          </p>
+        </div>
+      </div>
+    `;
+
+    const info = await this.transporter.sendMail({
+      from: `"Bot Menu" <${process.env.SMTP_USER}>`,
+      to,
+      subject: 'Restablecer tu contraseña — Bot Menu',
+      html
+    });
+
+    console.log(`[Email] Password reset email sent to ${to}: ${info.messageId}`);
+    return info;
+  }
 }
 
 module.exports = new EmailService();
