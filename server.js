@@ -750,6 +750,14 @@ app.post('/api/mercadopago/reconciliar', async (req, res) => {
     }
 });
 
+// Endpoint admin: verifica localmente (sin llamar a AFIP) cómo llegan el cert y la key.
+app.get('/api/arca/check', (req, res) => {
+    const report = arcaService.diagnoseCerts();
+    console.log('[ARCA] Diagnóstico de certificados:');
+    report.checks.forEach((c) => console.log(`[ARCA]   - ${c.name}: ${c.ok ? 'OK' : 'FALLO'} | ${c.detail}`));
+    res.json(report);
+});
+
 // Página de suscripción exitosa
 app.get('/suscripcion_exitosa', (req, res) => {
     const { username, password, email } = req.query;

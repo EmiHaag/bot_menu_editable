@@ -1,6 +1,7 @@
 require('dotenv').config();
 const path = require('path');
 const fs = require('fs');
+const crypto = require('crypto');
 
 let wsfev1 = null;
 let LoginTicket = null;
@@ -39,6 +40,74 @@ function certPaths() {
     };
   }
   return { certPath: process.env.AFIP_CERT_PATH, keyPath: process.env.AFIP_KEY_PATH };
+}
+
+// Diagnóstico local de los certificados (NO llama a AFIP). Sirve para verificar
+// que Koyeb esté inyectando bien AFIP_CERT_CONTENT / AFIP_KEY_CONTENT.
+function diagnoseCerts() {
+  const report = { ok: null, checks: [] };
+  const add = (name, ok, detail) => report.checks.push({ name, ok, detail });
+
+  const certContent = process.env.AFIP_CERT_CONTENT;
+  const keyContent = process.env.AFIP_KEY_CONTENT;
+  const certPathEnv = process.env.AFIP_CERT_PATH;
+  const keyPathEnv = process.env.AFIP_KEY_PATH;
+
+  add('env', true, JSON.stringify({
+    modo: certContent || keyContent ? 'CONTENT' : 'PATH',
+    aFIPCUIT: process.env.AFIP_CUIT,
+    aFIP_PRODUCTION: process.env.AFIP_PRODUCTION,
+    AFIP_CERT_CONTENT: certContent ? `set (${certContent.length} chars)` : 'unset',
+    AFIP_KEY_CONTENT: keyContent ? `set (${keyContent.length} chars)` : 'unset',
+    AFIP_CERT_PATH: certPathEnv || 'unset',
+    AFIP_KEY_PATH: keyPathEnv || 'unset',
+  }));
+
+  const hasLiteralBackslashN = (v) => Boolean(v && v.includes('\\n'));
+  add('env-backslash-n', !hasLiteralBackslashN(certContent) && !hasLiteralBackslashN(keyContent),
+    `cert literalBackslashN=${hasLiteralBackslashN(certContent)} key literalBackslashN=${hasLiteralBackslashN(keyContent)} (true = contenido pegado en 1 línea con \\n, hay que corregir)`);
+
+  const paths = certPaths();
+  try {
+    const certPem = fs.readFileSync(paths.certPath, 'utf8');
+    const keyPem = fs.readFileSync(paths.keyPath, 'utf8');
+    report.certFile = paths.certPath;
+    report.keyFile = paths.keyPath;
+    add('files', true, `cert=${paths.certPath} (${certPem.length} bytes) key=${paths.keyPath} (${keyPem.length} bytes)`);
+
+    const certLines = certPem.trim().split('\n').length;
+    const keyLines = keyPem.trim().split('\n').length;
+    add('pem-format', certPem.includes('-----BEGIN CERTIFICATE-----') && keyPem.includes('-----BEGIN'),
+      `cert lineas=${certLines} inicia=${certPem.slice(0, 27).replace(/\n/g, '\\n')}... | key lineas=${keyLines} inicia=${keyPem.slice(0, 27).replace(/\n/g, '\\n')}...`);
+
+    try {
+      const cert = new crypto.X509Certificate(certPem);
+      const now = new Date();
+      const validTo = new Date(cert.validTo);
+      const validFrom = new Date(cert.validFrom);
+      const vigente = validFrom <= now && now <= validTo;
+      add('cert', vigente,
+        `subject=${cert.subject} | issuer=${cert.issuer} | desde=${cert.validFrom} hasta=${cert.validTo} | vigente=${vigente}`);
+
+      try {
+        const keyObj = crypto.createPrivateKey(keyPem);
+        add('key', true, `tipo=${keyObj.asymmetricKeyType} | NO tiene passphrase`);
+        const pubFromKey = crypto.createPublicKey(keyObj).export({ type: 'spki', format: 'pem' });
+        const pubFromCert = cert.publicKey.export({ type: 'spki', format: 'pem' });
+        const match = pubFromKey === pubFromCert;
+        add('key-cert-match', match, match ? 'key y cert coinciden (misma clave)' : 'Atención: la key NO se corresponde con el cert');
+      } catch (e) {
+        add('key', false, `error parseando key: ${e.message} (¿está cifrada con passphrase?)`);
+      }
+    } catch (e) {
+      add('cert', false, `error parseando cert: ${e.message}`);
+    }
+  } catch (e) {
+    add('files', false, `error leyendo archivos: ${e.message}`);
+  }
+
+  report.ok = report.checks.every((c) => c.ok);
+  return report;
 }
 
 function loadLibs() {
@@ -189,4 +258,4 @@ async function emitirFacturaC({ docTipo, docNro, monto, periodoDesde, periodoHas
   };
 }
 
-module.exports = { emitirFacturaC, isConfigured, getAuth, fmtYMD };
+module.exports = { emitirFacturaC, isConfigured, getAuth, fmtYMD, diagnoseCerts };
