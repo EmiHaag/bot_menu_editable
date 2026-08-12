@@ -59,6 +59,23 @@ class MercadoPagoService {
     return res.json();
   }
 
+  async searchAuthorizedPayments(preapprovalId) {
+    const url = `${API_BASE}/authorized_payments/search?preapproval_id=${encodeURIComponent(preapprovalId)}`;
+    const res = await fetch(url, {
+      headers: {
+        'Authorization': `Bearer ${this.accessToken}`
+      }
+    });
+
+    if (!res.ok) {
+      const err = await res.text();
+      console.error('[MercadoPago] Error searching authorized payments:', err);
+      throw new Error(`MercadoPago API error: ${res.status}`);
+    }
+
+    return res.json();
+  }
+
   async getAuthorizedPayment(id) {
     const res = await fetch(`${API_BASE}/authorized_payments/${id}`, {
       headers: {

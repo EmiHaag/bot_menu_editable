@@ -47,6 +47,9 @@ class UserService {
                     fecha_vencimiento TEXT DEFAULT ''
                 )
             `;
+            await sql`
+                CREATE UNIQUE INDEX IF NOT EXISTS users_email_uq ON users (LOWER(email)) WHERE email <> ''
+            `;
             console.log('[UserService] Table users ready');
         } catch (err) {
             console.error('[UserService] Error ensuring table:', err.message);

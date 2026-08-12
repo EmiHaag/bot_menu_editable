@@ -234,22 +234,9 @@ app.post('/api/mercadopago/create-subscription', async (req, res) => {
                     const refs = cfg.preapproval_refs || {};
                     const ref = refs[pid] || {};
                     if (ref.email) {
-                        const username = generateUsername(ref.email);
-                        const password = generatePassword();
-                        const idCliente = generateClientId();
-                        await userService.addUser({ idCliente, nombreCliente: ref.name || 'Cliente', user: username, password, spreadsheetId: process.env.SPREADSHEET_ID, email: ref.email });
-                        await billingService.registrarSuscripcion({
-                            preapprovalId: pid,
-                            idCliente,
-                            nombre: ref.name || 'Cliente',
-                            email: ref.email,
-                            docTipo: ref.docTipo || 96,
-                            docNro: ref.docNro || 0
-                        });
-                        try { await emailService.sendWelcomeEmail({ to: ref.email, username, password, name: ref.name }); } catch {}
-                        delete refs[pid];
-                        writeConfig({ preapproval_refs: refs });
-                        console.log(`[AutoPoll] Usuario creado: ${username} (${ref.email})`);
+                        await asegurarSuscripcion({ preapprovalId: pid, payerEmail: ref.email, payerName: ref.name });
+                        await reconciliarCobros(pid);
+                        console.log(`[AutoPoll] Preapproval ${pid} procesada vía asegurarSuscripcion`);
                     }
                 } else {
                     pollPayment(pid, attempts - 1);
@@ -285,40 +272,42 @@ app.get('/pago_exitoso', async (req, res) => {
         const payerEmail = ref.email || preapproval.payer_email || req.query.email;
         const payerName = ref.name || preapproval.reason || 'Cliente';
 
-        // Si no hay referencia, ya fue procesado (evitar duplicados)
+        // Si no hay referencia, pudo haber sido procesado por el webhook/auto-poll (evitar duplicados)
         const yaProcesado = cfg.pagos_procesados && cfg.pagos_procesados[paymentId];
         if (!ref.email || yaProcesado) {
             if (refs[paymentId]) { delete refs[paymentId]; writeConfig({ preapproval_refs: refs }); }
             if (yaProcesado) return res.redirect(`/suscripcion_exitosa?username=${encodeURIComponent(cfg.pagos_procesados[paymentId].username)}&password=${encodeURIComponent(cfg.pagos_procesados[paymentId].password)}&email=${encodeURIComponent(cfg.pagos_procesados[paymentId].email)}`);
+            // El webhook pudo crear el usuario antes que este redirect: mostrar credenciales si ya existe la suscripción
+            const sub = await billingService.getSuscripcion(paymentId);
+            if (sub && sub.email) {
+                const u = await userService.getUserByEmail(sub.email);
+                const uname = (u && u.user) || '';
+                const passw = (u && u.password) || '';
+                const pProc = cfg.pagos_procesados || {};
+                pProc[paymentId] = { username: uname, password: passw, email: sub.email };
+                writeConfig({ pagos_procesados: pProc });
+                return res.redirect(`/suscripcion_exitosa?username=${encodeURIComponent(uname)}&password=${encodeURIComponent(passw)}&email=${encodeURIComponent(sub.email)}`);
+            }
             return res.redirect('/');
         }
 
         if (mpStatus === 'authorized' || mpStatus === 'approved') {
-            // Generar credenciales
-            const username = generateUsername(payerEmail);
-            const password = generatePassword();
-            const idCliente = generateClientId();
+            // Asegurar usuario + suscripción de forma idempotente (compartido con webhook y auto-poll)
+            const sub = await asegurarSuscripcion({ preapprovalId: paymentId, payerEmail, payerName });
+            if (!sub) {
+                console.error(`[Suscripción] No se pudo asegurar la suscripción para ${paymentId}`);
+                return res.redirect('/');
+            }
 
-            // Guardar usuario en Google Sheets
-            await userService.addUser({
-                idCliente,
-                nombreCliente: payerName,
-                user: username,
-                password,
-                spreadsheetId: process.env.SPREADSHEET_ID,
-                email: payerEmail
-            });
+            // Disparar facturación de cobros aprobados (en background, no bloquea el redirect)
+            reconciliarCobros(paymentId);
 
-            await billingService.registrarSuscripcion({
-                preapprovalId: paymentId,
-                idCliente,
-                nombre: payerName,
-                email: payerEmail,
-                docTipo: ref.docTipo || 96,
-                docNro: ref.docNro || 0
-            });
+            // Recuperar credenciales del usuario (creadas por asegurarSuscripcion)
+            const user = await userService.getUserByEmail(payerEmail);
+            const username = (user && user.user) || ref.user || '';
+            const password = (user && user.password) || '';
 
-            console.log(`[Suscripción] Usuario creado: ${username} (${payerEmail})`);
+            console.log(`[Suscripción] Suscripción asegurada: ${paymentId} (${payerEmail})`);
 
             // Marcar como procesado y limpiar referencia
             const pagosProc = cfg.pagos_procesados || {};
@@ -328,19 +317,6 @@ app.get('/pago_exitoso', async (req, res) => {
                 writeConfig({ preapproval_refs: refs, pagos_procesados: pagosProc });
             } else {
                 writeConfig({ pagos_procesados: pagosProc });
-            }
-
-            // Enviar email de bienvenida
-            try {
-                await emailService.sendWelcomeEmail({
-                    to: payerEmail,
-                    username,
-                    password,
-                    name: payerName
-                });
-                console.log(`[Suscripción] Email enviado a ${payerEmail}`);
-            } catch (emailErr) {
-                console.error('[Suscripción] Error enviando email:', emailErr);
             }
 
             // Redirigir a página de éxito con credenciales
@@ -471,61 +447,89 @@ function fmtPeriodo(fechaBase) {
     return { desde: toYMD(desde), hasta: toYMD(hasta) };
 }
 
+// Lock en memoria por preapproval: serializa la creación de usuario/suscripción
+// para que el webhook, el auto-poll y /pago_exitoso no dupliquen el alta.
+const processingPreapprovals = new Map();
+
 // Asegura que exista el usuario + suscripción asociados a una preaprobación.
 // Es idempotente y tolerante al orden de eventos: el webhook de pago (`payment`)
 // puede llegar antes o después que el de `subscription_preapproval`.
 async function asegurarSuscripcion({ preapprovalId, payerEmail, payerName }) {
-    // 1) Ya registrada en Neon
-    let sub = preapprovalId ? await billingService.getSuscripcion(preapprovalId) : null;
-    if (sub) return sub;
+    const key = String(preapprovalId || 'sin-preapproval');
+    if (processingPreapprovals.has(key)) {
+        return processingPreapprovals.get(key);
+    }
 
-    // 2) Referencia pendiente en config.json (aún sin procesar por el webhook de preapproval)
-    const cfg = readConfig();
-    const refs = cfg.preapproval_refs || {};
-    const ref = refs[preapprovalId || ''] || {};
+    const task = (async () => {
+        // 1) Ya registrada en Neon
+        let sub = preapprovalId ? await billingService.getSuscripcion(preapprovalId) : null;
+        if (sub) return sub;
 
-    const email = ref.email || payerEmail;
-    if (!email) return null;
+        // 2) Referencia pendiente en config.json (aún sin procesar por el webhook de preapproval)
+        const cfg = readConfig();
+        const refs = cfg.preapproval_refs || {};
+        const ref = refs[preapprovalId || ''] || {};
 
-    // 3) Usuario existente por email (evitar duplicar)
-    let user = await userService.getUserByEmail(email);
-    if (!user) {
-        const username = generateUsername(email);
-        const password = generatePassword();
-        const idCliente = generateClientId();
-        const nombre = ref.name || payerName || 'Cliente';
-        await userService.addUser({
-            idCliente,
-            nombreCliente: nombre,
-            user: username,
-            password,
-            spreadsheetId: process.env.SPREADSHEET_ID,
-            email
-        });
-        user = { idCliente, nombreCliente: nombre, email };
-        try {
-            await emailService.sendWelcomeEmail({ to: email, username, password, name: nombre });
-        } catch (emailErr) {
-            console.error('[Webhook] Error enviando email de bienvenida:', emailErr.message);
+        const email = ref.email || payerEmail;
+        if (!email) return null;
+
+        // 3) Usuario existente por email (evitar duplicar)
+        let user = await userService.getUserByEmail(email);
+        if (!user) {
+            const username = generateUsername(email);
+            const password = generatePassword();
+            const idCliente = generateClientId();
+            const nombre = ref.name || payerName || 'Cliente';
+            try {
+                await userService.addUser({
+                    idCliente,
+                    nombreCliente: nombre,
+                    user: username,
+                    password,
+                    spreadsheetId: process.env.SPREADSHEET_ID,
+                    email
+                });
+                user = { idCliente, nombreCliente: nombre, email };
+                try {
+                    await emailService.sendWelcomeEmail({ to: email, username, password, name: nombre });
+                } catch (emailErr) {
+                    console.error('[Webhook] Error enviando email de bienvenida:', emailErr.message);
+                }
+                console.log(`[Webhook] Usuario creado: ${username} (${email})`);
+            } catch (err) {
+                // Carrera entre instancias: otro proceso ya creó el usuario con este email
+                user = await userService.getUserByEmail(email);
+                if (!user) {
+                    console.error('[Webhook] Error creando usuario:', err.message);
+                    throw err;
+                }
+                console.log(`[Webhook] Usuario ya existente, se reutiliza: ${user.user} (${email})`);
+            }
         }
-        console.log(`[Webhook] Usuario creado: ${username} (${email})`);
+
+        await billingService.registrarSuscripcion({
+            preapprovalId,
+            idCliente: user.idCliente,
+            nombre: ref.name || user.nombreCliente || 'Cliente',
+            email,
+            docTipo: ref.docTipo || 96,
+            docNro: ref.docNro || 0
+        });
+
+        if (refs[preapprovalId]) {
+            delete refs[preapprovalId];
+            writeConfig({ preapproval_refs: refs });
+        }
+
+        return await billingService.getSuscripcion(preapprovalId);
+    })();
+
+    processingPreapprovals.set(key, task);
+    try {
+        return await task;
+    } finally {
+        processingPreapprovals.delete(key);
     }
-
-    await billingService.registrarSuscripcion({
-        preapprovalId,
-        idCliente: user.idCliente,
-        nombre: ref.name || user.nombreCliente || 'Cliente',
-        email,
-        docTipo: ref.docTipo || 96,
-        docNro: ref.docNro || 0
-    });
-
-    if (refs[preapprovalId]) {
-        delete refs[preapprovalId];
-        writeConfig({ preapproval_refs: refs });
-    }
-
-    return await billingService.getSuscripcion(preapprovalId);
 }
 
 async function manejarPreapproval(preapprovalId) {
@@ -537,7 +541,35 @@ async function manejarPreapproval(preapprovalId) {
     const refs = readConfig().preapproval_refs || {};
     const ref = refs[preapprovalId] || {};
     await asegurarSuscripcion({ preapprovalId, payerEmail: ref.email, payerName: ref.name });
+    await reconciliarCobros(preapprovalId);
     console.log(`[Webhook] Preapproval ${preapprovalId} procesada OK`);
+}
+
+// Reconciliación activa: consulta a MP los cobros de una preaprobación y factura los que
+// estén aprobados, aunque el webhook de cobro (subscription_authorized_payment/payment)
+// no haya llegado. Idempotente: no refactura un payment_id ya registrado.
+async function reconciliarCobros(preapprovalId) {
+    if (!preapprovalId) return;
+    try {
+        const { results = [] } = await mercadoPagoService.searchAuthorizedPayments(preapprovalId);
+        for (const item of results) {
+            const pago = item.payment || {};
+            if (pago.status !== 'approved') continue;
+            const paymentId = String(pago.id);
+            if (!paymentId) continue;
+            const yaFacturado = await billingService.getFacturaByPaymentId(paymentId);
+            if (yaFacturado) continue;
+            console.log(`[Reconciliación] Cobro aprobado ${paymentId} para preapproval ${preapprovalId} ($${item.transaction_amount}). Facturando...`);
+            await procesarPagoAprobado({
+                paymentId,
+                preapprovalId,
+                monto: Number(item.transaction_amount) || 0,
+                fechaPago: item.date_created || item.debit_date
+            });
+        }
+    } catch (err) {
+        console.error(`[Reconciliación] Error consultando cobros de ${preapprovalId}:`, err.message);
+    }
 }
 
 async function procesarPagoAprobado({ paymentId, preapprovalId, monto, fechaPago, payerEmail, payerName }) {
@@ -697,6 +729,24 @@ app.get('/api/mercadopago/check-status', async (req, res) => {
         res.json({ status: pa.status });
     } catch {
         res.json({ status: 'unknown' });
+    }
+});
+
+// Endpoint admin: re-procesa los cobros aprobados de una preaprobación (webhooks perdidos).
+// Requiere header x-admin-key == RECONCILE_API_KEY.
+app.post('/api/mercadopago/reconciliar', async (req, res) => {
+    const key = process.env.RECONCILE_API_KEY;
+    if (!key || req.get('x-admin-key') !== key) {
+        return res.status(403).json({ error: 'No autorizado' });
+    }
+    const { preapproval_id } = req.body || {};
+    if (!preapproval_id) return res.status(400).json({ error: 'Falta preapproval_id' });
+    try {
+        await reconciliarCobros(preapproval_id);
+        res.json({ ok: true, preapproval_id });
+    } catch (err) {
+        console.error('[Reconciliación] Error:', err.message);
+        res.status(500).json({ error: err.message });
     }
 });
 
