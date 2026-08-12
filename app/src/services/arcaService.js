@@ -6,6 +6,7 @@ const os = require('os');
 const TMP_DIR = os.tmpdir();
 
 let wsfev1 = null;
+let Wsfev1Class = null;
 let LoginTicket = null;
 let libsLoaded = false;
 
@@ -72,7 +73,8 @@ function loadLibs() {
   };
 
   const apis = require('afip-apis');
-  wsfev1 = new apis.Wsfev1(process.env.AFIP_PRODUCTION === 'true' ? apis.Wsfev1.produccionWSDL : apis.Wsfev1.testWSDL);
+  Wsfev1Class = apis.Wsfev1;
+  wsfev1 = new Wsfev1Class(process.env.AFIP_PRODUCTION === 'true' ? Wsfev1Class.produccionWSDL : Wsfev1Class.testWSDL);
   LoginTicket = apis.LoginTicket;
   libsLoaded = true;
 }
@@ -102,7 +104,7 @@ async function getAuth() {
 
   try {
     const ticket = await new LoginTicket().wsaaLogin(
-      wsfev1.serviceId,
+      Wsfev1Class.serviceId,
       wsaaUrl(),
       path.resolve(certPaths().certPath),
       path.resolve(certPaths().keyPath)
@@ -119,6 +121,7 @@ async function getAuth() {
     return cachedAuth;
   } catch (err) {
     console.error('[ARCA] Error en login WSAA:', err.message);
+    if (err && err.extra) console.error('[ARCA] Detalle WSAA:', JSON.stringify(err.extra, null, 2));
     throw err;
   }
 }

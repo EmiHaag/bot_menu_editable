@@ -611,6 +611,7 @@ async function procesarPagoAprobado({ paymentId, preapprovalId, monto, fechaPago
         } catch (arcaErr) {
             // No se registra la factura: el próximo reintento del webhook volverá a intentarlo
             console.error('[Webhook] Error emitiendo Factura C:', arcaErr.message);
+            if (arcaErr && arcaErr.extra) console.error('[Webhook] Detalle WSAA:', JSON.stringify(arcaErr.extra, null, 2));
             return null;
         }
     } else {
