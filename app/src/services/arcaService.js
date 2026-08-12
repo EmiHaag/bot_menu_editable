@@ -137,7 +137,40 @@ async function getAuth() {
  * @param {string} opts.periodoHasta YYYYMMDD fin del período facturado
  * @returns {Promise<{cae: string, caeFchVto: string, cbteNro: number, ptoVta: number, cbteTipo: number, fecha: string, resultado: string}>}
  */
-async function emitirFacturaC({ docTipo, docNro, monto, periodoDesde, periodoHasta }) {
+async function emitirFacturaC(opts) {
+  return emitirComprobante({ cbteTipo: 11, ...opts });
+}
+
+/**
+ * Emite una Nota de Crédito C (CbteTipo 13) que anula una Factura C ya emitida.
+ *
+ * @param {object} opts
+ * @param {number} opts.docTipo      96=DNI, 80=CUIT, 86=CUIL
+ * @param {number} opts.docNro       Número de documento del comprador
+ * @param {number} opts.monto        Importe a anular (igual al de la factura original)
+ * @param {string} opts.periodoDesde YYYYMMDD período de la factura original
+ * @param {string} opts.periodoHasta YYYYMMDD período de la factura original
+ * @param {object} opts.facturaOriginal {ptoVta, cbteTipo, cbteNro} del comprobante a anular
+ */
+async function emitirNotaCredito(opts) {
+  const { facturaOriginal } = opts;
+  if (!facturaOriginal || !facturaOriginal.cbteNro) {
+    throw new Error('Nota de Crédito requiere facturaOriginal {ptoVta, cbteTipo, cbteNro}');
+  }
+  return emitirComprobante({
+    cbteTipo: 13,
+    cbtesAsoc: [
+      {
+        PtoVta: facturaOriginal.ptoVta,
+        CbteTipo: facturaOriginal.cbteTipo,
+        CbteNro: facturaOriginal.cbteNro,
+      },
+    ],
+    ...opts,
+  });
+}
+
+async function emitirComprobante({ docTipo, docNro, monto, periodoDesde, periodoHasta, cbteTipo, cbtesAsoc = [] }) {
   if (!isConfigured()) {
     throw new Error('ARCA no configurado: faltan AFIP_CUIT / AFIP_CERT_PATH / AFIP_KEY_PATH');
   }
@@ -145,14 +178,14 @@ async function emitirFacturaC({ docTipo, docNro, monto, periodoDesde, periodoHas
 
   const auth = await getAuth();
   const ptoVta = Number(process.env.AFIP_PTO_VTA || 1);
-  const cbteTipo = 11; // Factura C
+  const esNC = cbteTipo === 13;
   const montoNum = Math.round(Number(monto) * 100) / 100;
 
-  console.log(`[ARCA] Emitiendo Factura C - docTipo=${docTipo} docNro=${docNro} monto=${montoNum} periodo=${periodoDesde}->${periodoHasta}`);
+  console.log(`[ARCA] Emitiendo ${esNC ? 'Nota de Crédito C' : `Factura C (Tipo ${cbteTipo})`} - docTipo=${docTipo} docNro=${docNro} monto=${montoNum} periodo=${periodoDesde}->${periodoHasta}`);
 
   const ultimo = await wsfev1.FECompUltimoAutorizado({ Auth: auth, PtoVta: ptoVta, CbteTipo: cbteTipo });
   const cbteNro = Number(ultimo.FECompUltimoAutorizadoResult.CbteNro) + 1;
-  console.log(`[ARCA] Último autorizado PtoVta ${ptoVta}: N° ${cbteNro - 1}. Emitiendo N° ${cbteNro}`);
+  console.log(`[ARCA] Último autorizado PtoVta ${ptoVta} Tipo ${cbteTipo}: N° ${cbteNro - 1}. Emitiendo N° ${cbteNro}`);
 
   const det = {
     Concepto: 2, // Servicios
@@ -169,35 +202,50 @@ async function emitirFacturaC({ docTipo, docNro, monto, periodoDesde, periodoHas
     ImpIVA: 0,
     FchServDesde: periodoDesde,
     FchServHasta: periodoHasta,
-    FchVtoPago: '',
+    FchVtoPago: fmtYMD(new Date()),
     MonId: 'PES',
     MonCotiz: 1,
   };
+  if (esNC) {
+    det.CbtesAsoc = cbtesAsoc.map((a) => ({
+      CbteAsoc: {
+        Tipo: a.cbteTipo ?? a.CbteTipo,
+        PtoVta: a.ptoVta ?? a.PtoVta,
+        Nro: a.cbteNro ?? a.CbteNro,
+      },
+    }));
+  }
 
   const feCAEReq = {
     FeCabReq: { CantReg: 1, PtoVta: ptoVta, CbteTipo: cbteTipo },
     FeDetReq: { FECAEDetRequest: [det] },
   };
 
-  console.log(`[ARCA] Enviando FECAESolicitar - PtoVta ${ptoVta} N° ${cbteNro} - $${montoNum}`);
+  console.log(`[ARCA] Enviando FECAESolicitar - PtoVta ${ptoVta} Tipo ${cbteTipo} N° ${cbteNro} - $${montoNum}`);
   const res = await wsfev1.FECAESolicitar({ Auth: auth, FeCAEReq: feCAEReq });
+  console.log('[ARCA] Respuesta FECAESolicitar:', JSON.stringify(res, null, 2));
   const result = res.FECAESolicitarResult;
 
-  if (result.Errors && result.Errors.Err && result.Errors.Err.length) {
-    const msgs = result.Errors.Err.map(e => `${e.Code}: ${e.Msg}`).join(' | ');
+  // afip-apis parsea con explicitArray:false → un solo elemento puede venir como objeto
+  const toArray = (v) => (v == null ? [] : Array.isArray(v) ? v : [v]);
+
+  const errs = toArray(result.Errors && result.Errors.Err);
+  if (errs.length) {
+    const msgs = errs.map((e) => `${e.Code}: ${e.Msg}`).join(' | ');
     console.error(`[ARCA] Respuesta FECAESolicitar con errores: ${msgs}`);
-    throw new Error(`ARCA rechazó la Factura C: ${msgs}`);
+    throw new Error(`ARCA rechazó el comprobante: ${msgs}`);
   }
 
-  const resp = result.FeDetResp.FECAEDetResponse[0];
+  const dets = toArray(result.FeDetResp && result.FeDetResp.FECAEDetResponse);
+  const resp = dets[0];
   if (!resp || resp.Resultado !== 'A') {
-    const obs = (resp && resp.Observaciones && resp.Observaciones.Obs || [])
-      .map(o => `${o.Code}: ${o.Msg}`).join(' | ');
+    const obs = toArray(resp && resp.Observaciones && resp.Observaciones.Obs)
+      .map((o) => `${o.Code}: ${o.Msg}`).join(' | ');
     console.error(`[ARCA] Resultado ${resp ? resp.Resultado : 'sin detalle'}${obs ? ' - ' + obs : ''}`);
     throw new Error(`ARCA Resultado ${resp ? resp.Resultado : 'sin detalle'}${obs ? ' - ' + obs : ''}`);
   }
 
-  console.log(`[ARCA] Factura C OK: N° ${resp.CbteDesde} CAE ${resp.CAE} vto ${resp.CAEFchVto}`);
+  console.log(`[ARCA] ${esNC ? 'Nota de Crédito' : 'Factura C'} OK: N° ${resp.CbteDesde} CAE ${resp.CAE} vto ${resp.CAEFchVto}`);
   return {
     cae: resp.CAE,
     caeFchVto: resp.CAEFchVto,
@@ -209,4 +257,4 @@ async function emitirFacturaC({ docTipo, docNro, monto, periodoDesde, periodoHas
   };
 }
 
-module.exports = { emitirFacturaC, isConfigured, getAuth, fmtYMD };
+module.exports = { emitirFacturaC, emitirNotaCredito, isConfigured, getAuth, fmtYMD };
