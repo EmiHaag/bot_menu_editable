@@ -29,6 +29,7 @@ const orderService = require('./services/orderService');
 const dashboard = require('./utils/dashboard');
 const userService = require('./services/userService');
 const termsService = require('./services/termsService');
+const billingService = require('./services/billingService');
 const emailService = require('./services/emailService');
 const crypto = require('crypto');
 
@@ -339,6 +340,9 @@ appRouter.get('/login', (req, res) => {
                         <input type="text" id="subscribeName" placeholder="Tu nombre" autocomplete="off" required>
                         <label for="subscribeEmail">Email</label>
                         <input type="email" id="subscribeEmail" placeholder="tu@email.com" autocomplete="off" required>
+                        <label for="subscribeDni">DNI o CUIT</label>
+                        <input type="text" id="subscribeDni" placeholder="Ej: 30123456 o 20123456789" autocomplete="off" inputmode="numeric" required>
+                        <p style="font-size:0.72rem;color:#999;margin-top:-10px;margin-bottom:12px;">Necesario para emitir tu Factura C.</p>
                         <div id="subscribeError" style="color:#d32f2f;font-size:0.82rem;margin-bottom:10px;display:none;"></div>
                         <button class="plan-btn primary" id="btnSubscribeSubmit" onclick="startSubscription()">
                             Ir a MercadoPago
@@ -437,11 +441,13 @@ appRouter.get('/login', (req, res) => {
                 async function startSubscription() {
                     var name = document.getElementById('subscribeName').value.trim();
                     var email = document.getElementById('subscribeEmail').value.trim();
+                    var dni = document.getElementById('subscribeDni').value.trim();
                     var errorEl = document.getElementById('subscribeError');
                     var btn = document.getElementById('btnSubscribeSubmit');
 
                     if (!name) { errorEl.textContent = 'Ingresá tu nombre'; errorEl.style.display = 'block'; return; }
                     if (!email || !email.includes('@')) { errorEl.textContent = 'Ingresá un email válido'; errorEl.style.display = 'block'; return; }
+                    if (!dni || !/^\d{7,11}$/.test(dni.replace(/\D/g, ''))) { errorEl.textContent = 'Ingresá un DNI (7-8 dígitos) o CUIT (11 dígitos) válido'; errorEl.style.display = 'block'; return; }
 
                     errorEl.style.display = 'none';
                     btn.disabled = true;
@@ -451,7 +457,7 @@ appRouter.get('/login', (req, res) => {
                         var res = await fetch('/api/mercadopago/create-subscription', {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ name: name, email: email })
+                            body: JSON.stringify({ name: name, email: email, dni: dni })
                         });
                         var data = await res.json();
                         if (!res.ok) throw new Error(data.error || 'Error del servidor');
@@ -958,6 +964,7 @@ async function main() {
     // Initialize Neon DB
     await termsService.ensureTable();
     await userService.init();
+    await billingService.ensureTable();
 
     // API: Check terms approval status
     appRouter.get('/api/terms/status/:userId', async (req, res) => {

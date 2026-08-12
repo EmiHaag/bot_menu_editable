@@ -1,6 +1,8 @@
 app/node_modules/
+app/src/certs/
 node_modules/
 .env
+config.json
 auth_sessions/
 package-lock.json
 *.log
@@ -9,5 +11,6 @@ notas_pruebas
 token.json
 oauth_credentials.json
 scripts/
+test-arca.js
 
 

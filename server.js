@@ -8,6 +8,8 @@ const crypto = require('crypto');
 const userService = require('./app/src/services/userService');
 const mercadoPagoService = require('./app/src/services/mercadoPagoService');
 const emailService = require('./app/src/services/emailService');
+const billingService = require('./app/src/services/billingService');
+const arcaService = require('./app/src/services/arcaService');
 const { Resend } = require('resend');
 const resend = new Resend(process.env.RESEND_API_KEY);
 
@@ -152,9 +154,13 @@ function generateClientId() {
 // MercadoPago: Crear suscripción
 app.post('/api/mercadopago/create-subscription', async (req, res) => {
     try {
-        const { name, email } = req.body;
+        const { name, email, dni } = req.body;
         if (!name || !email) {
             return res.status(400).json({ error: 'Faltan nombre o email' });
+        }
+        const doc = billingService.detectarDocumento(dni);
+        if (!doc) {
+            return res.status(400).json({ error: 'Ingresá un DNI o CUIT válido. Es necesario para emitir tu Factura C.' });
         }
 
         const cfg = readConfig();
@@ -198,7 +204,7 @@ app.post('/api/mercadopago/create-subscription', async (req, res) => {
 
         // Guardar referencia del nombre asociado al preapproval (usar email original del formulario)
         const preapprovalRefs = JSON.parse(fs.readFileSync(path.join(__dirname, 'config.json'), 'utf8')).preapproval_refs || {};
-        preapprovalRefs[preapproval.id] = { name, email, fecha: new Date().toISOString() };
+        preapprovalRefs[preapproval.id] = { name, email, fecha: new Date().toISOString(), docTipo: doc.docTipo, docNro: doc.docNro };
         writeConfig({ preapproval_refs: preapprovalRefs });
 
         res.json({
@@ -220,7 +226,15 @@ app.post('/api/mercadopago/create-subscription', async (req, res) => {
                         const username = generateUsername(ref.email);
                         const password = generatePassword();
                         const idCliente = generateClientId();
-                        await userService.addUser({ idCliente, nombreCliente: ref.name || 'Cliente', user: username, password, spreadsheetId: process.env.SPREADSHEET_ID });
+                        await userService.addUser({ idCliente, nombreCliente: ref.name || 'Cliente', user: username, password, spreadsheetId: process.env.SPREADSHEET_ID, email: ref.email });
+                        await billingService.registrarSuscripcion({
+                            preapprovalId: pid,
+                            idCliente,
+                            nombre: ref.name || 'Cliente',
+                            email: ref.email,
+                            docTipo: ref.docTipo || 96,
+                            docNro: ref.docNro || 0
+                        });
                         try { await emailService.sendWelcomeEmail({ to: ref.email, username, password, name: ref.name }); } catch {}
                         delete refs[pid];
                         writeConfig({ preapproval_refs: refs });
@@ -282,6 +296,15 @@ app.get('/pago_exitoso', async (req, res) => {
                 password,
                 spreadsheetId: process.env.SPREADSHEET_ID,
                 email: payerEmail
+            });
+
+            await billingService.registrarSuscripcion({
+                preapprovalId: paymentId,
+                idCliente,
+                nombre: payerName,
+                email: payerEmail,
+                docTipo: ref.docTipo || 96,
+                docNro: ref.docNro || 0
             });
 
             console.log(`[Suscripción] Usuario creado: ${username} (${payerEmail})`);
@@ -385,6 +408,14 @@ app.post('/api/mercadopago/test-complete', async (req, res) => {
             password,
             spreadsheetId: process.env.SPREADSHEET_ID
         });
+        await billingService.registrarSuscripcion({
+            preapprovalId: preapproval_id,
+            idCliente,
+            nombre: name,
+            email: payerEmail,
+            docTipo: ref.docTipo || 96,
+            docNro: ref.docNro || 0
+        });
         console.log(`[Test] Usuario creado: ${username} (${payerEmail})`);
 
         // Enviar email
@@ -409,47 +440,224 @@ app.post('/api/mercadopago/test-complete', async (req, res) => {
     }
 });
 
+// ─────────────────────────────────────────────────────────────
+// Facturación ARCA + ciclo de vida de suscripción
+// ─────────────────────────────────────────────────────────────
+
+function pad2(n) {
+    return String(n).padStart(2, '0');
+}
+
+function toYMD(d) {
+    return `${d.getFullYear()}${pad2(d.getMonth() + 1)}${pad2(d.getDate())}`;
+}
+
+// Período facturado = mes natural al que pertenece la fecha del cobro
+function fmtPeriodo(fechaBase) {
+    const d = fechaBase ? new Date(fechaBase) : new Date();
+    const desde = new Date(d.getFullYear(), d.getMonth(), 1);
+    const hasta = new Date(d.getFullYear(), d.getMonth() + 1, 0);
+    return { desde: toYMD(desde), hasta: toYMD(hasta) };
+}
+
+// Asegura que exista el usuario + suscripción asociados a una preaprobación.
+// Es idempotente y tolerante al orden de eventos: el webhook de pago (`payment`)
+// puede llegar antes o después que el de `subscription_preapproval`.
+async function asegurarSuscripcion({ preapprovalId, payerEmail, payerName }) {
+    // 1) Ya registrada en Neon
+    let sub = preapprovalId ? await billingService.getSuscripcion(preapprovalId) : null;
+    if (sub) return sub;
+
+    // 2) Referencia pendiente en config.json (aún sin procesar por el webhook de preapproval)
+    const cfg = readConfig();
+    const refs = cfg.preapproval_refs || {};
+    const ref = refs[preapprovalId || ''] || {};
+
+    const email = ref.email || payerEmail;
+    if (!email) return null;
+
+    // 3) Usuario existente por email (evitar duplicar)
+    let user = await userService.getUserByEmail(email);
+    if (!user) {
+        const username = generateUsername(email);
+        const password = generatePassword();
+        const idCliente = generateClientId();
+        const nombre = ref.name || payerName || 'Cliente';
+        await userService.addUser({
+            idCliente,
+            nombreCliente: nombre,
+            user: username,
+            password,
+            spreadsheetId: process.env.SPREADSHEET_ID,
+            email
+        });
+        user = { idCliente, nombreCliente: nombre, email };
+        try {
+            await emailService.sendWelcomeEmail({ to: email, username, password, name: nombre });
+        } catch (emailErr) {
+            console.error('[Webhook] Error enviando email de bienvenida:', emailErr.message);
+        }
+        console.log(`[Webhook] Usuario creado: ${username} (${email})`);
+    }
+
+    await billingService.registrarSuscripcion({
+        preapprovalId,
+        idCliente: user.idCliente,
+        nombre: ref.name || user.nombreCliente || 'Cliente',
+        email,
+        docTipo: ref.docTipo || 96,
+        docNro: ref.docNro || 0
+    });
+
+    if (refs[preapprovalId]) {
+        delete refs[preapprovalId];
+        writeConfig({ preapproval_refs: refs });
+    }
+
+    return await billingService.getSuscripcion(preapprovalId);
+}
+
+async function manejarPreapproval(preapprovalId) {
+    const preapproval = await mercadoPagoService.getPreapproval(preapprovalId);
+    if (preapproval.status !== 'authorized' && preapproval.status !== 'approved') return;
+
+    const refs = readConfig().preapproval_refs || {};
+    const ref = refs[preapprovalId] || {};
+    await asegurarSuscripcion({ preapprovalId, payerEmail: ref.email, payerName: ref.name });
+}
+
+async function procesarPagoAprobado({ paymentId, preapprovalId, monto, fechaPago, payerEmail, payerName }) {
+    // 1) Idempotencia: si este payment_id ya generó factura, no refacturar
+    const yaFacturado = await billingService.getFacturaByPaymentId(paymentId);
+    if (yaFacturado) {
+        console.log(`[Webhook] Pago ${paymentId} ya procesado (Factura N° ${yaFacturado.cbte_nro}).`);
+        return yaFacturado;
+    }
+
+    // 2) Resolver la suscripción asociada (la crea si hace falta)
+    const sub = await asegurarSuscripcion({ preapprovalId, payerEmail, payerName });
+    if (!sub) {
+        console.error(`[Webhook] Pago ${paymentId} sin suscripción asociada (preapproval ${preapprovalId}).`);
+        return null;
+    }
+
+    const fechaPagoDate = fechaPago ? new Date(fechaPago) : new Date();
+    const tipo = sub.fecha_pago ? 'RENOVACION' : 'INICIAL';
+    const periodo = fmtPeriodo(fechaPagoDate);
+    const montoNum = Number(monto) || 0;
+
+    // 3) Emitir Factura C en ARCA
+    let facturaArca = null;
+    if (arcaService.isConfigured()) {
+        try {
+            facturaArca = await arcaService.emitirFacturaC({
+                docTipo: sub.doc_tipo || 96,
+                docNro: sub.doc_nro || 0,
+                monto: montoNum,
+                periodoDesde: periodo.desde,
+                periodoHasta: periodo.hasta
+            });
+        } catch (arcaErr) {
+            // No se registra la factura: el próximo reintento del webhook volverá a intentarlo
+            console.error('[Webhook] Error emitiendo Factura C:', arcaErr.message);
+            return null;
+        }
+    } else {
+        console.warn('[Webhook] ARCA no configurado, omitiendo emisión de Factura C.');
+        return null;
+    }
+
+    // 4) Registrar factura (idempotente por payment_id)
+    const registrada = await billingService.registrarFactura({
+        paymentId,
+        preapprovalId: sub.preapproval_id,
+        idCliente: sub.id_cliente,
+        tipo,
+        factura: facturaArca,
+        monto: montoNum,
+        periodoDesde: periodo.desde,
+        periodoHasta: periodo.hasta
+    });
+    if (!registrada) return null;
+
+    // 5) Renovar: fecha de cobro + vencimiento (+1 mes)
+    await billingService.renovarSuscripcion(sub.preapproval_id, { fechaPago: fechaPagoDate });
+
+    // 6) Email de confirmación + datos fiscales
+    try {
+        await emailService.sendInvoiceEmail({
+            to: sub.email,
+            name: sub.nombre_cliente || 'Cliente',
+            email: sub.email,
+            factura: facturaArca,
+            monto: montoNum,
+            periodoDesde: periodo.desde,
+            periodoHasta: periodo.hasta,
+            esRenovacion: tipo === 'RENOVACION'
+        });
+    } catch (emailErr) {
+        console.error('[Webhook] Error enviando factura por email:', emailErr.message);
+    }
+
+    console.log(`[Webhook] Pago ${paymentId} procesado: Factura ${facturaArca.ptoVta}-${facturaArca.cbteNro} CAE ${facturaArca.cae} (${tipo})`);
+    return registrada;
+}
+
+async function manejarAuthorizedPayment(id) {
+    const pa = await mercadoPagoService.getAuthorizedPayment(id);
+    if (pa.status !== 'approved') return;
+    const payer = pa.payer || (pa.card && pa.card.payer) || {};
+    const payerName = [payer.first_name, payer.last_name].filter(Boolean).join(' ') || null;
+    const payerEmail = pa.payer_email || payer.email;
+    await procesarPagoAprobado({
+        paymentId: pa.payment_id || pa.id,
+        preapprovalId: pa.preapproval_id,
+        monto: pa.transaction_amount,
+        fechaPago: pa.date_created || pa.date_approved,
+        payerEmail,
+        payerName
+    });
+}
+
+async function manejarPayment(id) {
+    const p = await mercadoPagoService.getPayment(id);
+    if (p.status !== 'approved') return;
+    const payer = p.payer || {};
+    const payerName = [payer.first_name, payer.last_name].filter(Boolean).join(' ') || null;
+    await procesarPagoAprobado({
+        paymentId: p.id,
+        preapprovalId: p.preapproval_id,
+        monto: p.transaction_amount,
+        fechaPago: p.date_approved || p.date_created,
+        payerEmail: payer.email,
+        payerName
+    });
+}
+
 // MercadoPago: IPN Webhook
 app.post('/api/mercadopago/webhook', async (req, res) => {
     console.log('[MercadoPago Webhook] Received:', JSON.stringify(req.body));
     res.sendStatus(200);
 
-    try {
-        const { type, data } = req.body;
-        if (type === 'subscription_preapproval' && data?.id) {
-            const preapproval = await mercadoPagoService.getPreapproval(data.id);
-            if (preapproval.status === 'authorized' || preapproval.status === 'approved') {
-                const cfg = readConfig();
-                const refs = cfg.preapproval_refs || {};
-                const ref = refs[data.id] || {};
-                if (ref.email) {
-                    const username = generateUsername(ref.email);
-                    const password = generatePassword();
-                    const idCliente = generateClientId();
+    const { type, action, data } = req.body || {};
+    if (!data || !data.id) return;
 
-                    await userService.addUser({
-                        idCliente,
-                        nombreCliente: ref.name || 'Cliente',
-                        user: username,
-                        password,
-                        spreadsheetId: process.env.SPREADSHEET_ID
-                    });
-
-                    try {
-                        await emailService.sendWelcomeEmail({ to: ref.email, username, password, name: ref.name });
-                    } catch (emailErr) {
-                        console.error('[Webhook] Error enviando email:', emailErr);
-                    }
-
-                    delete refs[data.id];
-                    writeConfig({ preapproval_refs: refs });
-                    console.log(`[Webhook] Usuario creado: ${username} (${ref.email})`);
-                }
+    // Procesamiento asincrónico (MP espera 200 inmediato)
+    (async () => {
+        try {
+            if (type === 'subscription_preapproval') {
+                await manejarPreapproval(data.id);
+            } else if (type === 'subscription_authorized_payment') {
+                await manejarAuthorizedPayment(data.id);
+            } else if (type === 'payment') {
+                await manejarPayment(data.id);
+            } else {
+                console.log(`[Webhook] Tipo no manejado: ${type} (action: ${action})`);
             }
+        } catch (err) {
+            console.error('[Webhook] Error processing:', err);
         }
-    } catch (err) {
-        console.error('[Webhook] Error processing:', err);
-    }
+    })();
 });
 
 // Endpoint para que el frontend consulte estado del pago

@@ -15,7 +15,9 @@ function mapRow(row) {
         fechaSuscripcion: row.fecha_suscripcion,
         spreadsheetId: row.spreadsheet_id,
         email: row.email || '',
-        fechaTerminos: row.fecha_terminos || ''
+        fechaTerminos: row.fecha_terminos || '',
+        fechaPago: row.fecha_pago || '',
+        fechaVencimiento: row.fecha_vencimiento || ''
     };
 }
 
@@ -40,7 +42,9 @@ class UserService {
                     fecha_suscripcion TEXT DEFAULT '',
                     spreadsheet_id TEXT DEFAULT '',
                     email TEXT DEFAULT '',
-                    fecha_terminos TEXT DEFAULT ''
+                    fecha_terminos TEXT DEFAULT '',
+                    fecha_pago TEXT DEFAULT '',
+                    fecha_vencimiento TEXT DEFAULT ''
                 )
             `;
             console.log('[UserService] Table users ready');
@@ -202,8 +206,8 @@ class UserService {
             const fecha = new Date().toLocaleDateString();
 
             await sql`
-                INSERT INTO users (id_cliente, nombre_cliente, activo, username, password, fecha_suscripcion, spreadsheet_id, email, fecha_terminos)
-                VALUES (${idCliente}, ${nombreCliente || ''}, ${true}, ${user}, ${password}, ${fecha}, ${spreadsheetId || ''}, ${email || ''}, ${''})
+                INSERT INTO users (id_cliente, nombre_cliente, activo, username, password, fecha_suscripcion, spreadsheet_id, email, fecha_terminos, fecha_pago, fecha_vencimiento)
+                VALUES (${idCliente}, ${nombreCliente || ''}, ${true}, ${user}, ${password}, ${fecha}, ${spreadsheetId || ''}, ${email || ''}, ${''}, ${''}, ${''})
                 ON CONFLICT (id_cliente) DO UPDATE SET
                     nombre_cliente = EXCLUDED.nombre_cliente,
                     activo = EXCLUDED.activo,
@@ -244,6 +248,23 @@ class UserService {
             return true;
         } catch (error) {
             console.error('[UserService] Error updating terms date:', error.message);
+            return false;
+        }
+    }
+
+    async updateSubscriptionDates(idCliente, fechaPago, fechaVencimiento) {
+        if (!sql || !idCliente) return false;
+
+        try {
+            await sql`
+                UPDATE users
+                SET fecha_pago = ${fechaPago || ''}, fecha_vencimiento = ${fechaVencimiento || ''}
+                WHERE id_cliente = ${idCliente}
+            `;
+            this.clearCache();
+            return true;
+        } catch (error) {
+            console.error('[UserService] Error updating subscription dates:', error.message);
             return false;
         }
     }
