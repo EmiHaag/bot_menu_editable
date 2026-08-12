@@ -857,7 +857,7 @@
             text-decoration: none;
         }
         .site-header .nav-links a:hover { text-decoration: underline; }
-        .site-header .login-btn {
+        .site-header .nav-btn {
             display: inline-flex;
             align-items: center;
             gap: 6px;
@@ -871,7 +871,7 @@
             text-decoration: none;
             transition: all 0.2s;
         }
-        .site-header .login-btn:hover {
+        .site-header .nav-btn:hover {
             background: #0f6b4f;
             color: white;
             transform: translateY(-2px);
@@ -899,8 +899,8 @@
 <body>
     <header class="site-header">
         <nav class="nav-links">
-            <a href="/suscripcion">💳 Suscripción</a>
-            <a href="/app/login" class="login-btn">🔐 Iniciar sesión</a>
+            <a href="/suscripcion" class="nav-btn">💳 Suscripción</a>
+            <a href="/app/login" class="nav-btn">🔐 Iniciar sesión</a>
             <button class="contact-btn" onclick="openContactModal()">Contacto</button>
         </nav>
     </header>
