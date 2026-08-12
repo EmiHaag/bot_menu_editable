@@ -529,15 +529,19 @@ async function asegurarSuscripcion({ preapprovalId, payerEmail, payerName }) {
 }
 
 async function manejarPreapproval(preapprovalId) {
+    console.log(`[Webhook] Recibida preapproval id=${preapprovalId}`);
     const preapproval = await mercadoPagoService.getPreapproval(preapprovalId);
+    console.log(`[Webhook] Preapproval ${preapprovalId} status=${preapproval.status}`);
     if (preapproval.status !== 'authorized' && preapproval.status !== 'approved') return;
 
     const refs = readConfig().preapproval_refs || {};
     const ref = refs[preapprovalId] || {};
     await asegurarSuscripcion({ preapprovalId, payerEmail: ref.email, payerName: ref.name });
+    console.log(`[Webhook] Preapproval ${preapprovalId} procesada OK`);
 }
 
 async function procesarPagoAprobado({ paymentId, preapprovalId, monto, fechaPago, payerEmail, payerName }) {
+    console.log(`[Webhook] Procesando pago aprobado: paymentId=${paymentId} preapprovalId=${preapprovalId} monto=${monto}`);
     // 1) Idempotencia: si este payment_id ya generó factura, no refacturar
     const yaFacturado = await billingService.getFacturaByPaymentId(paymentId);
     if (yaFacturado) {
@@ -551,15 +555,18 @@ async function procesarPagoAprobado({ paymentId, preapprovalId, monto, fechaPago
         console.error(`[Webhook] Pago ${paymentId} sin suscripción asociada (preapproval ${preapprovalId}).`);
         return null;
     }
+    console.log(`[Webhook] Suscripción resuelta: idCliente=${sub.id_cliente} email=${sub.email} tipo=${sub.doc_tipo}-${sub.doc_nro}`);
 
     const fechaPagoDate = fechaPago ? new Date(fechaPago) : new Date();
     const tipo = sub.fecha_pago ? 'RENOVACION' : 'INICIAL';
     const periodo = fmtPeriodo(fechaPagoDate);
     const montoNum = Number(monto) || 0;
+    console.log(`[Webhook] Facturando período ${periodo.desde} a ${periodo.hasta} (${tipo}) por $${montoNum}`);
 
     // 3) Emitir Factura C en ARCA
     let facturaArca = null;
     if (arcaService.isConfigured()) {
+        console.log(`[ARCA] Iniciando emisión Factura C: docTipo=${sub.doc_tipo} docNro=${sub.doc_nro} monto=${montoNum}`);
         try {
             facturaArca = await arcaService.emitirFacturaC({
                 docTipo: sub.doc_tipo || 96,
@@ -568,6 +575,7 @@ async function procesarPagoAprobado({ paymentId, preapprovalId, monto, fechaPago
                 periodoDesde: periodo.desde,
                 periodoHasta: periodo.hasta
             });
+            console.log(`[ARCA] Factura C emitida OK: ${facturaArca.ptoVta}-${facturaArca.cbteNro} CAE=${facturaArca.cae}`);
         } catch (arcaErr) {
             // No se registra la factura: el próximo reintento del webhook volverá a intentarlo
             console.error('[Webhook] Error emitiendo Factura C:', arcaErr.message);
@@ -590,6 +598,7 @@ async function procesarPagoAprobado({ paymentId, preapprovalId, monto, fechaPago
         periodoHasta: periodo.hasta
     });
     if (!registrada) return null;
+    console.log(`[Webhook] Factura registrada en BD: id=${registrada.id || registrada}`);
 
     // 5) Renovar: fecha de cobro + vencimiento (+1 mes)
     await billingService.renovarSuscripcion(sub.preapproval_id, { fechaPago: fechaPagoDate });
@@ -615,7 +624,9 @@ async function procesarPagoAprobado({ paymentId, preapprovalId, monto, fechaPago
 }
 
 async function manejarAuthorizedPayment(id) {
+    console.log(`[Webhook] Cobro autorizado id=${id}`);
     const pa = await mercadoPagoService.getAuthorizedPayment(id);
+    console.log(`[Webhook] AuthorizedPayment ${id} status=${pa.status}`);
     if (pa.status !== 'approved') return;
     const payer = pa.payer || (pa.card && pa.card.payer) || {};
     const payerName = [payer.first_name, payer.last_name].filter(Boolean).join(' ') || null;
@@ -631,7 +642,9 @@ async function manejarAuthorizedPayment(id) {
 }
 
 async function manejarPayment(id) {
+    console.log(`[Webhook] Payment id=${id}`);
     const p = await mercadoPagoService.getPayment(id);
+    console.log(`[Webhook] Payment ${id} status=${p.status}`);
     if (p.status !== 'approved') return;
     const payer = p.payer || {};
     const payerName = [payer.first_name, payer.last_name].filter(Boolean).join(' ') || null;
@@ -651,7 +664,11 @@ app.post('/api/mercadopago/webhook', async (req, res) => {
     res.sendStatus(200);
 
     const { type, action, data } = req.body || {};
-    if (!data || !data.id) return;
+    if (!data || !data.id) {
+        console.log('[Webhook] Sin data.id, ignorado.');
+        return;
+    }
+    console.log(`[Webhook] Evento: type=${type} action=${action} data.id=${data.id}`);
 
     // Procesamiento asincrónico (MP espera 200 inmediato)
     (async () => {

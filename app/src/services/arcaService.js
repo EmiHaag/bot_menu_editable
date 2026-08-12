@@ -83,22 +83,27 @@ async function getAuth() {
   loadLibs();
   if (cachedAuth && Date.now() < cachedAuthExpiresAt) return cachedAuth;
 
-  const ticket = await new LoginTicket().wsaaLogin(
-    wsfev1.serviceId,
-    wsaaUrl(),
-    path.resolve(certPaths().certPath),
-    path.resolve(certPaths().keyPath)
-  );
+  try {
+    const ticket = await new LoginTicket().wsaaLogin(
+      wsfev1.serviceId,
+      wsaaUrl(),
+      path.resolve(certPaths().certPath),
+      path.resolve(certPaths().keyPath)
+    );
 
-  const expiresAt = new Date(ticket.header.expirationTime).getTime() - 60 * 1000;
-  cachedAuth = {
-    Token: ticket.credentials.token,
-    Sign: ticket.credentials.sign,
-    Cuit: Number(process.env.AFIP_CUIT),
-  };
-  cachedAuthExpiresAt = expiresAt;
-  console.log(`[ARCA] Login WSAA OK. Vence: ${ticket.header.expirationTime}`);
-  return cachedAuth;
+    const expiresAt = new Date(ticket.header.expirationTime).getTime() - 60 * 1000;
+    cachedAuth = {
+      Token: ticket.credentials.token,
+      Sign: ticket.credentials.sign,
+      Cuit: Number(process.env.AFIP_CUIT),
+    };
+    cachedAuthExpiresAt = expiresAt;
+    console.log(`[ARCA] Login WSAA OK. Vence: ${ticket.header.expirationTime}`);
+    return cachedAuth;
+  } catch (err) {
+    console.error('[ARCA] Error en login WSAA:', err.message);
+    throw err;
+  }
 }
 
 /**
@@ -123,8 +128,11 @@ async function emitirFacturaC({ docTipo, docNro, monto, periodoDesde, periodoHas
   const cbteTipo = 11; // Factura C
   const montoNum = Math.round(Number(monto) * 100) / 100;
 
+  console.log(`[ARCA] Emitiendo Factura C - docTipo=${docTipo} docNro=${docNro} monto=${montoNum} periodo=${periodoDesde}->${periodoHasta}`);
+
   const ultimo = await wsfev1.FECompUltimoAutorizado({ Auth: auth, PtoVta: ptoVta, CbteTipo: cbteTipo });
   const cbteNro = Number(ultimo.FECompUltimoAutorizadoResult.CbteNro) + 1;
+  console.log(`[ARCA] Último autorizado PtoVta ${ptoVta}: N° ${cbteNro - 1}. Emitiendo N° ${cbteNro}`);
 
   const det = {
     Concepto: 2, // Servicios
@@ -151,12 +159,13 @@ async function emitirFacturaC({ docTipo, docNro, monto, periodoDesde, periodoHas
     FeDetReq: { FECAEDetRequest: [det] },
   };
 
-  console.log(`[ARCA] Emitiendo Factura C - PtoVta ${ptoVta} N° ${cbteNro} - $${montoNum}`);
+  console.log(`[ARCA] Enviando FECAESolicitar - PtoVta ${ptoVta} N° ${cbteNro} - $${montoNum}`);
   const res = await wsfev1.FECAESolicitar({ Auth: auth, FeCAEReq: feCAEReq });
   const result = res.FECAESolicitarResult;
 
   if (result.Errors && result.Errors.Err && result.Errors.Err.length) {
     const msgs = result.Errors.Err.map(e => `${e.Code}: ${e.Msg}`).join(' | ');
+    console.error(`[ARCA] Respuesta FECAESolicitar con errores: ${msgs}`);
     throw new Error(`ARCA rechazó la Factura C: ${msgs}`);
   }
 
@@ -164,6 +173,7 @@ async function emitirFacturaC({ docTipo, docNro, monto, periodoDesde, periodoHas
   if (!resp || resp.Resultado !== 'A') {
     const obs = (resp && resp.Observaciones && resp.Observaciones.Obs || [])
       .map(o => `${o.Code}: ${o.Msg}`).join(' | ');
+    console.error(`[ARCA] Resultado ${resp ? resp.Resultado : 'sin detalle'}${obs ? ' - ' + obs : ''}`);
     throw new Error(`ARCA Resultado ${resp ? resp.Resultado : 'sin detalle'}${obs ? ' - ' + obs : ''}`);
   }
 

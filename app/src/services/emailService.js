@@ -18,6 +18,7 @@ class EmailService {
 
   async sendWelcomeEmail({ to, username, password, name }) {
     const siteUrl = process.env.SITE_URL || 'http://localhost:8000';
+    console.log(`[Email] Enviando email de bienvenida a ${to}...`);
 
     const html = `
       <div style="font-family: Arial, sans-serif; max-width: 560px; margin: 0 auto; padding: 24px;">
@@ -64,6 +65,9 @@ class EmailService {
       to,
       subject: '🎉 Bienvenido a Bot Menu — Tus credenciales de acceso',
       html
+    }).catch(err => {
+      console.error(`[Email] Error enviando bienvenida a ${to}:`, err.message);
+      throw err;
     });
 
     console.log(`[Email] Welcome email sent to ${to}: ${info.messageId}`);
@@ -71,6 +75,8 @@ class EmailService {
   }
 
   async sendPasswordResetEmail({ to, name, resetUrl }) {
+    const siteUrl = process.env.SITE_URL || 'http://localhost:8000';
+    console.log(`[Email] Enviando email de recuperación a ${to}...`);
     const html = `
       <div style="font-family: Arial, sans-serif; max-width: 560px; margin: 0 auto; padding: 24px;">
         <div style="background: #0f6b4f; color: white; padding: 24px; border-radius: 12px 12px 0 0; text-align: center;">
@@ -105,6 +111,9 @@ class EmailService {
       to,
       subject: 'Restablecer tu contraseña — Bot Menu',
       html
+    }).catch(err => {
+      console.error(`[Email] Error enviando recuperación a ${to}:`, err.message);
+      throw err;
     });
 
     console.log(`[Email] Password reset email sent to ${to}: ${info.messageId}`);
@@ -128,6 +137,7 @@ class EmailService {
     const siteUrl = process.env.SITE_URL || 'http://localhost:8000';
     const cuit = process.env.AFIP_CUIT || '—';
     const isFirst = !esRenovacion;
+    console.log(`[Email] Enviando factura ${isFirst ? 'INICIAL' : 'RENOVACION'} a ${to} (factura ${factura ? factura.cbteNro : '?'})...`);
 
     const f = factura || {};
     const cbteDesc = f.cbteTipo === 11 ? 'Factura C' : 'Comprobante';
@@ -208,11 +218,15 @@ class EmailService {
     return this.transporter.sendMail({
       from: `"Bot Menu" <${process.env.SMTP_USER}>`,
       to,
+      bcc: process.env.CONTACT_EMAIL_TO || process.env.ADMIN_EMAIL || '',
       subject: `${isFirst ? '🧾 Tu Factura C de Bot Menu' : '🔁 Factura C de renovación — Bot Menu'}`,
       html
     }).then(info => {
       console.log(`[Email] Invoice email sent to ${to}: ${info.messageId}`);
       return info;
+    }).catch(err => {
+      console.error(`[Email] Error enviando factura a ${to}:`, err.message);
+      throw err;
     });
   }
 
