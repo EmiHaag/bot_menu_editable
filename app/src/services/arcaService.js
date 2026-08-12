@@ -1,7 +1,9 @@
 require('dotenv').config();
 const path = require('path');
 const fs = require('fs');
-const crypto = require('crypto');
+const os = require('os');
+
+const TMP_DIR = os.tmpdir();
 
 let wsfev1 = null;
 let LoginTicket = null;
@@ -13,10 +15,18 @@ let cachedAuthExpiresAt = 0;
 
 // En Koyeb no hay archivos: el cert/key llegan por env var (AFIP_CERT_CONTENT /
 // AFIP_KEY_CONTENT). Se escriben a /tmp al iniciar y se usan como paths.
+// Si el valor viene en AFIP_CERT_PATH/AFIP_KEY_PATH pero es un PEM (no una ruta),
+// se auto-detecta y también se materializa a /tmp.
 let certsMaterialized = false;
+
+function isPem(value) {
+  return Boolean(value) && String(value).includes('-----BEGIN');
+}
 
 function materializeCerts() {
   if (certsMaterialized) return;
+  const certValue = process.env.AFIP_CERT_CONTENT || process.env.AFIP_CERT_PATH;
+  const keyValue = process.env.AFIP_KEY_CONTENT || process.env.AFIP_KEY_PATH;
   const write = (name, value) => {
     if (!value) return;
     let content = String(value).trim();
@@ -24,90 +34,28 @@ function materializeCerts() {
       try { content = Buffer.from(content, 'base64').toString('utf8'); } catch (e) { /* keep raw */ }
     }
     if (!content.endsWith('\n')) content += '\n';
-    fs.writeFileSync(path.join('/tmp', name), content, { mode: 0o600 });
+    const dest = path.join(TMP_DIR, name);
+    fs.mkdirSync(path.dirname(dest), { recursive: true });
+    fs.writeFileSync(dest, content, { mode: 0o600 });
   };
-  write('afip_cert.pem', process.env.AFIP_CERT_CONTENT);
-  write('afip_key.pem', process.env.AFIP_KEY_CONTENT);
+  write('afip_cert.pem', certValue);
+  write('afip_key.pem', keyValue);
   certsMaterialized = true;
 }
 
 function certPaths() {
-  if (process.env.AFIP_CERT_CONTENT || process.env.AFIP_KEY_CONTENT) {
-    materializeCerts();
+  const contentMode = Boolean(process.env.AFIP_CERT_CONTENT || process.env.AFIP_KEY_CONTENT);
+  const pemInPath = isPem(process.env.AFIP_CERT_PATH) || isPem(process.env.AFIP_KEY_PATH);
+  if (contentMode || pemInPath) materializeCerts();
+  const certIsPem = isPem(process.env.AFIP_CERT_CONTENT) || isPem(process.env.AFIP_CERT_PATH);
+  const keyIsPem = isPem(process.env.AFIP_KEY_CONTENT) || isPem(process.env.AFIP_KEY_PATH);
+  if (certIsPem || keyIsPem) {
     return {
-      certPath: process.env.AFIP_CERT_CONTENT ? '/tmp/afip_cert.pem' : process.env.AFIP_CERT_PATH,
-      keyPath: process.env.AFIP_KEY_CONTENT ? '/tmp/afip_key.pem' : process.env.AFIP_KEY_PATH,
+      certPath: certIsPem ? path.join(TMP_DIR, 'afip_cert.pem') : process.env.AFIP_CERT_PATH,
+      keyPath: keyIsPem ? path.join(TMP_DIR, 'afip_key.pem') : process.env.AFIP_KEY_PATH,
     };
   }
   return { certPath: process.env.AFIP_CERT_PATH, keyPath: process.env.AFIP_KEY_PATH };
-}
-
-// Diagnóstico local de los certificados (NO llama a AFIP). Sirve para verificar
-// que Koyeb esté inyectando bien AFIP_CERT_CONTENT / AFIP_KEY_CONTENT.
-function diagnoseCerts() {
-  const report = { ok: null, checks: [] };
-  const add = (name, ok, detail) => report.checks.push({ name, ok, detail });
-
-  const certContent = process.env.AFIP_CERT_CONTENT;
-  const keyContent = process.env.AFIP_KEY_CONTENT;
-  const certPathEnv = process.env.AFIP_CERT_PATH;
-  const keyPathEnv = process.env.AFIP_KEY_PATH;
-
-  add('env', true, JSON.stringify({
-    modo: certContent || keyContent ? 'CONTENT' : 'PATH',
-    aFIPCUIT: process.env.AFIP_CUIT,
-    aFIP_PRODUCTION: process.env.AFIP_PRODUCTION,
-    AFIP_CERT_CONTENT: certContent ? `set (${certContent.length} chars)` : 'unset',
-    AFIP_KEY_CONTENT: keyContent ? `set (${keyContent.length} chars)` : 'unset',
-    AFIP_CERT_PATH: certPathEnv || 'unset',
-    AFIP_KEY_PATH: keyPathEnv || 'unset',
-  }));
-
-  const hasLiteralBackslashN = (v) => Boolean(v && v.includes('\\n'));
-  add('env-backslash-n', !hasLiteralBackslashN(certContent) && !hasLiteralBackslashN(keyContent),
-    `cert literalBackslashN=${hasLiteralBackslashN(certContent)} key literalBackslashN=${hasLiteralBackslashN(keyContent)} (true = contenido pegado en 1 línea con \\n, hay que corregir)`);
-
-  const paths = certPaths();
-  try {
-    const certPem = fs.readFileSync(paths.certPath, 'utf8');
-    const keyPem = fs.readFileSync(paths.keyPath, 'utf8');
-    report.certFile = paths.certPath;
-    report.keyFile = paths.keyPath;
-    add('files', true, `cert=${paths.certPath} (${certPem.length} bytes) key=${paths.keyPath} (${keyPem.length} bytes)`);
-
-    const certLines = certPem.trim().split('\n').length;
-    const keyLines = keyPem.trim().split('\n').length;
-    add('pem-format', certPem.includes('-----BEGIN CERTIFICATE-----') && keyPem.includes('-----BEGIN'),
-      `cert lineas=${certLines} inicia=${certPem.slice(0, 27).replace(/\n/g, '\\n')}... | key lineas=${keyLines} inicia=${keyPem.slice(0, 27).replace(/\n/g, '\\n')}...`);
-
-    try {
-      const cert = new crypto.X509Certificate(certPem);
-      const now = new Date();
-      const validTo = new Date(cert.validTo);
-      const validFrom = new Date(cert.validFrom);
-      const vigente = validFrom <= now && now <= validTo;
-      add('cert', vigente,
-        `subject=${cert.subject} | issuer=${cert.issuer} | desde=${cert.validFrom} hasta=${cert.validTo} | vigente=${vigente}`);
-
-      try {
-        const keyObj = crypto.createPrivateKey(keyPem);
-        add('key', true, `tipo=${keyObj.asymmetricKeyType} | NO tiene passphrase`);
-        const pubFromKey = crypto.createPublicKey(keyObj).export({ type: 'spki', format: 'pem' });
-        const pubFromCert = cert.publicKey.export({ type: 'spki', format: 'pem' });
-        const match = pubFromKey === pubFromCert;
-        add('key-cert-match', match, match ? 'key y cert coinciden (misma clave)' : 'Atención: la key NO se corresponde con el cert');
-      } catch (e) {
-        add('key', false, `error parseando key: ${e.message} (¿está cifrada con passphrase?)`);
-      }
-    } catch (e) {
-      add('cert', false, `error parseando cert: ${e.message}`);
-    }
-  } catch (e) {
-    add('files', false, `error leyendo archivos: ${e.message}`);
-  }
-
-  report.ok = report.checks.every((c) => c.ok);
-  return report;
 }
 
 function loadLibs() {
@@ -258,4 +206,4 @@ async function emitirFacturaC({ docTipo, docNro, monto, periodoDesde, periodoHas
   };
 }
 
-module.exports = { emitirFacturaC, isConfigured, getAuth, fmtYMD, diagnoseCerts };
+module.exports = { emitirFacturaC, isConfigured, getAuth, fmtYMD };
