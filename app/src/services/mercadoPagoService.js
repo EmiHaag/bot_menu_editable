@@ -5,16 +5,19 @@ class MercadoPagoService {
     return process.env.MERCADOPAGO_ACCESS_TOKEN;
   }
 
-  async createPreapproval({ reason, amount, payerEmail, backUrl, notificationUrl }) {
+  async createPreapproval({ reason, amount, payerEmail, backUrl, notificationUrl, trialPeriodDays }) {
+    const autoRecurring = {
+      frequency: 1,
+      frequency_type: 'months',
+      transaction_amount: Number(amount),
+      currency_id: 'ARS'
+    };
+    if (trialPeriodDays > 0) {
+      autoRecurring.trial_period_days = trialPeriodDays;
+    }
     const body = {
       reason: reason || 'Suscripción Bot Menu',
-      auto_recurring: {
-        frequency: 1,
-        frequency_type: 'months',
-        transaction_amount: Number(amount),
-        currency_id: 'ARS',
-        trial_period_days: 30
-      },
+      auto_recurring: autoRecurring,
       payer_email: payerEmail,
       back_url: backUrl,
       notification_url: notificationUrl,

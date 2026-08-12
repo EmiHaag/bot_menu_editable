@@ -1,0 +1,526 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Suscripción - Wamenu</title>
+    <link rel="icon" type="image/x-icon" href="/img/favicon.ico">
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+            background: #f8f9fa;
+            color: #333;
+            min-height: 100vh;
+        }
+        .site-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 16px;
+            padding: 18px 24px;
+            background: #ffffff;
+            border-bottom: 1px solid #eee;
+            flex-wrap: wrap;
+        }
+        .site-header a.logo {
+            display: inline-flex;
+            align-items: center;
+            text-decoration: none;
+        }
+        .site-header .logo img {
+            height: 36px;
+            width: auto;
+        }
+        .site-header .nav-links {
+            display: flex;
+            align-items: center;
+            gap: 18px;
+            flex-wrap: wrap;
+        }
+        .site-header .nav-links a {
+            color: #0f6b4f;
+            font-weight: 700;
+            font-size: 0.9rem;
+            text-decoration: none;
+        }
+        .site-header .nav-links a:hover { text-decoration: underline; }
+        .contact-btn {
+            background: #0f6b4f;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            padding: 10px 22px;
+            font-weight: 700;
+            font-size: 0.9rem;
+            cursor: pointer;
+            transition: all 0.2s;
+            font-family: inherit;
+            box-shadow: 0 4px 14px rgba(15,107,79,0.3);
+        }
+        .contact-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(15,107,79,0.4);
+        }
+        .plan-section {
+            padding: 60px 24px;
+            max-width: 1100px;
+            margin: 0 auto;
+            text-align: center;
+        }
+        .plan-section h2 {
+            font-size: 2rem;
+            font-weight: 800;
+            margin-bottom: 8px;
+            color: #222;
+        }
+        .plan-section > p {
+            color: #666;
+            font-size: 1.05rem;
+            max-width: 600px;
+            margin: 0 auto 40px;
+            line-height: 1.6;
+        }
+        .plan-grid {
+            display: flex;
+            gap: 24px;
+            justify-content: center;
+            flex-wrap: wrap;
+        }
+        .plan-card {
+            flex: 1;
+            min-width: 280px;
+            max-width: 400px;
+            background: white;
+            border: 1px solid #eee;
+            border-radius: 16px;
+            padding: 32px 28px;
+            text-align: left;
+            box-shadow: 0 2px 12px rgba(0,0,0,0.04);
+            transition: transform 0.2s, box-shadow 0.2s;
+            display: flex;
+            flex-direction: column;
+        }
+        .plan-card:hover { transform: translateY(-4px); box-shadow: 0 12px 32px rgba(0,0,0,0.08); }
+        .plan-card.standard { border-color: #0f6b4f; position: relative; }
+        .plan-card.standard::before {
+            content: 'MÁS ELEGIDO';
+            position: absolute;
+            top: -10px;
+            right: 16px;
+            background: #0f6b4f;
+            color: white;
+            font-size: 0.6rem;
+            font-weight: 700;
+            padding: 3px 10px;
+            border-radius: 4px;
+            letter-spacing: 0.5px;
+        }
+        .plan-badge {
+            display: inline-block;
+            background: #e8f5e9;
+            color: #2e7d32;
+            font-size: 0.7rem;
+            font-weight: 700;
+            padding: 3px 10px;
+            border-radius: 4px;
+            margin-bottom: 14px;
+        }
+        .plan-card h3 {
+            font-size: 1.1rem;
+            font-weight: 700;
+            color: #222;
+            margin-bottom: 6px;
+        }
+        .plan-price {
+            font-size: 2rem;
+            font-weight: 800;
+            color: #222;
+            margin-bottom: 4px;
+        }
+        .plan-price .price-period {
+            font-size: 0.9rem;
+            font-weight: 400;
+            color: #888;
+        }
+        .plan-sub {
+            font-size: 0.82rem;
+            color: #888;
+            margin-bottom: 18px;
+        }
+        .plan-features {
+            list-style: none;
+            padding: 0;
+            margin: 0 0 24px;
+            flex: 1;
+        }
+        .plan-features li {
+            padding: 6px 0;
+            font-size: 0.88rem;
+            color: #555;
+            display: flex;
+            gap: 8px;
+            align-items: flex-start;
+            border-bottom: 1px solid #f5f5f5;
+        }
+        .plan-features li:last-child { border-bottom: none; }
+        .plan-features li .ck { color: #0f6b4f; font-weight: 700; flex-shrink: 0; }
+        .plan-btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+            padding: 12px 20px;
+            border-radius: 8px;
+            font-weight: 700;
+            font-size: 0.9rem;
+            text-decoration: none;
+            transition: all 0.2s;
+            cursor: pointer;
+            border: none;
+            font-family: inherit;
+            width: 100%;
+            text-align: center;
+        }
+        .plan-btn.primary { background: #0f6b4f; color: white; }
+        .plan-btn.primary:hover { background: #0c5841; transform: translateY(-2px); box-shadow: 0 4px 14px rgba(15,107,79,0.3); }
+        .plan-btn.secondary { background: #f0f0f0; color: #333; }
+        .plan-btn.secondary:hover { background: #e0e0e0; transform: translateY(-2px); }
+        .modal-overlay {
+            display: none;
+            position: fixed;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(0,0,0,0.5);
+            z-index: 1000;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+        .modal-overlay.open { display: flex; }
+        .modal {
+            background: white;
+            border-radius: 16px;
+            padding: 32px 28px;
+            max-width: 480px;
+            width: 100%;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.2);
+            text-align: left;
+            position: relative;
+        }
+        .modal h3 { font-size: 1.2rem; font-weight: 700; color: #222; margin-bottom: 4px; }
+        .modal p { font-size: 0.88rem; color: #666; margin-bottom: 20px; }
+        .modal-close {
+            position: absolute;
+            top: 12px; right: 16px;
+            font-size: 1.4rem;
+            cursor: pointer;
+            color: #999;
+            background: none;
+            border: none;
+        }
+        .modal-form label {
+            display: block;
+            font-size: 0.82rem;
+            font-weight: 600;
+            color: #444;
+            margin-bottom: 4px;
+        }
+        .modal-form input, .modal-form textarea {
+            width: 100%;
+            padding: 10px 12px;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            font-size: 0.88rem;
+            font-family: inherit;
+            margin-bottom: 14px;
+            transition: border-color 0.2s;
+            box-sizing: border-box;
+        }
+        .modal-form input:focus, .modal-form textarea:focus {
+            outline: none;
+            border-color: #0f6b4f;
+        }
+        .modal-form textarea { resize: vertical; min-height: 80px; }
+        .modal-contact .modal { max-width: 460px; }
+        .footer {
+            padding: 32px 24px;
+            text-align: center;
+            color: #999;
+            font-size: 0.85rem;
+            border-top: 1px solid #eee;
+            background: white;
+        }
+        @media (max-width: 600px) {
+            .site-header { justify-content: center; text-align: center; }
+            .plan-section h2 { font-size: 1.5rem; }
+            .plan-card { max-width: 100%; }
+        }
+    </style>
+</head>
+<body>
+    <header class="site-header">
+        <a class="logo" href="/"><img src="/img/wamenu_logo_name.png" alt="WaMenu"></a>
+        <nav class="nav-links">
+            <a href="/">← Volver al inicio</a>
+            <button class="contact-btn" onclick="openContactModal()">Contacto</button>
+        </nav>
+    </header>
+
+    <section class="plan-section">
+        <h2>💰 Planes</h2>
+        <p>Elegí el plan que mejor se adapte a tu negocio. Sin contratos largos, sin sorpresas.</p>
+        <div class="plan-grid">
+            <div class="plan-card standard">
+                <div class="plan-badge" id="badgePrimerMes">🥇 Primer mes gratis</div>
+                <h3>Plan Estándar</h3>
+                <div class="plan-price"><span class="price-num">$<span id="precioDisplay"></span> ARS</span> <span class="price-period">/mes</span></div>
+                <div class="plan-sub">Bot editor autoadministrable · Sin límite de productos</div>
+                <ul class="plan-features">
+                    <li><span class="ck">✓</span> Bot de WhatsApp con menú interactivo</li>
+                    <li><span class="ck">✓</span> Panel editor desde el navegador</li>
+                    <li><span class="ck">✓</span> Google Sheets con pedidos en tiempo real</li>
+                    <li><span class="ck">✓</span> Carrito de compras y cálculo de total</li>
+                    <li><span class="ck">✓</span> Captura de datos del cliente</li>
+                    <li><span class="ck">✓</span> Soporte por WhatsApp incluido</li>
+                </ul>
+                <button class="plan-btn primary" id="btnSubscribeStandard" onclick="openSubscribeModal()">💳 Suscribirme ahora</button>
+            </div>
+            <div class="plan-card">
+                <div class="plan-badge" style="background:#e3f2fd; color:#1565c0;">⚡ A medida</div>
+                <h3>Plan Personalizado</h3>
+                <div class="plan-price">A tu medida <span></span></div>
+                <div class="plan-sub">Cotización sin compromiso · Te asesoramos</div>
+                <ul class="plan-features">
+                    <li><span class="ck">✓</span> Todo lo del Plan Estándar</li>
+                    <li><span class="ck">✓</span> Inteligencia Artificial para respuestas naturales</li>
+                    <li><span class="ck">✓</span> Integraciones (MercadoPago, Calendar, APIs)</li>
+                    <li><span class="ck">✓</span> Flujos personalizados (turnos, encuestas, etc.)</li>
+                    <li><span class="ck">✓</span> Hosting y mantenimiento incluidos</li>
+                    <li><span class="ck">✓</span> Soporte prioritario</li>
+                </ul>
+                <button class="plan-btn secondary" onclick="openModal()">✍️ Quiero saber más</button>
+            </div>
+        </div>
+    </section>
+
+    <!-- Modal de Suscripción MercadoPago -->
+    <div class="modal-overlay" id="modalSubscribe">
+        <div class="modal">
+            <button class="modal-close" onclick="closeSubscribeModal()">✕</button>
+            <h3>💳 Suscribite al Plan Estándar</h3>
+            <p>Completá tus datos para iniciar la suscripción mensual por <strong>$<span id="modalSubscribePrice"></span> ARS/mes</strong>.</p>
+            <p style="font-size:0.78rem;color:#999;margin-top:-12px;margin-bottom:16px;" id="primerMesNote">El primer mes es gratis 🎁</p>
+            <div class="modal-form">
+                <label for="subscribeName">Nombre</label>
+                <input type="text" id="subscribeName" placeholder="Tu nombre" autocomplete="off" required>
+                <label for="subscribeEmail">Email</label>
+                <input type="email" id="subscribeEmail" placeholder="tu@email.com" autocomplete="off" required>
+                <label for="subscribeDni">DNI o CUIT</label>
+                <input type="text" id="subscribeDni" placeholder="Ej: 30123456 o 20123456789" autocomplete="off" inputmode="numeric" required>
+                <p style="font-size:0.72rem;color:#999;margin-top:-10px;margin-bottom:14px;">Necesario para emitir tu Factura C.</p>
+                <div id="subscribeError" style="color:#d32f2f;font-size:0.82rem;margin-bottom:10px;display:none;"></div>
+                <button class="plan-btn primary" id="btnSubscribeSubmit" onclick="startSubscription()">
+                    🔄 Ir a MercadoPago
+                </button>
+                <p style="font-size:0.72rem;color:#aaa;margin-top:12px;">Serás redirigido a MercadoPago para completar el pago de forma segura.</p>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal-overlay" id="modalCustom">
+        <div class="modal">
+            <button class="modal-close" onclick="closeModal()">✕</button>
+            <h3>Contanos qué necesitás</h3>
+            <p>Completá estos datos y te enviamos la propuesta por WhatsApp.</p>
+            <div class="modal-form">
+                <label for="modalName">Nombre</label>
+                <input type="text" id="modalName" placeholder="Tu nombre" autocomplete="off">
+                <label for="modalWhatsapp">Tu WhatsApp</label>
+                <input type="text" id="modalWhatsapp" placeholder="Tu número de WhatsApp" autocomplete="off">
+                <label for="modalDesc">Contanos brevemente qué necesitás</label>
+                <textarea id="modalDesc" placeholder="Ej: quiero un bot para turnos de mi consultorio + cobro de seña..."></textarea>
+                <button class="plan-btn primary" onclick="sendCustom()">📤 Enviar consulta por WhatsApp</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal-overlay modal-contact" id="modalContact">
+        <div class="modal">
+            <button class="modal-close" onclick="closeContactModal()">✕</button>
+            <h3>Contacto</h3>
+            <p>Completá el formulario y te responderemos a la brevedad.</p>
+            <div class="modal-form">
+                <label for="contactName">Nombre</label>
+                <input type="text" id="contactName" placeholder="Tu nombre" autocomplete="off" required>
+                <label for="contactEmail">Email</label>
+                <input type="email" id="contactEmail" placeholder="tu@email.com" autocomplete="off" required>
+                <label for="contactMessage">Mensaje</label>
+                <textarea id="contactMessage" placeholder="Escribí tu consulta..." required></textarea>
+                <div id="contactError" style="color:#d32f2f;font-size:0.82rem;margin-bottom:10px;display:none;"></div>
+                <div id="contactSuccess" style="color:#2e7d32;font-size:0.82rem;margin-bottom:10px;display:none;">✅ Mensaje enviado correctamente. Te responderemos pronto.</div>
+                <button class="plan-btn primary" id="btnContactSubmit" onclick="sendContact()">📤 Enviar mensaje</button>
+            </div>
+        </div>
+    </div>
+
+    <footer class="footer">
+        wamenu &mdash; Hecho con ❤️
+    </footer>
+
+    <script>
+        var BOT_PHONE = '5492494249236';
+        var PRECIO_ESTANDAR = '22000';
+
+        (function() {
+            fetch('/api/config').then(function(r) { return r.json(); }).then(function(d) {
+                if (d.phone) BOT_PHONE = d.phone;
+                if (d.precioEstandar) PRECIO_ESTANDAR = d.precioEstandar;
+                document.getElementById('precioDisplay').textContent = PRECIO_ESTANDAR;
+                if (d.trialGratis === false) {
+                    var badge = document.getElementById('badgePrimerMes');
+                    if (badge) badge.style.display = 'none';
+                    var note = document.getElementById('primerMesNote');
+                    if (note) note.style.display = 'none';
+                }
+            });
+        })();
+
+        // Modal de suscripción MercadoPago
+        function openSubscribeModal() {
+            document.getElementById('modalSubscribePrice').textContent = PRECIO_ESTANDAR;
+            document.getElementById('subscribeError').style.display = 'none';
+            document.getElementById('modalSubscribe').classList.add('open');
+        }
+        function closeSubscribeModal() {
+            document.getElementById('modalSubscribe').classList.remove('open');
+        }
+
+        var pollTimer = null;
+        var currentPreapprovalId = null;
+        var pagoOk = false;
+
+        async function startSubscription() {
+            var name = document.getElementById('subscribeName').value.trim();
+            var email = document.getElementById('subscribeEmail').value.trim();
+            var dni = document.getElementById('subscribeDni').value.trim();
+            var errorEl = document.getElementById('subscribeError');
+            var btn = document.getElementById('btnSubscribeSubmit');
+
+            if (!name) { errorEl.textContent = 'Ingresá tu nombre'; errorEl.style.display = 'block'; return; }
+            if (!email || !email.includes('@')) { errorEl.textContent = 'Ingresá un email válido'; errorEl.style.display = 'block'; return; }
+            if (!dni || !/^\d{7,11}$/.test(dni.replace(/\D/g, ''))) { errorEl.textContent = 'Ingresá un DNI (7-8 dígitos) o CUIT (11 dígitos) válido'; errorEl.style.display = 'block'; return; }
+
+            errorEl.style.display = 'none';
+            btn.disabled = true;
+            btn.textContent = '⏳ Creando suscripción...';
+
+            try {
+                var res = await fetch('/api/mercadopago/create-subscription', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ name: name, email: email, dni: dni })
+                });
+                var data = await res.json();
+                if (!res.ok) throw new Error(data.error || 'Error del servidor');
+
+                currentPreapprovalId = data.preapproval_id;
+                btn.textContent = '⏳ Esperando pago...';
+
+                // Abrir MP en popup
+                var mpWindow = window.open(data.init_point, '_blank', 'width=800,height=700');
+
+                // Polling cada 2s para detectar el pago (via servidor que consulta MP API)
+                pollTimer = setInterval(async function() {
+                    try {
+                        var r = await fetch('/api/mercadopago/check-status?preapproval_id=' + currentPreapprovalId);
+                        var st = await r.json();
+                        if (st.status === 'authorized' || st.status === 'approved') {
+                            pagoOk = true;
+                            clearInterval(pollTimer);
+                            btn.textContent = '✅ Pago confirmado';
+                            if (mpWindow && !mpWindow.closed) mpWindow.close();
+                            window.location.href = '/pago_exitoso?preapproval_id=' + currentPreapprovalId;
+                        }
+                    } catch(e) {}
+                }, 2000);
+            } catch (err) {
+                errorEl.textContent = 'Error: ' + err.message;
+                errorEl.style.display = 'block';
+                btn.disabled = false;
+                btn.textContent = '🔄 Ir a MercadoPago';
+            }
+        }
+
+        function openModal() {
+            document.getElementById('modalCustom').classList.add('open');
+        }
+        function closeModal() {
+            document.getElementById('modalCustom').classList.remove('open');
+        }
+        function sendCustom() {
+            var name = document.getElementById('modalName').value.trim();
+            var wp = document.getElementById('modalWhatsapp').value.trim();
+            var desc = document.getElementById('modalDesc').value.trim();
+            if (!name || !wp || !desc) { alert('Completá todos los campos'); return; }
+            var msg = 'Quiero saber más sobre los servicios para un bot personalizado\n\n' +
+                      'Nombre: ' + name + '\n' +
+                      'WhatsApp: ' + wp + '\n\n' +
+                      'Mi negocio: ' + desc;
+            window.open('https://wa.me/' + BOT_PHONE + '?text=' + encodeURIComponent(msg), '_blank');
+            closeModal();
+        }
+
+        function openContactModal() {
+            document.getElementById('modalContact').classList.add('open');
+        }
+        function closeContactModal() {
+            document.getElementById('modalContact').classList.remove('open');
+            document.getElementById('contactName').value = '';
+            document.getElementById('contactEmail').value = '';
+            document.getElementById('contactMessage').value = '';
+            document.getElementById('contactError').style.display = 'none';
+            document.getElementById('contactSuccess').style.display = 'none';
+        }
+        async function sendContact() {
+            var name = document.getElementById('contactName').value.trim();
+            var email = document.getElementById('contactEmail').value.trim();
+            var message = document.getElementById('contactMessage').value.trim();
+            var errorEl = document.getElementById('contactError');
+            var successEl = document.getElementById('contactSuccess');
+            var btn = document.getElementById('btnContactSubmit');
+
+            errorEl.style.display = 'none';
+            successEl.style.display = 'none';
+
+            if (!name) { errorEl.textContent = 'Ingresá tu nombre'; errorEl.style.display = 'block'; return; }
+            if (!email || !email.includes('@')) { errorEl.textContent = 'Ingresá un email válido'; errorEl.style.display = 'block'; return; }
+            if (!message) { errorEl.textContent = 'Escribí tu mensaje'; errorEl.style.display = 'block'; return; }
+
+            btn.disabled = true;
+            btn.textContent = '⏳ Enviando...';
+
+            try {
+                var res = await fetch('/api/contact', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ name: name, email: email, message: message })
+                });
+                var data = await res.json();
+                if (!res.ok) throw new Error(data.error || 'Error del servidor');
+
+                successEl.style.display = 'block';
+                btn.textContent = '✅ Enviado';
+                document.getElementById('contactName').value = '';
+                document.getElementById('contactEmail').value = '';
+                document.getElementById('contactMessage').value = '';
+            } catch (err) {
+                errorEl.textContent = 'Error: ' + err.message;
+                errorEl.style.display = 'block';
+            }
+
+            btn.disabled = false;
+            btn.textContent = '📤 Enviar mensaje';
+        }
+    </script>
+</body>
+</html>

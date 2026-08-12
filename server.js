@@ -81,13 +81,17 @@ app.get('/api/config', (req, res) => {
     var cfg = readConfig();
     res.json({
         phone: process.env.BOT_PHONE || '5492494249236',
-        precioEstandar: cfg.precio_estandar != null ? cfg.precio_estandar : (process.env.PRECIO_ESTANDAR || '22000')
+        precioEstandar: cfg.precio_estandar != null ? cfg.precio_estandar : (process.env.PRECIO_ESTANDAR || '22000'),
+        trialGratis: cfg.trial_gratis !== false
     });
 });
 
 app.post('/api/config', (req, res) => {
     if (req.body.precio_estandar != null) {
         writeConfig({ precio_estandar: Number(req.body.precio_estandar) });
+    }
+    if (req.body.trial_gratis != null) {
+        writeConfig({ trial_gratis: Boolean(req.body.trial_gratis) });
     }
     res.json({ ok: true });
 });
@@ -136,6 +140,10 @@ app.get('/', (req, res) => {
     res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
+app.get('/suscripcion', (req, res) => {
+    res.sendFile(path.join(__dirname, 'public', 'suscripcion.html'));
+});
+
 function generatePassword(length = 10) {
     const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789';
     return Array.from(crypto.randomBytes(length), b => chars[b % chars.length]).join('');
@@ -165,6 +173,7 @@ app.post('/api/mercadopago/create-subscription', async (req, res) => {
 
         const cfg = readConfig();
         const precio = cfg.precio_estandar != null ? cfg.precio_estandar : (process.env.PRECIO_ESTANDAR || '23000');
+        const trialPeriodDays = cfg.trial_gratis !== false ? 30 : 0;
         const siteUrl = process.env.SITE_URL || `http://localhost:${port}`;
 
         // MP requiere una URL pública válida en back_url
@@ -184,7 +193,8 @@ app.post('/api/mercadopago/create-subscription', async (req, res) => {
                 amount: Number(precio),
                 payerEmail,
                 backUrl: mpBackUrl,
-                notificationUrl: `${siteUrl}/api/mercadopago/webhook`
+                notificationUrl: `${siteUrl}/api/mercadopago/webhook`,
+                trialPeriodDays
             });
         } catch (mpErr) {
             const testBuyer = process.env.TEST_BUYER_EMAIL || 'test_user_123@testuser.com';
@@ -195,7 +205,8 @@ app.post('/api/mercadopago/create-subscription', async (req, res) => {
                     amount: Number(precio),
                     payerEmail: testBuyer,
                     backUrl: mpBackUrl,
-                    notificationUrl: `${siteUrl}/api/mercadopago/webhook`
+                    notificationUrl: `${siteUrl}/api/mercadopago/webhook`,
+                    trialPeriodDays
                 });
             } else {
                 throw mpErr;

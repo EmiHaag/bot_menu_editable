@@ -1,5 +1,6 @@
 require('dotenv').config();
 const path = require('path');
+const fs = require('fs');
 
 let wsfev1 = null;
 let LoginTicket = null;
@@ -8,6 +9,37 @@ let libsLoaded = false;
 // Ticket WSAA cacheado (~12h de validez). Se renueva recién 60s antes de expirar.
 let cachedAuth = null;
 let cachedAuthExpiresAt = 0;
+
+// En Koyeb no hay archivos: el cert/key llegan por env var (AFIP_CERT_CONTENT /
+// AFIP_KEY_CONTENT). Se escriben a /tmp al iniciar y se usan como paths.
+let certsMaterialized = false;
+
+function materializeCerts() {
+  if (certsMaterialized) return;
+  const write = (name, value) => {
+    if (!value) return;
+    let content = String(value).trim();
+    if (!content.includes('-----BEGIN')) {
+      try { content = Buffer.from(content, 'base64').toString('utf8'); } catch (e) { /* keep raw */ }
+    }
+    if (!content.endsWith('\n')) content += '\n';
+    fs.writeFileSync(path.join('/tmp', name), content, { mode: 0o600 });
+  };
+  write('afip_cert.pem', process.env.AFIP_CERT_CONTENT);
+  write('afip_key.pem', process.env.AFIP_KEY_CONTENT);
+  certsMaterialized = true;
+}
+
+function certPaths() {
+  if (process.env.AFIP_CERT_CONTENT || process.env.AFIP_KEY_CONTENT) {
+    materializeCerts();
+    return {
+      certPath: process.env.AFIP_CERT_CONTENT ? '/tmp/afip_cert.pem' : process.env.AFIP_CERT_PATH,
+      keyPath: process.env.AFIP_KEY_CONTENT ? '/tmp/afip_key.pem' : process.env.AFIP_KEY_PATH,
+    };
+  }
+  return { certPath: process.env.AFIP_CERT_PATH, keyPath: process.env.AFIP_KEY_PATH };
+}
 
 function loadLibs() {
   if (libsLoaded) return;
@@ -29,11 +61,9 @@ function loadLibs() {
 }
 
 function isConfigured() {
-  return Boolean(
-    process.env.AFIP_CUIT &&
-    process.env.AFIP_CERT_PATH &&
-    process.env.AFIP_KEY_PATH
-  );
+  const pathsOk = Boolean(process.env.AFIP_CERT_PATH && process.env.AFIP_KEY_PATH);
+  const contentOk = Boolean(process.env.AFIP_CERT_CONTENT && process.env.AFIP_KEY_CONTENT);
+  return Boolean(process.env.AFIP_CUIT && (pathsOk || contentOk));
 }
 
 function wsaaUrl() {
@@ -56,8 +86,8 @@ async function getAuth() {
   const ticket = await new LoginTicket().wsaaLogin(
     wsfev1.serviceId,
     wsaaUrl(),
-    path.resolve(process.env.AFIP_CERT_PATH),
-    path.resolve(process.env.AFIP_KEY_PATH)
+    path.resolve(certPaths().certPath),
+    path.resolve(certPaths().keyPath)
   );
 
   const expiresAt = new Date(ticket.header.expirationTime).getTime() - 60 * 1000;
