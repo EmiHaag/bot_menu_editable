@@ -18,6 +18,8 @@ Este es un bot de WhatsApp modular y escalable que utiliza Google Sheets como ba
 - **Recuperación de Contraseña**: Flujo completo por email con tokens temporales de 15 minutos.
 - **Suscripción desde Login**: Modal de suscripción al Plan Estándar directamente desde la pantalla de login.
 - **Resumen de Términos visible**: Párrafo con los puntos principales de los Términos y Condiciones debajo del QR, con link al PDF completo.
+- **Gestor de Turnos (Google Calendar)**: Bots tipo `TURNOS` reservan turnos vía WhatsApp integrados con Google Calendar. El cliente configura `bot_type` y `calendar_config` desde su dashboard (calendario, duración del turno, horarios de atención y preaviso mínimo). El flujo en WhatsApp es: fecha → horario disponible → nombre → confirmación, y el evento se crea en Google Calendar con registro en Neon.
+- **Configuración por bot en Neon**: La tabla `bots` almacena `bot_type` (CARRITO/TURNOS) y `calendar_config` (JSONB) por cliente. La tabla `turnos` registra los eventos creados en Google Calendar.
 
 ## Configuración de Google Sheets
 
@@ -58,6 +60,31 @@ Define el árbol de navegación de los mensajes.
 - **Recuperación de Contraseña**: Link "¿Olvidaste tu contraseña?" en el login. Solicita email, envía link con token de 15 minutos, formulario para nueva contraseña.
 - **Suscripción desde Login**: Link "Aún no tenés usuario?" en el login que abre el modal de suscripción al Plan Estándar (mismo flujo MercadoPago que desde el index público).
 
+## Gestor de Turnos (Google Calendar)
+
+El bot puede actuar como **gestor de turnos** en lugar de carrito. Para habilitarlo:
+
+1. **Configurar el calendario en el dashboard** (sección Configuración del bot):
+   - `bot_type` = `TURNOS`
+   - `calendar_id` = ID del calendario de Google donde se crean los turnos
+   - `slot_duration_minutes` = duración de cada turno (ej. 30)
+   - `business_hours` = franjas horarias por día de la semana (`'0'`=Domingo ... `'6'`=Sábado), formato `[{ desde: '09:00', hasta: '18:00' }]`
+   - `min_notice_hours` = antelación mínima de reserva en horas
+   - Se puede probar la disponibilidad con el botón de vista previa antes de guardar.
+
+2. **Agregar el nodo `##TURNO##`** en el menú: en el editor visual, cualquier nodo cuyo `Message` contenga `##TURNO##` inicia el flujo de reserva.
+
+3. **Re-autorizar OAuth con scope Calendar** (ver sección Autenticación Google arriba).
+
+### Flujo en WhatsApp
+1. El usuario elige el nodo con `##TURNO##` y se le pide la fecha (`25/12` o `25/12/2026`; también `hoy` o `mañana`).
+2. El bot consulta disponibilidad (freebusy) y muestra los horarios libres numerados.
+3. El usuario elige un horario y escribe su nombre.
+4. Se muestra el resumen: Fecha, Hora y Nombre. Con `1` confirma, con `2` cancela.
+5. Al confirmar se crea el evento en Google Calendar (`summary: Turno <nombre>`) y se registra en la tabla `turnos` de Neon.
+
+En cualquier paso, `v` vuelve al paso anterior y `0` vuelve al menú principal. Si `bot_type` no es `TURNOS` o falta `calendar_id`, el nodo muestra un mensaje de servicio no configurado.
+
 ## Requisitos e Instalación (Producción/Koyeb)
 
 Para desplegar en Koyeb, es necesario configurar las siguientes variables de entorno:
@@ -74,8 +101,10 @@ El sistema utiliza el flujo OAuth2 para que el bot actúe en nombre de tu cuenta
 - **`OAUTH_CREDENTIALS_CONTENT`**: Contenido JSON de tus credenciales de cliente OAuth.
 - **`OAUTH_TOKEN_CONTENT`**: Contenido JSON del token de acceso (incluyendo el `refresh_token`).
 
+> **Importante**: Para el Gestor de Turnos el token debe incluir el scope `https://www.googleapis.com/auth/calendar` además de `spreadsheets` y `drive`. Si el token actual no lo tiene, re-autorizá con `node auth_calendar.js` (sirve un mini-servidor en `http://localhost:3000` para capturar el code) y actualizá `OAUTH_TOKEN_CONTENT` en Koyeb.
+
 ### Neon PostgreSQL (Términos y Condiciones)
-- **`NEON_DATABASE_URL`**: URL de conexión a Neon PostgreSQL. Se usa para almacenar los registros de aprobación de Términos y Condiciones. La tabla `terms_approvals` se crea automáticamente al iniciar el servidor.
+- **`NEON_DATABASE_URL`**: URL de conexión a Neon PostgreSQL. Se usa para almacenar los registros de aprobación de Términos y Condiciones, la configuración de cada bot (`bots`) y los turnos reservados (`turnos`). Las tablas se crean automáticamente al iniciar el servidor.
 
 Ejemplo:
 ```
@@ -120,6 +149,9 @@ Es fundamental configurar un **Volumen Persistente** montado en la ruta `/data`.
 - `POST /app/api/bot/stop/:id` - Detener conexión
 - `GET /app/api/terms/status/:userId` - Verificar si aceptó Términos
 - `POST /app/api/terms/approve` - Registrar aceptación de Términos
+- `GET /app/api/bot-config?botId=xxx` - Obtener `bot_type` y `calendar_config` del bot
+- `POST /app/api/bot-config` - Guardar `bot_type` y `calendar_config`
+- `GET /app/api/bot-config/disponibilidad?fecha=YYYY-MM-DD` - Vista previa de horarios libres de un calendario
 
 ## Estructura del Proyecto
 
@@ -132,7 +164,11 @@ Es fundamental configurar un **Volumen Persistente** montado en la ruta `/data`.
 - `app/src/services/emailService.js`: Envío de emails (bienvenida, recuperación de contraseña).
 - `app/src/services/termsService.js`: Gestión de aprobación de Términos y Condiciones en Neon PostgreSQL.
 - `app/src/services/mercadoPagoService.js`: Integración con MercadoPago para suscripciones.
-- `app/src/controllers/menuController.js`: Lógica de navegación con WhatsApp (wizard, carrito, checkout).
+- `app/src/services/botConfigService.js`: Configuración por bot (`bots`) y registro de turnos (`turnos`) en Neon PostgreSQL.
+- `app/src/services/googleCalendarService.js`: Disponibilidad (freebusy), alta/edición/cancelación de eventos en Google Calendar.
+- `app/src/services/googleAuthBase.js`: Cliente OAuth2 compartido (Sheets/Drive/Calendar) con soporte ENV + archivo local.
+- `auth_calendar.js`: Script de re-autorización OAuth con scopes de Sheets + Drive + Calendar (mini-servidor en `localhost:3000`).
+- `app/src/controllers/menuController.js`: Lógica de navegación con WhatsApp (wizard, carrito, checkout, turnos).
 - `app/src/utils/dashboard.js`: Servidor Express para el panel de administración web (editor visual + wizard).
 - `app/src/utils/helpGuide.js`: Guía de ayuda interactiva embebida en el dashboard.
 - `app/src/utils/geminiHelper.js`: Asistente IA integrado en el dashboard.

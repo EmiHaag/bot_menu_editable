@@ -3,6 +3,8 @@
  * Gestiona la lógica de navegación, el estado del usuario y la interacción con WhatsApp.
  */
 const userService = require('../services/userService');
+const botConfigService = require('../services/botConfigService');
+const calendarService = require('../services/googleCalendarService');
 
 class MenuController {
     constructor(googleSheetsService, stateService, orderService = null) {
@@ -83,6 +85,20 @@ class MenuController {
                 await sock.sendMessage(jid, { text: '✅ Archivo recibido correctamente.' });
                 this.stateService.setUserState(jid, fileTarget);
             }
+            return;
+        }
+
+        // PRIORIDAD 0.5: FLUJO DE TURNOS (Gestor de Turnos / Google Calendar)
+        if (this.stateService.getWaitingTurnoDate(jid)) {
+            await this._handleTurnoDate(sock, jid, input);
+            return;
+        }
+        if (this.stateService.getWaitingTurnoSlot(jid)) {
+            await this._handleTurnoSlot(sock, jid, input);
+            return;
+        }
+        if (this.stateService.getWaitingTurnoConfirm(jid)) {
+            await this._handleTurnoConfirm(sock, jid, input);
             return;
         }
 
@@ -333,6 +349,7 @@ class MenuController {
             if (node.message.includes('##FINALIZAR##')) nodeTags.push('FINALIZAR');
             if (node.message.includes('##COMPLETAR##')) nodeTags.push('COMPLETAR');
             if (node.message.includes('##PAGAR##')) nodeTags.push('PAGAR');
+            if (node.message.includes('##TURNO##')) nodeTags.push('TURNO');
         }
 
         if (nodeTags.includes('PEDIDO')) {
@@ -378,6 +395,12 @@ class MenuController {
             await sock.sendMessage(jid, { text: msg });
             this.stateService.setWaitingForFile(jid, node.id);
             this.stateService.setUserState(jid, node.id);
+            return;
+        }
+
+        // 1b2. TURNO: inicia el flujo de reserva (fecha → horario → confirmación → Calendar)
+        if (nodeTags.includes('TURNO')) {
+            await this._iniciarReserva(sock, jid, node);
             return;
         }
 
@@ -549,6 +572,279 @@ class MenuController {
             this.stateService.clearWaitingForData(jid);
             this.stateService.clearWaitingForFile(jid);
         }
+    }
+
+    /**
+     * Inicia el flujo de reserva de turno desde un nodo con tag ##TURNO##
+     */
+    async _iniciarReserva(sock, jid, node) {
+        const cfg = await botConfigService.getBotConfig(this.stateService.clientId);
+        const cc = cfg.calendar_config || {};
+        if (cfg.bot_type !== 'TURNOS' || !cc.calendar_id) {
+            await this.sendPresenceTyping(sock, jid);
+            await sock.sendMessage(jid, { text: '⏳ El servicio de turnos no está configurado. Por favor escribinos para reservar.' });
+            await this.sendMenu(sock, jid, node.parentId || 'root');
+            return;
+        }
+
+        let msg = await this.replaceOrderSummary(node.message, jid);
+        msg += `\n\n📅 *¿Para qué día querés tu turno?*\n\n_Escribí la fecha (ej: *25/12* o *25/12/2026*)._`;
+        msg += `\n\n_Escribe *v* para volver atrás._`;
+        await this.sendPresenceTyping(sock, jid);
+        await sock.sendMessage(jid, { text: msg });
+        this.stateService.setWaitingTurnoDate(jid, node.id);
+        this.stateService.setUserState(jid, node.id);
+    }
+
+    /**
+     * Procesa la fecha ingresada: valida y muestra los horarios disponibles
+     */
+    async _handleTurnoDate(sock, jid, text) {
+        const nodeId = this.stateService.getWaitingTurnoDate(jid);
+
+        if (text === 'v' || text === 'atras' || text === 'atrás') {
+            this.stateService.clearBookingFlow(jid);
+            const node = await this.googleSheetsService.getNodeById(nodeId);
+            await this.sendMenu(sock, jid, node ? node.parentId : 'root');
+            return;
+        }
+        if (text === '0') {
+            this.stateService.clearBookingFlow(jid);
+            await this.sendMenu(sock, jid, 'root');
+            return;
+        }
+
+        const fecha = this._parseFechaArg(text);
+        if (!fecha) {
+            await this.sendPresenceTyping(sock, jid);
+            await sock.sendMessage(jid, { text: '❌ No entendí la fecha. Escribila así: *25/12* o *25/12/2026*.' });
+            return;
+        }
+
+        const cfg = await botConfigService.getBotConfig(this.stateService.clientId);
+        const cc = cfg.calendar_config || {};
+
+        let slots;
+        try {
+            slots = await calendarService.consultarDisponibilidad({
+                calendarId: cc.calendar_id,
+                fecha,
+                duracionMin: cc.slot_duration_minutes || 30,
+                businessHours: cc.business_hours || {},
+                minNoticeHours: cc.min_notice_hours || 0
+            });
+        } catch (err) {
+            console.error('[Turnos] Error consultando disponibilidad:', err.message);
+            await this.sendPresenceTyping(sock, jid);
+            await sock.sendMessage(jid, { text: '❌ Ocurrió un error consultando la disponibilidad. Intentá en unos minutos.' });
+            return;
+        }
+
+        this.stateService.clearWaitingTurnoDate(jid);
+
+        if (slots.length === 0) {
+            await this.sendPresenceTyping(sock, jid);
+            await sock.sendMessage(jid, {
+                text: `😕 No hay horarios disponibles para el *${this._fmtFecha(fecha)}*.\n\nProbá con otro día.`
+            });
+            this.stateService.setWaitingTurnoDate(jid, nodeId);
+            return;
+        }
+
+        const session = {
+            nodeId,
+            fecha,
+            calendarId: cc.calendar_id,
+            duracionMin: cc.slot_duration_minutes || 30,
+            slots
+        };
+        this.stateService.setWaitingTurnoSlot(jid, session);
+
+        let msg = `📅 *Horarios disponibles para el ${this._fmtFecha(fecha)}:*\n\n`;
+        slots.forEach((s, i) => { msg += `*${i + 1}*. ${s.label}\n`; });
+        msg += `\n_Escribí el número del horario que preferís._`;
+        msg += `\n\n_Escribe *v* para elegir otra fecha._`;
+        await this.sendPresenceTyping(sock, jid);
+        await sock.sendMessage(jid, { text: msg });
+    }
+
+    /**
+     * Procesa la elección de horario y solicita el nombre
+     */
+    async _handleTurnoSlot(sock, jid, text) {
+        const session = this.stateService.getWaitingTurnoSlot(jid);
+
+        if (text === 'v' || text === 'atras' || text === 'atrás') {
+            this.stateService.clearWaitingTurnoSlot(jid);
+            this.stateService.setWaitingTurnoDate(jid, session.nodeId);
+            await this.sendPresenceTyping(sock, jid);
+            await sock.sendMessage(jid, { text: '📅 ¿Para qué día querés tu turno?' });
+            return;
+        }
+        if (text === '0') {
+            this.stateService.clearBookingFlow(jid);
+            await this.sendMenu(sock, jid, 'root');
+            return;
+        }
+
+        const idx = parseInt(text, 10) - 1;
+        const slot = session.slots[idx];
+        if (!slot) {
+            await this.sendPresenceTyping(sock, jid);
+            await sock.sendMessage(jid, { text: '❌ Opción inválida. Escribí el número de un horario de la lista.' });
+            return;
+        }
+
+        this.stateService.clearWaitingTurnoSlot(jid);
+        this.stateService.setWaitingTurnoConfirm(jid, { ...session, slot, nombre: '' });
+
+        await this.sendPresenceTyping(sock, jid);
+        await sock.sendMessage(jid, {
+            text: `✅ Elegiste *${this._fmtFecha(session.fecha)} a las ${slot.label}*.\n\n📝 ¿Cuál es tu nombre?`
+        });
+    }
+
+    /**
+     * Procesa la confirmación: recibe el nombre y confirma la reserva
+     */
+    async _handleTurnoConfirm(sock, jid, text) {
+        const session = this.stateService.getWaitingTurnoConfirm(jid);
+
+        if (text === 'v' || text === 'atras' || text === 'atrás') {
+            this.stateService.clearWaitingTurnoConfirm(jid);
+            this.stateService.setWaitingTurnoSlot(jid, session);
+            const msg = `📅 *Horarios disponibles para el ${this._fmtFecha(session.fecha)}:*\n\n` +
+                session.slots.map((s, i) => `*${i + 1}*. ${s.label}`).join('\n') +
+                `\n\n_Escribí el número del horario que preferís._`;
+            await this.sendPresenceTyping(sock, jid);
+            await sock.sendMessage(jid, { text: msg });
+            return;
+        }
+        if (text === '0') {
+            this.stateService.clearBookingFlow(jid);
+            await this.sendMenu(sock, jid, 'root');
+            return;
+        }
+
+        if (!session.nombre) {
+            if (!text || text.trim().length < 2) {
+                await this.sendPresenceTyping(sock, jid);
+                await sock.sendMessage(jid, { text: '📝 Por favor escribí tu nombre.' });
+                return;
+            }
+            session.nombre = text.trim();
+            this.stateService.setWaitingTurnoConfirm(jid, session);
+
+            await this.sendPresenceTyping(sock, jid);
+            await sock.sendMessage(jid, {
+                text: `📋 *Resumen de tu turno:*\n\n` +
+                    `📅 Fecha: *${this._fmtFecha(session.fecha)}*\n` +
+                    `⏰ Hora: *${session.slot.label}*\n` +
+                    `👤 Nombre: *${session.nombre}*\n\n` +
+                    `¿Confirmás la reserva?\n\n*1*. Sí, confirmar\n*2*. No, cancelar`
+            });
+            return;
+        }
+
+        if (text === '1') {
+            this.stateService.clearBookingFlow(jid);
+            try {
+                const event = await calendarService.agendarTurno({
+                    calendarId: session.calendarId,
+                    summary: `Turno ${session.nombre}`,
+                    description: `Turno reservado vía Bot Menu.\nTeléfono: ${jid}\nNombre: ${session.nombre}`,
+                    fechaInicioISO: session.slot.startISO,
+                    fechaFinISO: session.slot.endISO
+                });
+                await botConfigService.registrarTurno({
+                    googleEventId: event.id,
+                    idCliente: this.stateService.clientId,
+                    clienteTelefono: jid,
+                    clienteNombre: session.nombre,
+                    fechaInicio: session.slot.startISO,
+                    fechaFin: session.slot.endISO
+                });
+                await this.sendPresenceTyping(sock, jid);
+                await sock.sendMessage(jid, {
+                    text: `✅ *Turno confirmado!*\n\n` +
+                        `📅 ${this._fmtFecha(session.fecha)} a las *${session.slot.label}*\n` +
+                        `👤 ${session.nombre}\n\nTe esperamos.`
+                });
+            } catch (err) {
+                console.error('[Turnos] Error agendando turno:', err.message);
+                await this.sendPresenceTyping(sock, jid);
+                await sock.sendMessage(jid, { text: '❌ No se pudo confirmar el turno. Intentá de nuevo más tarde.' });
+            }
+            const node = await this.googleSheetsService.getNodeById(session.nodeId);
+            await this.sendMenu(sock, jid, node ? (node.redirigirA || node.parentId || 'root') : 'root');
+            return;
+        }
+
+        if (text === '2') {
+            this.stateService.clearBookingFlow(jid);
+            await this.sendPresenceTyping(sock, jid);
+            await sock.sendMessage(jid, { text: '🚫 Reserva cancelada.' });
+            await this.sendMenu(sock, jid, session.nodeId);
+            return;
+        }
+
+        await this.sendPresenceTyping(sock, jid);
+        await sock.sendMessage(jid, { text: '❌ Respondé *1* para confirmar o *2* para cancelar.' });
+    }
+
+    /**
+     * Devuelve la fecha de hoy en Argentina como 'YYYY-MM-DD'
+     */
+    _argTodayStr() {
+        return new Intl.DateTimeFormat('en-CA', {
+            timeZone: 'America/Argentina/Buenos_Aires',
+            year: 'numeric',
+            month: '2-digit',
+            day: '2-digit'
+        }).format(new Date());
+    }
+
+    /**
+     * Parsea el texto del usuario a 'YYYY-MM-DD'. Acepta DD/MM, DD/MM/YYYY, YYYY-MM-DD, hoy, mañana.
+     */
+    _parseFechaArg(text) {
+        const t = String(text || '').trim().toLowerCase();
+        if (t === 'hoy') return this._argTodayStr();
+        if (t === 'mañana' || t === 'manana') {
+            const hoy = new Date(`${this._argTodayStr()}T12:00:00-03:00`);
+            return new Date(hoy.getTime() + 24 * 3600 * 1000).toISOString().slice(0, 10);
+        }
+
+        let d, m, y;
+        if (/^\d{1,2}\/\d{1,2}(\/\d{2,4})?$/.test(t)) {
+            const parts = t.split('/');
+            d = parseInt(parts[0], 10);
+            m = parseInt(parts[1], 10);
+            y = parts[2] ? parseInt(parts[2], 10) : new Date().getFullYear();
+            if (y < 100) y += 2000;
+        } else if (/^\d{4}-\d{1,2}-\d{1,2}$/.test(t)) {
+            const parts = t.split('-');
+            y = parseInt(parts[0], 10);
+            m = parseInt(parts[1], 10);
+            d = parseInt(parts[2], 10);
+        } else {
+            return null;
+        }
+
+        if (!y || !m || !d || m < 1 || m > 12 || d < 1 || d > 31) return null;
+        const dateStr = `${String(y).padStart(4, '0')}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+        const dt = new Date(`${dateStr}T12:00:00-03:00`);
+        if (isNaN(dt.getTime())) return null;
+        if (dt.toISOString().slice(0, 10) !== dateStr) return null;
+        return dateStr;
+    }
+
+    /**
+     * Formatea 'YYYY-MM-DD' a 'DD/MM/YYYY'
+     */
+    _fmtFecha(fechaStr) {
+        const [y, m, d] = String(fechaStr || '').split('-');
+        return `${d}/${m}/${y}`;
     }
 
     /**

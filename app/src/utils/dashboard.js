@@ -11,6 +11,8 @@ const {
 
 const GoogleDriveService = require('../services/googleDriveService');
 const orderService = require('../services/orderService');
+const botConfigService = require('../services/botConfigService');
+const calendarService = require('../services/googleCalendarService');
 const { helpGuideCSS, helpGuideHTML, helpGuideJS } = require('./helpGuide');
 const { askGemini } = require('./geminiHelper');
 
@@ -382,6 +384,94 @@ class Dashboard {
             }
         });
 
+        // ─── Configuración de tipo de bot + Google Calendar ───
+
+        const getBotIdFromReq = (req) => {
+            const loggedUser = req.user;
+            const botId = (req.body && req.body.botId) || (req.query && req.query.botId) || loggedUser.idCliente;
+            return botId;
+        };
+
+        const assertBotAccess = (req, botId) => {
+            const loggedUser = req.user;
+            if (loggedUser.idCliente !== 'admin' && botId !== loggedUser.idCliente) {
+                return false;
+            }
+            return true;
+        };
+
+        // Obtener configuración del bot (bot_type + calendar_config)
+        router.get('/api/bot-config', async (req, res) => {
+            try {
+                const botId = getBotIdFromReq(req);
+                if (!assertBotAccess(req, botId)) {
+                    return res.status(403).json({ error: 'Unauthorized' });
+                }
+                const cfg = await botConfigService.getBotConfig(botId);
+                res.json({ botId, bot_type: cfg.bot_type, calendar_config: cfg.calendar_config });
+            } catch (error) {
+                console.error('Error obteniendo bot config:', error);
+                res.status(500).json({ error: 'Error al obtener configuración del bot' });
+            }
+        });
+
+        // Guardar configuración del bot
+        router.post('/api/bot-config', async (req, res) => {
+            try {
+                const botId = getBotIdFromReq(req);
+                if (!assertBotAccess(req, botId)) {
+                    return res.status(403).json({ error: 'Unauthorized' });
+                }
+
+                const { bot_type, calendar_config } = req.body || {};
+                const ok = await botConfigService.saveBotConfig(botId, {
+                    bot_type: bot_type || 'CARRITO',
+                    calendar_config: calendar_config || {}
+                });
+                if (!ok) return res.status(500).json({ error: 'No se pudo guardar' });
+                res.json({ success: true });
+            } catch (error) {
+                console.error('Error guardando bot config:', error);
+                res.status(500).json({ error: 'Error al guardar configuración del bot' });
+            }
+        });
+
+        // Probar disponibilidad de un calendario para una fecha (vista previa en el editor)
+        router.get('/api/bot-config/disponibilidad', async (req, res) => {
+            try {
+                const botId = getBotIdFromReq(req);
+                if (!assertBotAccess(req, botId)) {
+                    return res.status(403).json({ error: 'Unauthorized' });
+                }
+
+                const cfg = await botConfigService.getBotConfig(botId);
+                const cc = cfg.calendar_config || {};
+                if (!cc.calendar_id) {
+                    return res.json({ error: 'No hay calendar_id configurado', slots: [] });
+                }
+
+                const hoy = new Intl.DateTimeFormat('en-CA', {
+                    timeZone: 'America/Argentina/Buenos_Aires',
+                    year: 'numeric',
+                    month: '2-digit',
+                    day: '2-digit'
+                }).format(new Date());
+
+                const fecha = req.query.fecha || hoy;
+                const slots = await calendarService.consultarDisponibilidad({
+                    calendarId: cc.calendar_id,
+                    fecha,
+                    duracionMin: cc.slot_duration_minutes || 30,
+                    businessHours: cc.business_hours || {},
+                    minNoticeHours: cc.min_notice_hours || 0
+                });
+                res.json({ fecha, slots });
+            } catch (error) {
+                console.error('Error consultando disponibilidad:', error);
+                res.status(500).json({ error: error.message, slots: [] });
+            }
+        });
+
         // Vista Principal
         router.get('/', async (req, res) => {
             try {
@@ -443,6 +533,7 @@ class Dashboard {
                     .replace('##ARCHIVO##', '')
                     .replace('##COMPLETAR##', '')
                     .replace('##PAGAR##', '')
+                    .replace('##TURNO##', '')
                     .trim();
 
                 return `
@@ -1086,6 +1177,78 @@ ${helpGuideHTML}
                     </table>
                     </div>
 
+                    <!-- Tipo de Bot + Google Calendar -->
+                    <div class="schedule-section">
+                        <h3>🤖 Tipo de Bot</h3>
+                        <p class="muted">Definí qué tipo de operación maneja este bot. Al elegir <strong>"Gestor de Turnos"</strong> se ocultan los módulos de carrito y se habilita la configuración de Google Calendar.</p>
+                        <div class="online-row">
+                            <select id="botTypeInput" onchange="onBotTypeChange()" style="padding: 10px 14px; border: 1px solid var(--border-color); border-radius: 8px; font-size: 15px; width: 100%; max-width: 420px;">
+                                <option value="CARRITO">🛒 Bot de Catálogo / Carrito de Compras (Ventas, Menú, Productos)</option>
+                                <option value="TURNOS">📅 Bot Gestor de Turnos / Agenda (Reservas, Citas)</option>
+                                <option value="FAQ">❓ Bot de Consultas Generales / FAQ</option>
+                            </select>
+                        </div>
+
+                        <div id="calendarSection" style="display: none; margin-top: 18px; padding: 16px; background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 10px;">
+                            <div style="font-weight: 700; color: #166534; margin-bottom: 12px;">📅 Configuración de Google Calendar</div>
+                            <div style="display: flex; flex-direction: column; gap: 12px;">
+                                <div style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap;">
+                                    <label style="font-weight: 600; min-width: 200px;">Calendar ID:<span class="info-icon" style="margin-left:4px;">i<span class="tooltip" style="width: 320px; margin-left: -160px; text-align: left;">
+                                        <strong>¿Cómo obtener el Calendar ID?</strong><br><br>
+                                        1. Abrí <strong>Google Calendar</strong> en el navegador.<br>
+                                        2. Hacé clic en el engranaje ⚙️ → <strong>Configuración</strong>.<br>
+                                        3. En el panel izquierdo, buscá tu calendario y hacé clic en su nombre.<br>
+                                        4. En "Integrar calendario" está el <strong>ID del calendario</strong> (ej: <code>tucalendario@gmail.com</code> o <code>...@group.calendar.google.com</code>).<br><br>
+                                        <strong>¿Cómo darle permisos de edición al bot?</strong><br><br>
+                                        1. En "Configuración del calendario", buscá <strong>Compartir con usuarios específicos</strong>.<br>
+                                        2. Agregá la cuenta de Google del bot: <code>${process.env.ADMIN_EMAIL || 'la cuenta de Google vinculada al bot'}</code><br>
+                                        3. En el rol, elegí <strong>Realizar cambios en eventos</strong> (no solo "Ver").<br>
+                                        4. Aceptá la invitación que llegue a esa cuenta.<br><br>
+                                        💡 Sin este permiso el bot no podrá crear turnos.
+                                    </span></span></label>
+                                    <input type="text" id="calendarIdInput" placeholder="xxxx@gmail.com o /c/...@group.calendar.google.com" style="flex: 1; min-width: 260px; padding: 8px 12px; border: 1px solid var(--border-color); border-radius: 6px; font-size: 14px; box-sizing: border-box;">
+                                </div>
+                                <div style="font-size: 12px; color: #777;">Vinculación: compartí tu calendario con la cuenta de Google vinculada al bot (<code>${process.env.ADMIN_EMAIL || 'cuenta del bot'}</code>) con permisos de edición y pegá su ID. No hay OAuth individual por bot.</div>
+                                <div style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap;">
+                                    <label style="font-weight: 600; min-width: 200px;">Duración del turno (min):</label>
+                                    <input type="number" id="slotDurationInput" value="30" min="5" step="5" style="width: 100px; padding: 8px 12px; border: 1px solid var(--border-color); border-radius: 6px; font-size: 14px;">
+                                </div>
+                                <div style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap;">
+                                    <label style="font-weight: 600; min-width: 200px;">Salto mínimo de reserva (hs):</label>
+                                    <input type="number" id="minNoticeInput" value="2" min="0" style="width: 100px; padding: 8px 12px; border: 1px solid var(--border-color); border-radius: 6px; font-size: 14px;">
+                                    <small style="color:#777;">No permitir turnos con menos de estas horas de anticipación.</small>
+                                </div>
+                            </div>
+
+                            <div style="margin-top: 16px;">
+                                <div style="font-weight: 700; color: #166534; margin-bottom: 8px;">Días y Horarios de Atención del Negocio</div>
+                                <div style="font-size: 12px; color: #777; margin-bottom: 8px;">Estos son los horarios en los que tu <strong>negocio atiende</strong> y hay <strong>turnos disponibles</strong> para reservar. Solo se ofrecerán turnos dentro de estos rangos (hora local de Argentina).<br>
+                                <small>ℹ️ <strong>Distinto de</strong> los "Horarios de Atención del Bot" (más arriba), que definen cuándo el bot responde mensajes.</small></div>
+                                <table id="businessHoursTable" style="width: 100%; max-width: 560px; border-collapse: collapse; font-size: 14px;">
+                                    <thead>
+                                        <tr style="text-align:left; color:#166534;">
+                                            <th style="padding:4px 8px;">Día</th>
+                                            <th style="padding:4px 8px;">Atiende</th>
+                                            <th style="padding:4px 8px;">Desde</th>
+                                            <th style="padding:4px 8px;">Hasta</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="businessHoursBody"></tbody>
+                                </table>
+                            </div>
+
+                            <div class="schedule-actions">
+                                <button class="btn btn-green schedule-save-btn" onclick="probarDisponibilidad()">Probar disponibilidad</button>
+                                <span class="schedule-status" id="availStatus"></span>
+                            </div>
+                        </div>
+
+                        <div class="schedule-actions">
+                            <button class="btn btn-green schedule-save-btn" onclick="saveBotTypeConfig()">Guardar tipo de bot</button>
+                            <span class="schedule-status" id="botTypeStatus"></span>
+                        </div>
+                    </div>
+
                     <!-- Horarios de Atención -->
                     <style>
                         .schedule-section { margin-top: 30px; padding: 20px 24px; border-top: 2px solid var(--border-color); background: var(--bg-box); border-radius: 12px; }
@@ -1108,18 +1271,19 @@ ${helpGuideHTML}
                         .schedule-save-btn:hover { background: var(--primary-hover) !important; color: white !important; border: none !important; }
                     </style>
                     <div class="schedule-section">
-                        <h3>🕒 Horarios de Atención</h3>
-                        <p class="muted">Si el bot está <strong>"online 24/7"</strong> atiende todo el día, todos los días. Si lo destildás, indicá los días y rangos de horario (hora local de Argentina) en los que querés que atienda. Se puede agregar más de un rango por día.</p>
+                        <h3>🕒 Horarios de Atención del Bot</h3>
+                        <p class="muted">Estos son los horarios en los que <strong>el bot atiende y responde mensajes</strong>. Si está <strong>"online 24/7"</strong> responde todo el día, todos los días. Si lo destildás, indicá los días y rangos de horario (hora local de Argentina) en los que querés que responda. Se puede agregar más de un rango por día.<br>
+                        <small>ℹ️ <strong>Distinto de</strong> los "Días y Horarios de Atención" de la configuración de Google Calendar, que definen cuándo hay turnos disponibles del negocio.</small></p>
                         <div class="online-row">
                             <input type="checkbox" id="online247" onchange="toggleScheduleEditor()">
                             <label for="online247" style="margin:0;cursor:pointer;">Bot online 24/7</label>
                         </div>
                         <div id="scheduleEditor" style="display:none; margin-top:8px;">
                             <div id="scheduleDays" class="schedule-days"></div>
-                            <div class="schedule-actions">
-                                <button class="btn btn-green schedule-save-btn" onclick="saveSchedule()">Guardar horarios</button>
-                                <span class="schedule-status" id="scheduleStatus"></span>
-                            </div>
+                        </div>
+                        <div class="schedule-actions">
+                            <button class="btn btn-green schedule-save-btn" onclick="saveSchedule()">Guardar horarios</button>
+                            <span class="schedule-status" id="scheduleStatus"></span>
                         </div>
                     </div>
 
@@ -1140,10 +1304,10 @@ ${helpGuideHTML}
                             
                             <!-- Step 0: Ask if it's an item -->
                             <div id="wizardAsk" style="text-align: center; padding: 30px 20px;">
-                                <p style="font-size: 18px; margin-bottom: 30px; color: var(--text-main);">¿Es un item de compra/pedido?</p>
+                                <p id="wizardAskQuestion" style="font-size: 18px; margin-bottom: 30px; color: var(--text-main);">¿Es un item de compra/pedido?</p>
                                 <div style="display: flex; gap: 20px; justify-content: center;">
-                                    <button type="button" onclick="startItemWizard()" style="padding: 15px 40px; font-size: 16px; font-weight: 600; background: var(--primary-color); color: white; border: none; border-radius: 8px; cursor: pointer; transition: transform 0.2s;" onmouseover="this.style.transform='scale(1.05)'" onmouseout="this.style.transform='scale(1)'">Sí, es un item</button>
-                                    <button type="button" onclick="showFullForm()" style="padding: 15px 40px; font-size: 16px; font-weight: 600; background: var(--bg-box); color: var(--text-muted); border: 2px solid var(--border-color); border-radius: 8px; cursor: pointer; transition: transform 0.2s;" onmouseover="this.style.transform='scale(1.05)'" onmouseout="this.style.transform='scale(1)'">No, formulario completo</button>
+                                    <button id="wizardAskYes" type="button" onclick="startItemWizard()" style="padding: 15px 40px; font-size: 16px; font-weight: 600; background: var(--primary-color); color: white; border: none; border-radius: 8px; cursor: pointer; transition: transform 0.2s;" onmouseover="this.style.transform='scale(1.05)'" onmouseout="this.style.transform='scale(1)'">Sí, es un item</button>
+                                    <button id="wizardAskNo" type="button" onclick="showFullForm()" style="padding: 15px 40px; font-size: 16px; font-weight: 600; background: var(--bg-box); color: var(--text-muted); border: 2px solid var(--border-color); border-radius: 8px; cursor: pointer; transition: transform 0.2s;" onmouseover="this.style.transform='scale(1.05)'" onmouseout="this.style.transform='scale(1)'">No, formulario completo</button>
                                 </div>
                             </div>
 
@@ -1183,7 +1347,7 @@ ${helpGuideHTML}
                                                 </label>
                                                 <textarea id="addMessage" name="message" rows="3" placeholder="Mensaje que enviará el bot..." oninput="updatePreview('add')"></textarea>
                                             </div>
-                                            <div class="form-group" style="margin-bottom: 20px;">
+                                            <div class="form-group" style="margin-bottom: 20px;" id="cartModuleAdd">
                                                 <div style="border:1px solid var(--border-color);border-radius:8px;padding:12px 12px 8px 12px;">
                                                     <div style="font-size:12px;font-weight:700;color:var(--text-main);margin-bottom:8px;">Carrito de compras</div>
                                                     <div class="tags-flex-row" style="display:flex;gap:10px;">
@@ -1214,6 +1378,18 @@ ${helpGuideHTML}
                                                         <div style="flex:1;display:flex;align-items:center;gap:10px;background:#f0fdf4;padding:10px;border-radius:6px;border:1px dashed #86efac;">
                                                             <input type="checkbox" id="addIsPagar" onchange="toggleOrderTag('add', '##PAGAR##')" style="width:16px;height:16px;cursor:pointer;">
                                                             <label for="addIsPagar" style="margin-bottom:0;cursor:pointer;font-size:13px;">Ir a pagar<span class="info-icon" style="margin-left:4px;">i<span class="tooltip">Muestra "p. Ir a pagar" cuando hay items en el carrito. Al escribir p va al primer hijo con Finalizar.</span></span></label>
+                                                        </div>
+                                                        <div style="flex:1;"></div>
+                                                    </div>
+                                                    </div>
+                                            </div>
+                                            <div class="form-group" style="margin-bottom: 20px;" id="turnoModuleAdd">
+                                                <div style="border:1px solid #86efac;border-radius:8px;padding:12px 12px 8px 12px;background:#f0fdf4;">
+                                                    <div style="font-size:12px;font-weight:700;color:#166534;margin-bottom:8px;">Reserva de turno</div>
+                                                    <div class="tags-flex-row" style="display:flex;gap:10px;margin-top:6px;">
+                                                        <div style="flex:1;display:flex;align-items:center;gap:10px;">
+                                                            <input type="checkbox" id="addIsTurno" onchange="toggleOrderTag('add', '##TURNO##')" style="width:16px;height:16px;cursor:pointer;">
+                                                            <label for="addIsTurno" style="margin-bottom:0;cursor:pointer;font-size:13px;">Reserva de turno<span class="info-icon" style="margin-left:4px;">i<span class="tooltip">Inicia el flujo de reserva: fecha → horario → confirmación (requiere Gestor de Turnos).</span></span></label>
                                                         </div>
                                                         <div style="flex:1;"></div>
                                                     </div>
@@ -1346,7 +1522,7 @@ ${helpGuideHTML}
                                             <textarea id="editMessage" name="message" rows="4" oninput="updatePreview('edit')"></textarea>
                                         </div>
                                         <div class="form-group" id="editTagsGroup" style="margin-bottom: 20px;">
-                                            <div style="border:1px solid var(--border-color);border-radius:8px;padding:12px 12px 8px 12px;margin:12px;">
+                                            <div style="border:1px solid var(--border-color);border-radius:8px;padding:12px 12px 8px 12px;margin:12px;" id="cartModuleEdit">
                                                 <div style="font-size:12px;font-weight:700;color:var(--text-main);margin-bottom:8px;">Carrito de compras</div>
                                                 <div class="tags-flex-row" style="display:flex;gap:10px;">
                                                     <div style="flex:1;display:flex;align-items:center;gap:10px;background:#fff3cd;padding:10px;border-radius:6px;border:1px dashed #ffc107;">
@@ -1376,6 +1552,18 @@ ${helpGuideHTML}
                                                     <div style="flex:1;display:flex;align-items:center;gap:10px;background:#f0fdf4;padding:10px;border-radius:6px;border:1px dashed #86efac;">
                                                         <input type="checkbox" id="editIsPagar" onchange="toggleOrderTag('edit', '##PAGAR##')" style="width:16px;height:16px;cursor:pointer;">
                                                         <label for="editIsPagar" style="margin-bottom:0;cursor:pointer;color:#166534;font-size:13px;">Ir a pagar<span class="info-icon" style="margin-left:4px;">i<span class="tooltip">Muestra "p. Ir a pagar" cuando hay items en el carrito. Al escribir p va al primer hijo con Finalizar.</span></span></label>
+                                                    </div>
+                                                    <div style="flex:1;"></div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <div class="form-group" style="margin-bottom: 20px;" id="turnoModuleEdit">
+                                            <div style="border:1px solid #86efac;border-radius:8px;padding:12px 12px 8px 12px;background:#f0fdf4;">
+                                                <div style="font-size:12px;font-weight:700;color:#166534;margin-bottom:8px;">Reserva de turno</div>
+                                                <div class="tags-flex-row" style="display:flex;gap:10px;margin-top:6px;">
+                                                    <div style="flex:1;display:flex;align-items:center;gap:10px;">
+                                                        <input type="checkbox" id="editIsTurno" onchange="toggleOrderTag('edit', '##TURNO##')" style="width:16px;height:16px;cursor:pointer;">
+                                                        <label for="editIsTurno" style="margin-bottom:0;cursor:pointer;color:#166534;font-size:13px;">Reserva de turno<span class="info-icon" style="margin-left:4px;">i<span class="tooltip">Inicia el flujo de reserva: fecha → horario → confirmación (requiere Gestor de Turnos).</span></span></label>
                                                     </div>
                                                     <div style="flex:1;"></div>
                                                 </div>
@@ -1579,6 +1767,160 @@ ${helpGuideHTML}
                         renderSchedule();
                         // --- Fin Horarios ---
 
+                        // --- Tipo de Bot + Google Calendar ---
+                        const BOT_TYPE_LABELS = { '1': 'Lunes', '2': 'Martes', '3': 'Miércoles', '4': 'Jueves', '5': 'Viernes', '6': 'Sábado', '0': 'Domingo' };
+                        const BOT_TYPE_ORDER = ['1', '2', '3', '4', '5', '6', '0'];
+                        let botType = 'CARRITO';
+                        let calendarConfig = { calendar_id: '', time_zone: 'America/Argentina/Buenos_Aires', slot_duration_minutes: 30, business_hours: {}, min_notice_hours: 2 };
+
+                        function renderBusinessHours() {
+                            const body = document.getElementById('businessHoursBody');
+                            if (!body) return;
+                            const bh = calendarConfig.business_hours || {};
+                            body.innerHTML = BOT_TYPE_ORDER.map(function(k) {
+                                const ranges = bh[k] || [];
+                                const r = ranges[0] || { desde: '09:00', hasta: '18:00' };
+                                return '<tr>' +
+                                    '<td style="padding:6px 8px; font-weight:600;">' + BOT_TYPE_LABELS[k] + '</td>' +
+                                    '<td style="padding:6px 8px;"><input type="checkbox" id="bh_day_' + k + '" ' + (ranges.length ? 'checked' : '') + ' style="width:17px;height:17px;cursor:pointer;"></td>' +
+                                    '<td style="padding:6px 8px;"><input type="time" id="bh_from_' + k + '" value="' + r.desde + '" style="padding:6px 8px;border:1px solid var(--border-color);border-radius:6px;"></td>' +
+                                    '<td style="padding:6px 8px;"><input type="time" id="bh_to_' + k + '" value="' + r.hasta + '" style="padding:6px 8px;border:1px solid var(--border-color);border-radius:6px;"></td>' +
+                                    '</tr>';
+                            }).join('');
+                        }
+
+                        function collectBusinessHours() {
+                            const bh = {};
+                            BOT_TYPE_ORDER.forEach(function(k) {
+                                const box = document.getElementById('bh_day_' + k);
+                                if (!box || !box.checked) return;
+                                const desde = document.getElementById('bh_from_' + k).value;
+                                const hasta = document.getElementById('bh_to_' + k).value;
+                                if (desde && hasta) bh[k] = [{ desde: desde, hasta: hasta }];
+                            });
+                            return bh;
+                        }
+
+                        function onBotTypeChange() {
+                            const type = document.getElementById('botTypeInput').value;
+                            document.getElementById('calendarSection').style.display = type === 'TURNOS' ? 'block' : 'none';
+                            toggleCartModules();
+                            updateWizardAsk();
+                        }
+
+                        function updateWizardAsk() {
+                            const el = document.getElementById('wizardAskQuestion');
+                            const yes = document.getElementById('wizardAskYes');
+                            const no = document.getElementById('wizardAskNo');
+                            if (!el) return;
+                            const type = document.getElementById('botTypeInput').value;
+                            if (type === 'TURNOS') {
+                                el.textContent = '¿Es un servicio/turno a reservar?';
+                                yes.textContent = 'Sí, es un turno';
+                                no.textContent = 'No, formulario completo';
+                            } else if (type === 'FAQ') {
+                                el.textContent = '¿Es una respuesta de consulta (FAQ)?';
+                                yes.textContent = 'Sí, es una consulta';
+                                no.textContent = 'No, formulario completo';
+                            } else {
+                                el.textContent = '¿Es un item de compra/pedido?';
+                                yes.textContent = 'Sí, es un item';
+                                no.textContent = 'No, formulario completo';
+                            }
+                        }
+
+                        function toggleCartModules() {
+                            const type = document.getElementById('botTypeInput') ? document.getElementById('botTypeInput').value : 'CARRITO';
+                            const showCart = type === 'CARRITO';
+                            const showTurno = type === 'TURNOS';
+                            const cartAdd = document.getElementById('cartModuleAdd');
+                            if (cartAdd) cartAdd.style.display = showCart ? '' : 'none';
+                            const cartEdit = document.getElementById('cartModuleEdit');
+                            if (cartEdit) cartEdit.style.display = showCart ? '' : 'none';
+                            const turnoAdd = document.getElementById('turnoModuleAdd');
+                            if (turnoAdd) turnoAdd.style.display = showTurno ? '' : 'none';
+                            const turnoEdit = document.getElementById('turnoModuleEdit');
+                            if (turnoEdit) turnoEdit.style.display = showTurno ? '' : 'none';
+                        }
+
+                        function loadBotConfig() {
+                            fetch('/app/api/bot-config?botId=' + encodeURIComponent(botId))
+                                .then(function(r) { return r.json(); })
+                                .then(function(d) {
+                                    if (!d || d.error) return;
+                                    botType = d.bot_type || 'CARRITO';
+                                    calendarConfig = d.calendar_config || calendarConfig;
+                                    document.getElementById('botTypeInput').value = botType;
+                                    document.getElementById('calendarIdInput').value = calendarConfig.calendar_id || '';
+                                    document.getElementById('slotDurationInput').value = calendarConfig.slot_duration_minutes || 30;
+                                    document.getElementById('minNoticeInput').value = calendarConfig.min_notice_hours || 0;
+                                    renderBusinessHours();
+                                    onBotTypeChange();
+                                    toggleCartModules();
+                                    updateWizardAsk();
+                                })
+                                .catch(function(e) { console.error('Error cargando bot config:', e); });
+                        }
+
+                        function saveBotTypeConfig() {
+                            const status = document.getElementById('botTypeStatus');
+                            if (!status) return;
+                            status.textContent = 'Guardando...';
+                            const payload = {
+                                botId: botId,
+                                bot_type: document.getElementById('botTypeInput').value,
+                                calendar_config: {
+                                    calendar_id: document.getElementById('calendarIdInput').value.trim(),
+                                    time_zone: 'America/Argentina/Buenos_Aires',
+                                    slot_duration_minutes: parseInt(document.getElementById('slotDurationInput').value, 10) || 30,
+                                    min_notice_hours: parseInt(document.getElementById('minNoticeInput').value, 10) || 0,
+                                    business_hours: collectBusinessHours()
+                                }
+                            };
+                            fetch('/app/api/bot-config', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify(payload)
+                            }).then(function(r) { return r.json(); }).then(function(d) {
+                                if (d.success) {
+                                    botType = payload.bot_type;
+                                    calendarConfig = payload.calendar_config;
+                                    status.textContent = '✅ Tipo de bot guardado';
+                                } else {
+                                    status.textContent = '❌ ' + (d.error || 'Error al guardar');
+                                }
+                                setTimeout(function() { status.textContent = ''; }, 3000);
+                            }).catch(function() {
+                                status.textContent = '❌ Error de conexión';
+                                setTimeout(function() { status.textContent = ''; }, 3000);
+                            });
+                        }
+
+                        function probarDisponibilidad() {
+                            const status = document.getElementById('availStatus');
+                            if (!status) return;
+                            status.textContent = 'Consultando...';
+                            fetch('/app/api/bot-config/disponibilidad?botId=' + encodeURIComponent(botId))
+                                .then(function(r) { return r.json(); })
+                                .then(function(d) {
+                                    if (d.error) {
+                                        status.textContent = '❌ ' + d.error;
+                                    } else if (!d.slots || d.slots.length === 0) {
+                                        status.textContent = '😕 Sin horarios disponibles para hoy (' + d.fecha + ')';
+                                    } else {
+                                        status.textContent = '✅ ' + d.slots.length + ' horarios disponibles hoy: ' + d.slots.map(function(s) { return s.label; }).join(', ');
+                                    }
+                                    setTimeout(function() { status.textContent = ''; }, 8000);
+                                })
+                                .catch(function() {
+                                    status.textContent = '❌ Error de conexión';
+                                    setTimeout(function() { status.textContent = ''; }, 3000);
+                                });
+                        }
+
+                        loadBotConfig();
+                        // --- Fin Tipo de Bot ---
+
 ${helpGuideJS}
                         drawRobot('botLogoDash');
                         drawRobot('botLogoSupport');
@@ -1659,7 +2001,8 @@ ${helpGuideJS}
                             nextTrigger: 1,
                             categoryName: '',
                             addPagar: false,
-                            addArchivo: false
+                            addArchivo: false,
+                            isTurno: false
                         };
 
                         function openAddModal(idx) {
@@ -1694,7 +2037,8 @@ ${helpGuideJS}
                                 nextTrigger: nextNumber,
                                 categoryName: '',
                                 addPagar: false,
-                                addArchivo: false
+                                addArchivo: false,
+                                isTurno: false
                             };
 
                             // Show initial question
@@ -1715,6 +2059,11 @@ ${helpGuideJS}
 
                         function startItemWizard() {
                             document.getElementById('addModalTitle').textContent = 'Crear Items de Compra';
+                            const botTypeEl = document.getElementById('botTypeInput');
+                            wizardState.isTurno = botTypeEl ? botTypeEl.value === 'TURNOS' : false;
+                            if (wizardState.isTurno) {
+                                document.getElementById('addModalTitle').textContent = 'Crear Servicios / Turnos';
+                            }
                             document.getElementById('wizardAsk').style.display = 'none';
                             document.getElementById('addFullForm').style.display = 'none';
                             document.getElementById('wizardContainer').style.display = 'block';
@@ -1816,6 +2165,10 @@ ${helpGuideJS}
                                 \`;
                             } else if (wizardState.step === 6) {
                                 // Ask "Pedir archivo"
+                                if (wizardState.isTurno) {
+                                    wizFinish();
+                                    return;
+                                }
                                 container.innerHTML = \`
                                     <p style="font-size: 16px; font-weight: 600; margin-bottom: 15px; color: var(--text-main);">\u00bfPedir comprobante/archivo al finalizar?</p>
                                     <p style="font-size: 13px; color: var(--text-muted); margin-bottom: 15px;">El bot\u00f3n "Finalizar" solicitar\u00e1 un archivo (ej: comprobante de pago).</p>
@@ -1833,7 +2186,7 @@ ${helpGuideJS}
                             const title = document.getElementById('wizTitleInput').value.trim();
                             if (!title) { alert('Por favor ingresá un título.'); return; }
                             wizardState.items[wizardState.currentItemIdx] = { title: title, price: '', askQty: false };
-                            wizardState.step = 1;
+                            wizardState.step = wizardState.isTurno ? 3 : 1;
                             showWizardQuestion();
                         }
 
@@ -1842,7 +2195,7 @@ ${helpGuideJS}
                             if (wizardState.items[wizardState.currentItemIdx]) {
                                 wizardState.items[wizardState.currentItemIdx].price = price;
                             }
-                            wizardState.step = 2;
+                            wizardState.step = wizardState.isTurno ? 3 : 2;
                             showWizardQuestion();
                         }
 
@@ -1878,7 +2231,7 @@ ${helpGuideJS}
                             const name = document.getElementById('wizCategoryInput').value.trim();
                             if (!name) { alert('Por favor ingres\u00e1 un nombre para la categor\u00eda.'); return; }
                             wizardState.categoryName = name;
-                            wizardState.step = 5;
+                            wizardState.step = wizardState.isTurno ? 6 : 5;
                             showWizardQuestion();
                         }
 
@@ -1938,7 +2291,7 @@ ${helpGuideJS}
                                 const nodeId = prefix + '_opcion' + (trigger);
                                 document.getElementById('wizProgress').textContent = '(' + (i+1) + '/' + (items.length + 1) + ')';
 
-                                let message = item.askQty ? '##CANTIDAD##' : '##PEDIDO##';
+                                let message = wizardState.isTurno ? '##TURNO##' : (item.askQty ? '##CANTIDAD##' : '##PEDIDO##');
 
                                 try {
                                     await fetch('/app/api/add-node', {
@@ -1963,10 +2316,10 @@ ${helpGuideJS}
                             }
 
                             // Check if parent already has a FINALIZAR node (avoid duplicates)
-                            const existingFinal = menuData.find(function(n) {
+                            const existingFinal = wizardState.isTurno ? null : menuData.find(function(n) {
                                 return n.parentId === parentId && n.message && n.message.indexOf('##FINALIZAR##') !== -1;
                             });
-                            if (!existingFinal) {
+                            if (!wizardState.isTurno && !existingFinal) {
                                 document.getElementById('wizProgress').textContent = '(' + (items.length + 1) + '/' + (items.length + 1) + ') - Creando Finalizar...';
                                 const finalId = prefix + '_opcion' + (trigger);
                                 let finalMessage = '##FINALIZAR##';
@@ -2017,7 +2370,11 @@ ${helpGuideJS}
                             // Show preview if there are items
                             if (items.length > 0) {
                                 const nextNum = wizardState.nextTrigger + items.length;
-                                content += '<div class="wa-bubble" style="background: #f3f0ff; border: 1px dashed #d1d1ff;">✅ Finalizar (' + nextNum + ')</div>\\n';
+                                if (wizardState.isTurno) {
+                                    content += '<div class="wa-bubble" style="background: #f0fdf4; border: 1px dashed #86efac;">📅 Reservar turno (' + nextNum + ')</div>\\n';
+                                } else {
+                                    content += '<div class="wa-bubble" style="background: #f3f0ff; border: 1px dashed #d1d1ff;">✅ Finalizar (' + nextNum + ')</div>\\n';
+                                }
                             }
 
                             chatBody.innerHTML = content;
@@ -2043,7 +2400,7 @@ ${helpGuideJS}
                                 });
                                 listHtml += '<div style="border-top: 1px dashed var(--border-color); margin-top: 6px; padding-top: 6px; display: flex; align-items: center; gap: 8px;">' +
                                     '<span style="background: #e9ecef; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 600; color: #666;">' + (wizardState.nextTrigger + items.length) + '</span>' +
-                                    '<span style="flex: 1; font-size: 13px; color: #6f42c1;">✅ Finalizar (auto)</span>' +
+                                    '<span style="flex: 1; font-size: 13px; color: ' + (wizardState.isTurno ? '#166534' : '#6f42c1') + ';">' + (wizardState.isTurno ? '📅 Reservar turno (auto)' : '✅ Finalizar (auto)') + '</span>' +
                                     '</div>';
                                 listHtml += '</div>';
                                 listContainer.innerHTML = listHtml;
@@ -2074,6 +2431,8 @@ ${helpGuideJS}
                             document.getElementById('editIsData').checked = isData;
                             document.getElementById('editIsArchivo').checked = isArchivo;
                             document.getElementById('editIsPagar').checked = isPagar;
+                            const editIsTurno = document.getElementById('editIsTurno');
+                            if (editIsTurno) editIsTurno.checked = node.message && node.message.includes('##TURNO##');
 
                             const strictGroup = document.getElementById('strictTriggerGroup');
                             const strictCheckbox = document.getElementById('editStrictTrigger');
@@ -2090,6 +2449,8 @@ ${helpGuideJS}
                                 editTagsGroup.style.display = 'none';
                                 titleInput.readOnly = true;
                                 titleInput.style.background = '#eee';
+                                const turnoModuleEditEl = document.getElementById('turnoModuleEdit');
+                                if (turnoModuleEditEl) turnoModuleEditEl.style.display = 'none';
                             } else {
                                 strictGroup.style.display = 'none';
                                 strictCheckbox.checked = false;
@@ -2098,6 +2459,7 @@ ${helpGuideJS}
                                 editTagsGroup.style.display = 'flex';
                                 titleInput.readOnly = false;
                                 titleInput.style.background = 'var(--bg-box)';
+                                toggleCartModules();
                             }
 
                             // Aplicamos el estado del título basado en si es DATOS después de la lógica de root
@@ -2212,6 +2574,7 @@ ${helpGuideJS}
                                 .replace('##ARCHIVO##', '')
                                 .replace('##COMPLETAR##', '')
                                 .replace('##PAGAR##', '')
+                                .replace('##TURNO##', '')
                                 .replace('_Este es el nodo de inicio, su mensaje no se muestra directamente en el bot._', '')
                                 .trim();
 
@@ -2249,6 +2612,7 @@ ${helpGuideJS}
                                 .replace('##ARCHIVO##', '')
                                 .replace('##COMPLETAR##', '')
                                 .replace('##PAGAR##', '')
+                                .replace('##TURNO##', '')
                                 .replace('_Este es el nodo de inicio, su mensaje no se muestra directamente en el bot._', '')
                                 .trim();
                             
@@ -2438,6 +2802,7 @@ ${helpGuideJS}
                                 .replace('##DATOS##', '')
                                 .replace('##ARCHIVO##', '')
                                 .replace('##PAGAR##', '')
+                                .replace('##TURNO##', '')
                                 .trim();
                             
                             if (tag === '##PAGAR##' || tag === '##FINALIZAR##') {
@@ -2454,26 +2819,38 @@ ${helpGuideJS}
                                 return;
                             }
                             
+                            const turnoCheckbox = document.getElementById(type === 'edit' ? 'editIsTurno' : 'addIsTurno');
+                            
                             if (tag === '##PEDIDO##' && isOrderCheckbox.checked) {
                                 isQtyCheckbox.checked = false;
                                 isDataCheckbox.checked = false;
                                 isArchivoCheckbox.checked = false;
+                                if (turnoCheckbox) turnoCheckbox.checked = false;
                                 messageEl.value = currentVal + (currentVal ? '\\n\\n' : '') + '##PEDIDO##';
                             } else if (tag === '##CANTIDAD##' && isQtyCheckbox.checked) {
                                 isOrderCheckbox.checked = false;
                                 isDataCheckbox.checked = false;
                                 isArchivoCheckbox.checked = false;
+                                if (turnoCheckbox) turnoCheckbox.checked = false;
                                 messageEl.value = currentVal + (currentVal ? '\\n\\n' : '') + '##CANTIDAD##';
                             } else if (tag === '##DATOS##' && isDataCheckbox.checked) {
                                 isOrderCheckbox.checked = false;
                                 isQtyCheckbox.checked = false;
                                 isArchivoCheckbox.checked = false;
+                                if (turnoCheckbox) turnoCheckbox.checked = false;
                                 messageEl.value = currentVal + (currentVal ? '\\n\\n' : '') + '##DATOS##';
                             } else if (tag === '##ARCHIVO##' && isArchivoCheckbox.checked) {
                                 isOrderCheckbox.checked = false;
                                 isQtyCheckbox.checked = false;
                                 isDataCheckbox.checked = false;
+                                if (turnoCheckbox) turnoCheckbox.checked = false;
                                 messageEl.value = currentVal + (currentVal ? '\\n\\n' : '') + '##ARCHIVO##';
+                            } else if (tag === '##TURNO##' && turnoCheckbox && turnoCheckbox.checked) {
+                                isOrderCheckbox.checked = false;
+                                isQtyCheckbox.checked = false;
+                                isDataCheckbox.checked = false;
+                                isArchivoCheckbox.checked = false;
+                                messageEl.value = currentVal + (currentVal ? '\\n\\n' : '') + '##TURNO##';
                             } else {
                                 messageEl.value = currentVal;
                             }

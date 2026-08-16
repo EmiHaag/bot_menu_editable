@@ -173,7 +173,7 @@ const helpGuideHTML = `
                                 <p><strong>Título</strong> — El texto que ve el usuario en el menú (ej: <code>Hamburguesa</code>).</p>
                                 <p><strong>Mensaje</strong> — Lo que responde el bot cuando el usuario elige esta opción.</p>
                                 <p><strong>Precio</strong> — Opcional. Si lo ponés, se muestra al lado del título (ej: <code>$1500</code>).</p>
-                                <p><strong>Carrito de compras</strong> — Grupo de checkboxes que activan comportamientos especiales: <span class="tag">✅ Pedido</span> <span class="tag">🔢 Cantidad</span> <span class="tag">🏁 Finalizar</span> <span class="tag">📝 Datos</span> <span class="tag">📎 Archivo</span> <span class="tag">💳 Pagar</span>.</p>
+                                <p><strong>Carrito de compras</strong> — Grupo de checkboxes que activan comportamientos especiales: <span class="tag">✅ Pedido</span> <span class="tag">🔢 Cantidad</span> <span class="tag">🏁 Finalizar</span> <span class="tag">📝 Datos</span> <span class="tag">📎 Archivo</span> <span class="tag">💳 Pagar</span> <span class="tag">📅 Turno</span>.</p>
                             </div>
                         </details>
 
@@ -357,10 +357,97 @@ const helpGuideHTML = `
                                         <span class="tag">##ARCHIVO##</span> Espera archivo/imagen<br>
                                         <span class="tag">##FINALIZAR##</span> Finaliza el pedido (se oculta de la lista si el menú tiene ##PAGAR##)<br>
                                         <span class="tag">##COMPLETAR##</span> Completa item con variante<br>
-                                        <span class="tag">##PAGAR##</span> Muestra opción "Ir a pagar" (combinable)
+                                        <span class="tag">##PAGAR##</span> Muestra opción "Ir a pagar" (combinable)<br>
+                                        <span class="tag">##TURNO##</span> Inicia el flujo de reserva (requiere Gestor de Turnos)
                                     </div>
                                 </div>
 
+                            </div>
+                        </details>
+                    <details class="help-section">
+                            <summary>📅 ¿Cómo crear un Gestor de Turnos?</summary>
+                            <div class="content">
+                                <p>Si tu negocio agenda citas o reservas (consultas, turnos, citas), podés convertir el bot en un <strong>Gestor de Turnos</strong> integrado con Google Calendar. El cliente elige fecha y horario en WhatsApp y el turno se crea automáticamente en tu calendario.</p>
+                                <div class="step">
+                                    <div class="step-num">1</div>
+                                    <div class="step-text">
+                                        <strong>Configurá el tipo de bot</strong>
+                                        En la sección <strong>"🤖 Tipo de Bot"</strong> elegí <strong>"Gestor de Turnos / Agenda"</strong>.
+                                    </div>
+                                </div>
+                                <div class="step">
+                                    <div class="step-num">2</div>
+                                    <div class="step-text">
+                                        <strong>Configurá el Google Calendar</strong>
+                                        Pegá el <strong>Calendar ID</strong>, definí la <strong>duración del turno</strong> (ej: 30 min) y el <strong>salto mínimo de reserva</strong>. También marcá los <strong>días y horarios de atención</strong>.<br>
+                                        <small>ℹ️ El calendario debe estar compartido con la cuenta de Google del bot (con permisos de edición). Ver la guía del "?" del campo Calendar ID.</small>
+                                    </div>
+                                </div>
+                                <div class="step">
+                                    <div class="step-num">3</div>
+                                    <div class="step-text">
+                                        <strong>Probar la disponibilidad</strong>
+                                        Usá el botón <strong>"Probar disponibilidad"</strong> para ver los horarios libres del día antes de guardar.
+                                    </div>
+                                </div>
+                                <div class="step">
+                                    <div class="step-num">4</div>
+                                    <div class="step-text">
+                                        <strong>Guardá el tipo de bot</strong>
+                                        Hacé clic en <strong>"Guardar tipo de bot"</strong> para persistir la configuración.
+                                    </div>
+                                </div>
+                                <div class="step">
+                                    <div class="step-num">5</div>
+                                    <div class="step-text">
+                                        <strong>Creá el nodo de reserva</strong>
+                                        Agregá un nodo con el tag <span class="tag">📅 Turno</span> (o escribí <code>##TURNO##</code> en el mensaje). Cuando el cliente lo elija, arranca el flujo de reserva.
+                                    </div>
+                                </div>
+                                <div class="example">
+                                    💡 <strong>Flujo en WhatsApp:</strong> El cliente escribe la fecha (ej: <code>25/12</code>) → elige un horario disponible → escribe su nombre → confirma con <code>1</code>. El turno queda creado en Google Calendar.
+                                </div>
+                                <div class="example">
+                                    🔄 <strong>Comandos del flujo:</strong> <code>v</code> vuelve al paso anterior y <code>0</code> vuelve al menú principal.
+                                </div>
+                            </div>
+                        </details>
+
+                        <details class="help-section">
+                            <summary>🌐 ¿Cómo compartir mi calendario con el bot?</summary>
+                            <div class="content">
+                                <p>Para que el bot pueda consultar y crear turnos, tu calendario debe estar compartido con la <strong>cuenta de Google del bot</strong> con permisos de <strong>edición</strong>.</p>
+                                <div class="step">
+                                    <div class="step-num">1</div>
+                                    <div class="step-text">
+                                        <strong>Abrí la configuración del calendario</strong>
+                                        En Google Calendar, hacé clic en el engranaje ⚙️ → <strong>Configuración</strong> → elegí tu calendario.
+                                    </div>
+                                </div>
+                                <div class="step">
+                                    <div class="step-num">2</div>
+                                    <div class="step-text">
+                                        <strong>Copiá el Calendar ID</strong>
+                                        En la sección <strong>"Integrar calendario"</strong> está el ID (ej: <code>tucalendario@gmail.com</code>). Pegalo en el campo <strong>Calendar ID</strong> del dashboard.
+                                    </div>
+                                </div>
+                                <div class="step">
+                                    <div class="step-num">3</div>
+                                    <div class="step-text">
+                                        <strong>Compartí con la cuenta del bot</strong>
+                                        En <strong>"Compartir con usuarios específicos"</strong> agregá la cuenta del bot (la que figura en el "?" del campo Calendar ID) y elegí el rol <strong>"Realizar cambios en eventos"</strong>.
+                                    </div>
+                                </div>
+                                <div class="step">
+                                    <div class="step-num">4</div>
+                                    <div class="step-text">
+                                        <strong>Aceptá la invitación</strong>
+                                        Entrá a la cuenta del bot y aceptá el correo de invitación al calendario.
+                                    </div>
+                                </div>
+                                <div class="example">
+                                    ⚠️ <strong>Importante:</strong> Sin permisos de edición el bot no podrá crear turnos en tu calendario.
+                                </div>
                             </div>
                         </details>
                     </div>`;

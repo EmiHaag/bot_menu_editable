@@ -127,6 +127,50 @@ class StateService {
     clearWaitingForFile(jid) {
         this.cache.del(this._getKey(jid) + ':waiting_file');
     }
+
+    // ─── Flujo de turnos (Gestor de Turnos / Google Calendar) ───
+
+    setWaitingTurnoDate(jid, nodeId) {
+        this.cache.set(this._getKey(jid) + ':turno_date', nodeId, 600);
+    }
+
+    getWaitingTurnoDate(jid) {
+        return this.cache.get(this._getKey(jid) + ':turno_date');
+    }
+
+    clearWaitingTurnoDate(jid) {
+        this.cache.del(this._getKey(jid) + ':turno_date');
+    }
+
+    setWaitingTurnoSlot(jid, session) {
+        this.cache.set(this._getKey(jid) + ':turno_slot', session, 600);
+    }
+
+    getWaitingTurnoSlot(jid) {
+        return this.cache.get(this._getKey(jid) + ':turno_slot');
+    }
+
+    clearWaitingTurnoSlot(jid) {
+        this.cache.del(this._getKey(jid) + ':turno_slot');
+    }
+
+    setWaitingTurnoConfirm(jid, session) {
+        this.cache.set(this._getKey(jid) + ':turno_confirm', session, 600);
+    }
+
+    getWaitingTurnoConfirm(jid) {
+        return this.cache.get(this._getKey(jid) + ':turno_confirm');
+    }
+
+    clearWaitingTurnoConfirm(jid) {
+        this.cache.del(this._getKey(jid) + ':turno_confirm');
+    }
+
+    clearBookingFlow(jid) {
+        this.cache.del(this._getKey(jid) + ':turno_date');
+        this.cache.del(this._getKey(jid) + ':turno_slot');
+        this.cache.del(this._getKey(jid) + ':turno_confirm');
+    }
 }
 
 module.exports = StateService;

@@ -24,7 +24,14 @@ SESSION_SECRET=<clave-secreta-aleatoria>
 ```
 NEON_DATABASE_URL=postgresql://neondb_owner:<password>@<endpoint>.neon.tech/<dbname>?sslmode=require
 ```
-La tabla `terms_approvals` se crea automáticamente al iniciar el servidor.
+Las tablas `terms_approvals`, `bots` y `turnos` se crean automáticamente al iniciar el servidor.
+
+### Autenticación Google (OAuth2)
+```
+OAUTH_CREDENTIALS_CONTENT=<JSON credenciales cliente OAuth>
+OAUTH_TOKEN_CONTENT=<JSON token de acceso + refresh_token>
+```
+**Importante**: para el Gestor de Turnos, el token debe incluir el scope `https://www.googleapis.com/auth/calendar` además de `spreadsheets` y `drive`. Para re-generarlo con los scopes actualizados ejecutá localmente `node auth_calendar.js`, aprobá el consentimiento (servidor local en `http://localhost:3000`) y pegá el nuevo JSON en `OAUTH_TOKEN_CONTENT`.
 
 ### Email (SMTP) - Recuperación de contraseña y bienvenida
 ```

@@ -107,6 +107,8 @@ Cada checkbox agrega un tag especial al mensaje del nodo:
 
 ##PAGAR## (💳) — Muestra la opción *p*. Ir a pagar en el menú cuando hay items en el carrito. Al escribir "p", el bot busca el primer hijo con ##FINALIZAR## y comienza el flujo de checkout. Se puede combinar con cualquier tag.
 
+##TURNO## (📅) — Inicia el flujo de reserva de turnos. Requiere que el bot esté configurado como "Gestor de Turnos" (tipo TURNOS) con un Google Calendar configurado. El usuario elige fecha, horario y confirma su turno, que se crea automáticamente en el calendario. Excluyente con PEDIDO, CANTIDAD, DATOS y ARCHIVO.
+
 8. RedirigirA: Control total de navegación
 El campo RedirigirA (columna I en la planilla, selector en el dashboard) te permite decidir exactamente a dónde va el usuario después de procesar un nodo, sin depender de la jerarquía de parentId.
 
@@ -151,7 +153,53 @@ Cálculo de totales:
   - "2 x Pepperoni (Grande)" → 2 × $12000 = $24000
   - Se muestra el total en el resumen del pedido
 
-10. Resolución de problemas comunes
+10. Tutorial: ¿Cómo crear un Gestor de Turnos (Google Calendar)?
+Podés transformar tu bot en un gestor de turnos o citas. El cliente reserva en WhatsApp eligiendo fecha y horario, y el turno se crea automáticamente en tu Google Calendar.
+
+¿Qué necesitás?
+1. Un calendario de Google (ej: el tuyo personal o uno nuevo específico para turnos).
+2. Compartir ese calendario con la cuenta de Google del bot con permisos de EDICIÓN ("Realizar cambios en eventos"). Sin ese permiso el bot no podrá crear turnos.
+
+Configuración en el dashboard:
+Paso 1 (Elegir el tipo de bot): En la sección "🤖 Tipo de Bot", seleccioná "Gestor de Turnos / Agenda".
+
+Paso 2 (Configurar el calendario): En la sección "Configuración de Google Calendar" que se despliega:
+  - Calendar ID: Pegá el ID de tu calendario. Para obtenerlo, en Google Calendar entrá a Configuración (engranaje), elegí tu calendario y en "Integrar calendario" copiá el ID (ej: tucalendario@gmail.com o algo@group.calendar.google.com).
+  - Duración del turno (min): cuántos minutos dura cada turno (ej: 30).
+  - Salto mínimo de reserva (hs): no permitir turnos con menos de estas horas de anticipación.
+  - Días y Horarios de Atención: marcá los días que atiende tu negocio y el rango horario de cada día (hora local de Argentina).
+
+Paso 3 (Probar la disponibilidad): Usá el botón "Probar disponibilidad" para ver los horarios libres del día. Esto confirma que la configuración y el permiso de edición funcionan.
+
+Paso 4 (Guardar): Hacé clic en "Guardar tipo de bot".
+
+Paso 5 (Crear el nodo de reserva): En el editor, agregá un nodo con el checkbox "Reserva de turno" (o escribí el tag ##TURNO## en su mensaje). Cuando el usuario elija esa opción, comienza el flujo de reserva.
+
+Cómo funciona en WhatsApp:
+  1. El usuario elige la opción de reserva (nodo con ##TURNO##).
+  2. El bot le pide la fecha. Acepta formatos como 25/12, 25/12/2026, o las palabras "hoy" y "mañana".
+  3. El bot consulta la disponibilidad real del calendario y muestra los horarios libres numerados.
+  4. El usuario elige un horario y escribe su nombre.
+  5. El bot muestra el resumen (fecha, hora, nombre) y pide confirmar con 1 (confirmar) o 2 (cancelar).
+  6. Al confirmar, el turno se crea en Google Calendar y se registra en la base de datos.
+
+Comandos del flujo de turnos:
+  - v: vuelve al paso anterior (a elegir fecha u horario).
+  - 0: vuelve al menú principal.
+  - Cualquier otra cosa en el paso de horario: elige el número del horario disponible.
+
+Compartir el calendario con el bot:
+  1. En Google Calendar, engranaje → Configuración → elegí tu calendario.
+  2. En "Compartir con usuarios específicos", agregá la cuenta de Google del bot (la que figura en el "?" del campo Calendar ID del dashboard).
+  3. Elegí el rol "Realizar cambios en eventos".
+  4. Aceptá la invitación al calendario desde la cuenta del bot.
+
+Problemas comunes:
+  - "El servicio de turnos no está configurado": el bot_type no es TURNOS o falta el Calendar ID.
+  - "No hay horarios disponibles": revisá que el día esté marcado en los horarios de atención, que no esté fuera del horario, o que ya no queden slots libres por el salto mínimo.
+  - "No se pudo consultar la disponibilidad": verificá que el calendario esté compartido con la cuenta del bot y que el ID sea correcto.
+
+11. Resolución de problemas comunes
 
 Problema: "p. Ir a pagar" no aparece
   Causa: El nodo actual no tiene ##PAGAR## o el carrito está vacío.
@@ -172,3 +220,15 @@ Problema: Los precios no se suman en el total
 Problema: Un producto aparece tachado con "(sin stock)" en el menú
   Causa: El editor marcó "No disponible (sin stock)" en el dashboard para ese producto.
   Solución: Desmarcá el checkbox "No disponible" en el nodo del producto desde el dashboard.
+
+Problema: "El servicio de turnos no está configurado"
+  Causa: El bot no está configurado como Gestor de Turnos o falta el Calendar ID.
+  Solución: En "🤖 Tipo de Bot" seleccioná "Gestor de Turnos / Agenda", completá el Calendar ID y guardá.
+
+Problema: El bot no ve los turnos ni crea eventos en el calendario
+  Causa: El calendario no está compartido con la cuenta de Google del bot, o el permiso es solo de lectura.
+  Solución: Compartí el calendario con la cuenta del bot con el rol "Realizar cambios en eventos" y aceptá la invitación.
+
+Problema: No aparecen horarios disponibles para un día
+  Causa: Ese día no está marcado en los horarios de atención, el horario ya pasó, o los slots están ocupados por eventos.
+  Solución: Marcá el día en la tabla de horarios de atención, ajustá el rango horario o el salto mínimo de reserva, y verificá que no haya eventos superpuestos en el calendario.
