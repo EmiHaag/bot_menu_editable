@@ -30,6 +30,7 @@ const dashboard = require('./utils/dashboard');
 const userService = require('./services/userService');
 const termsService = require('./services/termsService');
 const billingService = require('./services/billingService');
+const configService = require('./services/configService');
 const emailService = require('./services/emailService');
 const crypto = require('crypto');
 
@@ -965,6 +966,8 @@ async function main() {
     await termsService.ensureTable();
     await userService.init();
     await billingService.ensureTable();
+    await configService.ensureTable();
+    await configService.seed();
 
     // API: Check terms approval status
     appRouter.get('/api/terms/status/:userId', async (req, res) => {

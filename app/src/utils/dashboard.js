@@ -14,6 +14,15 @@ const orderService = require('../services/orderService');
 const { helpGuideCSS, helpGuideHTML, helpGuideJS } = require('./helpGuide');
 const { askGemini } = require('./geminiHelper');
 
+function parseHorariosJson(str) {
+    try {
+        const obj = str ? JSON.parse(str) : {};
+        return obj && typeof obj === 'object' ? obj : {};
+    } catch (e) {
+        return {};
+    }
+}
+
 class Dashboard {
     constructor() {
         this.services = {};
@@ -327,6 +336,37 @@ class Dashboard {
 
         // --- FIN RUTAS ADMINISTRACIÓN ---
 
+        // Ruta para guardar horarios de atención de un cliente
+        router.post('/api/schedule', async (req, res) => {
+            try {
+                const loggedUser = req.user;
+                const botId = req.body.botId || loggedUser.idCliente;
+                if (loggedUser.idCliente !== 'admin' && botId !== loggedUser.idCliente) {
+                    return res.status(403).json({ error: 'Unauthorized' });
+                }
+
+                const online24_7 = !!req.body.online_24_7;
+                let horarios = '';
+                if (req.body.horarios && typeof req.body.horarios === 'object') {
+                    const clean = {};
+                    for (const [k, v] of Object.entries(req.body.horarios)) {
+                        if (!/^[0-6]$/.test(k) || !Array.isArray(v)) continue;
+                        clean[k] = v
+                            .filter(r => r && r.desde && r.hasta)
+                            .map(r => ({ desde: String(r.desde).slice(0, 5), hasta: String(r.hasta).slice(0, 5) }));
+                    }
+                    horarios = JSON.stringify(clean);
+                }
+
+                const ok = await userService.updateHorarios(botId, online24_7, horarios);
+                if (!ok) return res.status(500).json({ error: 'No se pudo guardar' });
+                res.json({ success: true });
+            } catch (error) {
+                console.error('Error saving schedule:', error);
+                res.status(500).json({ error: 'Error al guardar' });
+            }
+        });
+
         // Ruta para refrescar caché
         router.get('/refresh', async (req, res) => {
             try {
@@ -357,6 +397,12 @@ class Dashboard {
 
                 const menuData = await service.getMenuData();
                 const activeClients = await userService.getActiveClients();
+
+                const targetUser = (await userService.getUsers()).find(u => u.idCliente === botId);
+                const scheduleConfig = {
+                    online24_7: targetUser ? targetUser.online24_7 !== false : true,
+                    horarios: targetUser ? parseHorariosJson(targetUser.horarios) : {}
+                };
 
             let botSelector = '';
             if (isAdmin) {
@@ -1040,6 +1086,43 @@ ${helpGuideHTML}
                     </table>
                     </div>
 
+                    <!-- Horarios de Atención -->
+                    <style>
+                        .schedule-section { margin-top: 30px; padding: 20px 24px; border-top: 2px solid var(--border-color); background: var(--bg-box); border-radius: 12px; }
+                        .schedule-section h3 { margin: 0 0 6px 0; color: var(--text-main); }
+                        .schedule-section .muted { color: var(--text-muted); font-size: 13px; margin: 0 0 16px 0; line-height: 1.5; }
+                        .online-row { display: flex; align-items: center; gap: 10px; font-weight: 600; font-size: 15px; }
+                        .online-row input[type="checkbox"] { width: 18px; height: 18px; cursor: pointer; }
+                        .day-check { width: 17px; height: 17px; cursor: pointer; }
+                        .schedule-days { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 16px; }
+                        .schedule-day { flex: 1 1 170px; min-width: 170px; max-width: 250px; border: 1px solid var(--border-color); border-radius: 10px; padding: 12px; background: #fff; }
+                        .schedule-day-header { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; font-weight: 700; font-size: 14px; color: var(--text-main); }
+                        .schedule-day-header label { margin: 0; cursor: pointer; }
+                        .schedule-ranges { display: flex; flex-direction: column; gap: 6px; margin-bottom: 10px; }
+                        .range-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+                        .range-row input[type="time"] { padding: 6px 8px; border: 1px solid var(--border-color); border-radius: 6px; font-size: 13px; width: 92px; box-sizing: border-box; }
+                        .no-ranges { color: #999; font-style: italic; font-size: 13px; }
+                        .schedule-actions { margin-top: 18px; display: flex; align-items: center; gap: 14px; }
+                        .schedule-status { font-size: 13px; color: #888; }
+                        .schedule-save-btn { background: var(--primary-color) !important; color: white !important; border: none !important; }
+                        .schedule-save-btn:hover { background: var(--primary-hover) !important; color: white !important; border: none !important; }
+                    </style>
+                    <div class="schedule-section">
+                        <h3>🕒 Horarios de Atención</h3>
+                        <p class="muted">Si el bot está <strong>"online 24/7"</strong> atiende todo el día, todos los días. Si lo destildás, indicá los días y rangos de horario (hora local de Argentina) en los que querés que atienda. Se puede agregar más de un rango por día.</p>
+                        <div class="online-row">
+                            <input type="checkbox" id="online247" onchange="toggleScheduleEditor()">
+                            <label for="online247" style="margin:0;cursor:pointer;">Bot online 24/7</label>
+                        </div>
+                        <div id="scheduleEditor" style="display:none; margin-top:8px;">
+                            <div id="scheduleDays" class="schedule-days"></div>
+                            <div class="schedule-actions">
+                                <button class="btn btn-green schedule-save-btn" onclick="saveSchedule()">Guardar horarios</button>
+                                <span class="schedule-status" id="scheduleStatus"></span>
+                            </div>
+                        </div>
+                    </div>
+
                     <!-- Visual Modal -->
                     <div id="visualModal" class="modal">
                         <div class="modal-content" style="width: 80%; max-height: 80%; overflow-y: auto; text-align: center;">
@@ -1385,6 +1468,116 @@ ${helpGuideHTML}
                         const menuData = ${JSON.stringify(menuData)};
                         const botId = "${botId}";
                         let currentParent = null;
+
+                        // --- Horarios de Atención ---
+                        const scheduleConfig = ${JSON.stringify(scheduleConfig)};
+                        const DAY_KEYS = ['1', '2', '3', '4', '5', '6', '0'];
+                        const DAY_LABELS = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo'];
+
+                        function rangeRowHtml(desde, hasta) {
+                            return '<div class="range-row">' +
+                                '<span>De</span>' +
+                                '<input type="time" class="range-from" value="' + (desde || '') + '">' +
+                                '<span>a</span>' +
+                                '<input type="time" class="range-to" value="' + (hasta || '') + '">' +
+                                '<button type="button" class="btn btn-red" onclick="removeRange(this)" style="padding:4px 8px;">X</button>' +
+                                '</div>';
+                        }
+
+                        function renderSchedule() {
+                            document.getElementById('online247').checked = scheduleConfig.online24_7 !== false;
+                            DAY_KEYS.forEach(function(k, i) {
+                                const ranges = scheduleConfig.horarios[k] || [];
+                                const day = document.createElement('div');
+                                day.className = 'schedule-day';
+                                day.innerHTML =
+                                    '<div class="schedule-day-header">' +
+                                        '<input type="checkbox" class="day-check" id="day_' + k + '" ' + (ranges.length ? 'checked' : '') + ' onchange="toggleDay(\\'' + k + '\\')">' +
+                                        '<label for="day_' + k + '">' + DAY_LABELS[i] + '</label>' +
+                                    '</div>' +
+                                    '<div id="ranges_' + k + '" class="schedule-ranges">' +
+                                        (ranges.length ? ranges.map(function(r) { return rangeRowHtml(r.desde, r.hasta); }).join('') : '<span class="no-ranges">Cerrado</span>') +
+                                    '</div>' +
+                                    '<button type="button" class="btn" onclick="addRange(\\'' + k + '\\')" style="padding:6px 12px;font-size:12px;">+ Rango</button>';
+                                document.getElementById('scheduleDays').appendChild(day);
+                            });
+                            toggleScheduleEditor();
+                        }
+
+                        function toggleScheduleEditor() {
+                            const open = !document.getElementById('online247').checked;
+                            document.getElementById('scheduleEditor').style.display = open ? 'block' : 'none';
+                        }
+
+                        function toggleDay(k) {
+                            const box = document.getElementById('day_' + k);
+                            const container = document.getElementById('ranges_' + k);
+                            if (!box.checked) {
+                                container.innerHTML = '<span class="no-ranges">Cerrado</span>';
+                                return;
+                            }
+                            if (container.querySelector('.range-row')) return;
+                            addRange(k);
+                        }
+
+                        function addRange(k) {
+                            document.getElementById('day_' + k).checked = true;
+                            const container = document.getElementById('ranges_' + k);
+                            if (container.querySelector('.no-ranges')) container.innerHTML = '';
+                            container.insertAdjacentHTML('beforeend', rangeRowHtml('', ''));
+                        }
+
+                        function removeRange(btn) {
+                            const row = btn.closest('.range-row');
+                            const container = row.parentNode;
+                            row.remove();
+                            if (!container.querySelector('.range-row')) {
+                                container.innerHTML = '<span class="no-ranges">Cerrado</span>';
+                                const k = container.id.replace('ranges_', '');
+                                document.getElementById('day_' + k).checked = false;
+                            }
+                        }
+
+                        function saveSchedule() {
+                            const status = document.getElementById('scheduleStatus');
+                            const horarios = {};
+                            DAY_KEYS.forEach(function(k) {
+                                if (!document.getElementById('day_' + k).checked) return;
+                                const ranges = [];
+                                document.querySelectorAll('#ranges_' + k + ' .range-row').forEach(function(row) {
+                                    const desde = row.querySelector('.range-from').value;
+                                    const hasta = row.querySelector('.range-to').value;
+                                    if (desde && hasta) ranges.push({ desde: desde, hasta: hasta });
+                                });
+                                if (ranges.length) horarios[k] = ranges;
+                            });
+
+                            status.textContent = 'Guardando...';
+                            fetch('/app/api/schedule', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({
+                                    botId: botId,
+                                    online_24_7: document.getElementById('online247').checked,
+                                    horarios: horarios
+                                })
+                            }).then(function(r) { return r.json(); }).then(function(d) {
+                                if (d.success) {
+                                    scheduleConfig.online24_7 = document.getElementById('online247').checked;
+                                    scheduleConfig.horarios = horarios;
+                                    status.textContent = '✅ Horarios guardados';
+                                } else {
+                                    status.textContent = '❌ ' + (d.error || 'Error al guardar');
+                                }
+                                setTimeout(function() { status.textContent = ''; }, 3000);
+                            }).catch(function() {
+                                status.textContent = '❌ Error de conexión';
+                                setTimeout(function() { status.textContent = ''; }, 3000);
+                            });
+                        }
+
+                        renderSchedule();
+                        // --- Fin Horarios ---
 
 ${helpGuideJS}
                         drawRobot('botLogoDash');

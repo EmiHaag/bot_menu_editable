@@ -17,7 +17,9 @@ function mapRow(row) {
         email: row.email || '',
         fechaTerminos: row.fecha_terminos || '',
         fechaPago: row.fecha_pago || '',
-        fechaVencimiento: row.fecha_vencimiento || ''
+        fechaVencimiento: row.fecha_vencimiento || '',
+        online24_7: row.online_24_7 !== false,
+        horarios: row.horarios || ''
     };
 }
 
@@ -44,8 +46,16 @@ class UserService {
                     email TEXT DEFAULT '',
                     fecha_terminos TEXT DEFAULT '',
                     fecha_pago TEXT DEFAULT '',
-                    fecha_vencimiento TEXT DEFAULT ''
+                    fecha_vencimiento TEXT DEFAULT '',
+                    online_24_7 BOOLEAN NOT NULL DEFAULT true,
+                    horarios TEXT DEFAULT ''
                 )
+            `;
+            await sql`
+                ALTER TABLE users ADD COLUMN IF NOT EXISTS online_24_7 BOOLEAN NOT NULL DEFAULT true
+            `;
+            await sql`
+                ALTER TABLE users ADD COLUMN IF NOT EXISTS horarios TEXT DEFAULT ''
             `;
             await sql`
                 CREATE UNIQUE INDEX IF NOT EXISTS users_email_uq ON users (LOWER(email)) WHERE email <> ''
@@ -163,6 +173,19 @@ class UserService {
         }
     }
 
+    async getUserByIdCliente(idCliente) {
+        if (!sql || !idCliente) return null;
+
+        try {
+            const rows = await sql`SELECT * FROM users WHERE id_cliente = ${idCliente}`;
+            if (rows.length === 0) return null;
+            return mapRow(rows[0]);
+        } catch (error) {
+            console.error('[UserService] Error fetching user by idCliente:', error.message);
+            return null;
+        }
+    }
+
     async getUserByEmail(email) {
         if (!sql || !email) return null;
 
@@ -209,8 +232,8 @@ class UserService {
             const fecha = new Date().toLocaleDateString();
 
             await sql`
-                INSERT INTO users (id_cliente, nombre_cliente, activo, username, password, fecha_suscripcion, spreadsheet_id, email, fecha_terminos, fecha_pago, fecha_vencimiento)
-                VALUES (${idCliente}, ${nombreCliente || ''}, ${true}, ${user}, ${password}, ${fecha}, ${spreadsheetId || ''}, ${email || ''}, ${''}, ${''}, ${''})
+                INSERT INTO users (id_cliente, nombre_cliente, activo, username, password, fecha_suscripcion, spreadsheet_id, email, fecha_terminos, fecha_pago, fecha_vencimiento, online_24_7, horarios)
+                VALUES (${idCliente}, ${nombreCliente || ''}, ${true}, ${user}, ${password}, ${fecha}, ${spreadsheetId || ''}, ${email || ''}, ${''}, ${''}, ${''}, ${true}, ${''})
                 ON CONFLICT (id_cliente) DO UPDATE SET
                     nombre_cliente = EXCLUDED.nombre_cliente,
                     activo = EXCLUDED.activo,
@@ -268,6 +291,23 @@ class UserService {
             return true;
         } catch (error) {
             console.error('[UserService] Error updating subscription dates:', error.message);
+            return false;
+        }
+    }
+
+    async updateHorarios(idCliente, online24_7, horarios) {
+        if (!sql || !idCliente) return false;
+
+        try {
+            await sql`
+                UPDATE users
+                SET online_24_7 = ${!!online24_7}, horarios = ${horarios || ''}
+                WHERE id_cliente = ${idCliente}
+            `;
+            this.clearCache();
+            return true;
+        } catch (error) {
+            console.error('[UserService] Error updating horarios:', error.message);
             return false;
         }
     }

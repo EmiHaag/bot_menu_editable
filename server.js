@@ -9,6 +9,7 @@ const userService = require('./app/src/services/userService');
 const mercadoPagoService = require('./app/src/services/mercadoPagoService');
 const emailService = require('./app/src/services/emailService');
 const billingService = require('./app/src/services/billingService');
+const configService = require('./app/src/services/configService');
 const arcaService = require('./app/src/services/arcaService');
 const { Resend } = require('resend');
 const resend = new Resend(process.env.RESEND_API_KEY);
@@ -65,20 +66,19 @@ app.use(express.static(path.join(__dirname, 'public'), { index: false }));
 
 app.use(express.static(path.join(__dirname, 'app', 'src', 'public'), { index: false }));
 
-function readConfig() {
-    try {
-        return JSON.parse(fs.readFileSync(path.join(__dirname, 'config.json'), 'utf8'));
-    } catch { return {}; }
+async function readConfig() {
+    const db = await configService.getAll();
+    if (db) return db;
+    return configService.readFromFile();
 }
 
-function writeConfig(data) {
-    var current = readConfig();
-    Object.assign(current, data);
-    fs.writeFileSync(path.join(__dirname, 'config.json'), JSON.stringify(current, null, 2));
+async function writeConfig(data) {
+    await configService.setMany(data);
+    configService.writeToFile(data);
 }
 
-app.get('/api/config', (req, res) => {
-    var cfg = readConfig();
+app.get('/api/config', async (req, res) => {
+    var cfg = await readConfig();
     res.json({
         phone: process.env.BOT_PHONE || '5492494249236',
         precioEstandar: cfg.precio_estandar != null ? cfg.precio_estandar : (process.env.PRECIO_ESTANDAR || '22000'),
@@ -86,12 +86,12 @@ app.get('/api/config', (req, res) => {
     });
 });
 
-app.post('/api/config', (req, res) => {
+app.post('/api/config', async (req, res) => {
     if (req.body.precio_estandar != null) {
-        writeConfig({ precio_estandar: Number(req.body.precio_estandar) });
+        await writeConfig({ precio_estandar: Number(req.body.precio_estandar) });
     }
     if (req.body.trial_gratis != null) {
-        writeConfig({ trial_gratis: Boolean(req.body.trial_gratis) });
+        await writeConfig({ trial_gratis: Boolean(req.body.trial_gratis) });
     }
     res.json({ ok: true });
 });
@@ -171,7 +171,7 @@ app.post('/api/mercadopago/create-subscription', async (req, res) => {
             return res.status(400).json({ error: 'Ingresá un DNI o CUIT válido. Es necesario para emitir tu Factura C.' });
         }
 
-        const cfg = readConfig();
+        const cfg = await readConfig();
         const precio = cfg.precio_estandar != null ? cfg.precio_estandar : (process.env.PRECIO_ESTANDAR || '23000');
         const trialPeriodDays = cfg.trial_gratis !== false ? 30 : 0;
         const siteUrl = process.env.SITE_URL || `http://localhost:${port}`;
@@ -214,9 +214,9 @@ app.post('/api/mercadopago/create-subscription', async (req, res) => {
         }
 
         // Guardar referencia del nombre asociado al preapproval (usar email original del formulario)
-        const preapprovalRefs = JSON.parse(fs.readFileSync(path.join(__dirname, 'config.json'), 'utf8')).preapproval_refs || {};
+        const preapprovalRefs = (await readConfig()).preapproval_refs || {};
         preapprovalRefs[preapproval.id] = { name, email, fecha: new Date().toISOString(), docTipo: doc.docTipo, docNro: doc.docNro };
-        writeConfig({ preapproval_refs: preapprovalRefs });
+        await writeConfig({ preapproval_refs: preapprovalRefs });
 
         res.json({
             init_point: preapproval.init_point,
@@ -230,7 +230,7 @@ app.post('/api/mercadopago/create-subscription', async (req, res) => {
             try {
                 const pa = await mercadoPagoService.getPreapproval(pid);
                 if (pa.status === 'authorized' || pa.status === 'approved') {
-                    const cfg = readConfig();
+                    const cfg = await readConfig();
                     const refs = cfg.preapproval_refs || {};
                     const ref = refs[pid] || {};
                     if (ref.email) {
@@ -266,7 +266,7 @@ app.get('/pago_exitoso', async (req, res) => {
         const mpStatus = preapproval.status;
 
         // Recuperar datos desde las referencias guardadas (prioridad sobre lo que devuelve MP)
-        const cfg = readConfig();
+        const cfg = await readConfig();
         const refs = cfg.preapproval_refs || {};
         const ref = refs[paymentId] || {};
         const payerEmail = ref.email || preapproval.payer_email || req.query.email;
@@ -275,7 +275,7 @@ app.get('/pago_exitoso', async (req, res) => {
         // Si no hay referencia, pudo haber sido procesado por el webhook/auto-poll (evitar duplicados)
         const yaProcesado = cfg.pagos_procesados && cfg.pagos_procesados[paymentId];
         if (!ref.email || yaProcesado) {
-            if (refs[paymentId]) { delete refs[paymentId]; writeConfig({ preapproval_refs: refs }); }
+            if (refs[paymentId]) { delete refs[paymentId]; await writeConfig({ preapproval_refs: refs }); }
             if (yaProcesado) return res.redirect(`/suscripcion_exitosa?username=${encodeURIComponent(cfg.pagos_procesados[paymentId].username)}&password=${encodeURIComponent(cfg.pagos_procesados[paymentId].password)}&email=${encodeURIComponent(cfg.pagos_procesados[paymentId].email)}`);
             // El webhook pudo crear el usuario antes que este redirect: mostrar credenciales si ya existe la suscripción
             const sub = await billingService.getSuscripcion(paymentId);
@@ -285,7 +285,7 @@ app.get('/pago_exitoso', async (req, res) => {
                 const passw = (u && u.password) || '';
                 const pProc = cfg.pagos_procesados || {};
                 pProc[paymentId] = { username: uname, password: passw, email: sub.email };
-                writeConfig({ pagos_procesados: pProc });
+                await writeConfig({ pagos_procesados: pProc });
                 return res.redirect(`/suscripcion_exitosa?username=${encodeURIComponent(uname)}&password=${encodeURIComponent(passw)}&email=${encodeURIComponent(sub.email)}`);
             }
             return res.redirect('/');
@@ -314,9 +314,9 @@ app.get('/pago_exitoso', async (req, res) => {
             pagosProc[paymentId] = { username, password: password, email: payerEmail };
             if (refs[paymentId]) {
                 delete refs[paymentId];
-                writeConfig({ preapproval_refs: refs, pagos_procesados: pagosProc });
+                await writeConfig({ preapproval_refs: refs, pagos_procesados: pagosProc });
             } else {
-                writeConfig({ pagos_procesados: pagosProc });
+                await writeConfig({ pagos_procesados: pagosProc });
             }
 
             // Redirigir a página de éxito con credenciales
@@ -376,7 +376,7 @@ app.post('/api/mercadopago/test-complete', async (req, res) => {
         const preapproval = await mercadoPagoService.getPreapproval(preapproval_id);
 
         // Recuperar datos desde config.json (prioridad sobre lo que devuelve MP)
-        const cfg = readConfig();
+        const cfg = await readConfig();
         const refs = cfg.preapproval_refs || {};
         const ref = refs[preapproval_id] || {};
         const payerEmail = ref.email || preapproval.payer_email;
@@ -417,7 +417,7 @@ app.post('/api/mercadopago/test-complete', async (req, res) => {
         // Limpiar referencia guardada
         if (refs[preapproval_id]) {
             delete refs[preapproval_id];
-            writeConfig({ preapproval_refs: refs });
+            await writeConfig({ preapproval_refs: refs });
         }
 
         res.json({ success: true, username, password, email: payerEmail, name });
@@ -466,7 +466,7 @@ async function asegurarSuscripcion({ preapprovalId, payerEmail, payerName }) {
         if (sub) return sub;
 
         // 2) Referencia pendiente en config.json (aún sin procesar por el webhook de preapproval)
-        const cfg = readConfig();
+        const cfg = await readConfig();
         const refs = cfg.preapproval_refs || {};
         const ref = refs[preapprovalId || ''] || {};
 
@@ -518,7 +518,7 @@ async function asegurarSuscripcion({ preapprovalId, payerEmail, payerName }) {
 
         if (refs[preapprovalId]) {
             delete refs[preapprovalId];
-            writeConfig({ preapproval_refs: refs });
+            await writeConfig({ preapproval_refs: refs });
         }
 
         return await billingService.getSuscripcion(preapprovalId);
@@ -538,7 +538,7 @@ async function manejarPreapproval(preapprovalId) {
     console.log(`[Webhook] Preapproval ${preapprovalId} status=${preapproval.status}`);
     if (preapproval.status !== 'authorized' && preapproval.status !== 'approved') return;
 
-    const refs = readConfig().preapproval_refs || {};
+    const refs = (await readConfig()).preapproval_refs || {};
     const ref = refs[preapprovalId] || {};
     await asegurarSuscripcion({ preapprovalId, payerEmail: ref.email, payerName: ref.name });
     await reconciliarCobros(preapprovalId);
@@ -896,12 +896,21 @@ app.use((req, res) => {
     res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
-app.listen(port, () => {
-    console.log(`🚀 Servidor corriendo en http://localhost:${port}`);
-    console.log(`📊 Editor de Menú: http://localhost:${port}/app/`);
-    console.log(`📱 QR WhatsApp: http://localhost:${port}/app/qr`);
-});
+(async () => {
+    try {
+        await configService.ensureTable();
+        await configService.seed();
+    } catch (err) {
+        console.error('[System] Error initializing config:', err.message);
+    }
 
-main().catch(err => {
-    console.error('[System] Error during bot initialization:', err);
-});
+    app.listen(port, () => {
+        console.log(`🚀 Servidor corriendo en http://localhost:${port}`);
+        console.log(`📊 Editor de Menú: http://localhost:${port}/app/`);
+        console.log(`📱 QR WhatsApp: http://localhost:${port}/app/qr`);
+    });
+
+    main().catch(err => {
+        console.error('[System] Error during bot initialization:', err);
+    });
+})();

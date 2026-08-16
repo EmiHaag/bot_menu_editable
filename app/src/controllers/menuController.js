@@ -2,6 +2,8 @@
  * MenuController: El "cerebro" del bot.
  * Gestiona la lógica de navegación, el estado del usuario y la interacción con WhatsApp.
  */
+const userService = require('../services/userService');
+
 class MenuController {
     constructor(googleSheetsService, stateService, orderService = null) {
         this.googleSheetsService = googleSheetsService; // Servicio para leer datos de Google Sheets
@@ -49,6 +51,17 @@ class MenuController {
      */
     async handleIncomingMessage(sock, jid, text, media = null) {
         const currentStateId = this.stateService.getUserState(jid);
+
+        // PRIORIDAD -1: ¿EL BOT ESTÁ FUERA DEL HORARIO DE ATENCIÓN?
+        const isOpen = await this._isOpenNow();
+        if (!isOpen.open) {
+            await this.sendPresenceTyping(sock, jid);
+            await sock.sendMessage(jid, {
+                text: `😴 *Estamos cerrados en este momento.*\n\n🕒 Horario de atención:\n${isOpen.text}\n\n¡Gracias por escribirnos!`
+            });
+            return;
+        }
+
         ////console.log(`//[Estado] Usuario ${jid} envió mensaje: "${text}". Estado actual: ${currentStateId} #50`);
         const input = text.trim().toLowerCase();
 
@@ -536,6 +549,101 @@ class MenuController {
             this.stateService.clearWaitingForData(jid);
             this.stateService.clearWaitingForFile(jid);
         }
+    }
+
+    /**
+     * Indica si el bot debe atender ahora, según el horario configurado
+     * (hora local de Argentina, no la del servidor). Si el cliente está
+     * en 24/7 o no tiene configuración, siempre está abierto.
+     */
+    async _isOpenNow() {
+        const users = await userService.getUsers();
+        const client = users.find(u => u.idCliente === this.stateService.clientId);
+        if (!client || client.online24_7 !== false) {
+            return { open: true, text: '' };
+        }
+
+        const horarios = this._parseHorarios(client.horarios);
+        const now = new Date();
+        const parts = new Intl.DateTimeFormat('en-GB', {
+            timeZone: 'America/Argentina/Buenos_Aires',
+            weekday: 'short',
+            hour: '2-digit',
+            minute: '2-digit',
+            hour12: false
+        }).formatToParts(now);
+
+        const getPart = type => {
+            const p = parts.find(x => x.type === type);
+            return p ? p.value : '';
+        };
+
+        const dayMap = { Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6, Sun: 0 };
+        const dow = dayMap[getPart('weekday')];
+        const minutes = parseInt(getPart('hour'), 10) * 60 + parseInt(getPart('minute'), 10);
+
+        const ranges = horarios[String(dow)] || [];
+        const open = ranges.some(r => this._inRange(minutes, r));
+
+        return { open, text: this._formatHorarios(horarios) };
+    }
+
+    _parseHorarios(str) {
+        try {
+            const obj = typeof str === 'string' && str ? JSON.parse(str) : (str || {});
+            const clean = {};
+            for (const [k, v] of Object.entries(obj || {})) {
+                if (!/^[0-6]$/.test(k) || !Array.isArray(v)) continue;
+                clean[k] = v
+                    .filter(r => r && r.desde && r.hasta)
+                    .map(r => ({ desde: String(r.desde).slice(0, 5), hasta: String(r.hasta).slice(0, 5) }));
+            }
+            return clean;
+        } catch (e) {
+            return {};
+        }
+    }
+
+    _inRange(minutes, r) {
+        const [h1, m1] = String(r.desde || '').split(':').map(Number);
+        const [h2, m2] = String(r.hasta || '').split(':').map(Number);
+        if (isNaN(h1) || isNaN(h2)) return false;
+        const start = h1 * 60 + m1;
+        let end = h2 * 60 + m2;
+        if (end <= start) end += 24 * 60; // rango nocturno (ej: 22:00 a 02:00)
+        if (start <= minutes && minutes < end) return true;
+        if (end > 24 * 60 && minutes < end - 24 * 60) return true;
+        return false;
+    }
+
+    _formatHorarios(horarios) {
+        const names = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];
+        const order = [1, 2, 3, 4, 5, 6, 0];
+        const groups = [];
+        let cur = null;
+
+        for (const dow of order) {
+            const ranges = horarios[String(dow)] || [];
+            if (ranges.length === 0) { cur = null; continue; }
+            const key = ranges.map(r => `${r.desde}-${r.hasta}`).join(',');
+            if (cur && cur.key === key) {
+                cur.days.push(dow);
+            } else {
+                cur = { key, days: [dow], ranges };
+                groups.push(cur);
+            }
+        }
+
+        if (groups.length === 0) return 'Cerrado todos los días.';
+
+        const fmtRange = rs => rs.map(r => `${r.desde} a ${r.hasta}`).join(' y ');
+        return groups.map(g => {
+            const days = g.days;
+            const label = days.length === 1
+                ? names[days[0]]
+                : `${names[days[0]]} a ${names[days[days.length - 1]]}`;
+            return `${label}: ${fmtRange(g.ranges)}`;
+        }).join('\n');
     }
 }
 
