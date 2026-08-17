@@ -1145,6 +1145,7 @@ ${helpGuideCSS}
                             <a href="/app/qr" class="btn btn-green">WhatsApp QR</a>
                             <a href="/app/refresh?botId=${botId}" class="btn btn-orange">Refrescar</a>
                             <a href="/app/pedidos/${botId}" target="_blank" class="btn btn-green">Ver Pedidos</a>
+                            <a href="https://calendar.google.com/calendar/r" target="_blank" class="btn btn-blue" id="calendarBtn">Ver Calendario</a>
                             ${isAdmin ? `<a href="https://docs.google.com/spreadsheets/d/${service.spreadsheetId}" target="_blank" class="btn btn-blue">Abrir Sheet</a>` : ''}
                             <a href="/app/logout" class="btn btn-red">Salir</a>
                         </div>
@@ -1854,6 +1855,10 @@ ${helpGuideHTML}
                                     document.getElementById('calendarIdInput').value = calendarConfig.calendar_id || '';
                                     document.getElementById('slotDurationInput').value = calendarConfig.slot_duration_minutes || 30;
                                     document.getElementById('minNoticeInput').value = calendarConfig.min_notice_hours || 0;
+                                    if (calendarConfig.calendar_id) {
+                                        const btn = document.getElementById('calendarBtn');
+                                        if (btn) btn.href = 'https://calendar.google.com/calendar/r?cid=' + encodeURIComponent(calendarConfig.calendar_id);
+                                    }
                                     renderBusinessHours();
                                     onBotTypeChange();
                                     toggleCartModules();
