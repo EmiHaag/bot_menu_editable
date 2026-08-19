@@ -16,7 +16,7 @@ const helpGuideCSS = `
                             text-orientation: mixed;
                             letter-spacing: 2px;
                             font-weight: 600;
-                            z-index: 90;
+                            z-index: 200;
                             transition: left 0.3s ease;
                             box-shadow: 2px 2px 8px rgba(0,0,0,0.15);
                         }
@@ -54,7 +54,7 @@ const helpGuideCSS = `
                             height: 100%;
                             background: var(--bg-white);
                             border-right: 2px solid var(--border-color);
-                            z-index: 89;
+                            z-index: 199;
                             overflow-y: auto;
                             transition: left 0.3s ease;
                             box-shadow: 4px 0 12px rgba(0,0,0,0.08);
@@ -416,30 +416,47 @@ const helpGuideHTML = `
                         <details class="help-section">
                             <summary>🌐 ¿Cómo compartir mi calendario con el bot?</summary>
                             <div class="content">
-                                <p>Para que el bot pueda consultar y crear turnos, tu calendario debe estar compartido con la <strong>cuenta de Google del bot</strong> con permisos de <strong>edición</strong>.</p>
+                                <p>Para que el bot pueda consultar y crear turnos, tu calendario debe estar compartido con la <strong>cuenta de Google del bot</strong> con permisos de <strong>edición</strong>. Seguí estos pasos:</p>
                                 <div class="step">
                                     <div class="step-num">1</div>
                                     <div class="step-text">
-                                        <strong>Abrí la configuración del calendario</strong>
-                                        En Google Calendar, hacé clic en el engranaje ⚙️ → <strong>Configuración</strong> → elegí tu calendario.
+                                        <strong>Abrí Google Calendar</strong>
+                                        <a href="https://calendar.google.com/" target="_blank" rel="noopener">Abrí Google Calendar en tu computadora</a> y mirá el lado izquierdo de la pantalla.
                                     </div>
                                 </div>
                                 <div class="step">
                                     <div class="step-num">2</div>
                                     <div class="step-text">
-                                        <strong>Copiá el Calendar ID</strong>
-                                        En la sección <strong>"Integrar calendario"</strong> está el ID (ej: <code>tucalendario@gmail.com</code>). Pegalo en el campo <strong>Calendar ID</strong> del dashboard.
+                                        <strong>Buscá tu calendario</strong>
+                                        En la lista <strong>"Mis calendarios"</strong>, poné el puntero sobre el calendario que vas a usar para tu negocio.
+                                        <div style="margin:8px 0;"><img src="/img/1cap_mis_calendarios.png" alt="Lista Mis calendarios" style="max-width:100%; border:1px solid #ddd; border-radius:8px;"></div>
                                     </div>
                                 </div>
                                 <div class="step">
                                     <div class="step-num">3</div>
                                     <div class="step-text">
-                                        <strong>Compartí con la cuenta del bot</strong>
-                                        En <strong>"Compartir con usuarios específicos"</strong> agregá la cuenta del bot (la que figura en el "?" del campo Calendar ID) y elegí el rol <strong>"Realizar cambios en eventos"</strong>.
+                                        <strong>Configuración y uso compartido</strong>
+                                        Hacé clic en los <strong>tres puntos</strong> y entrá en <strong>"Configuración y uso compartido"</strong>.
+                                        <div style="margin:8px 0;"><img src="/img/2cap_mis_calendarios.png" alt="Configuración y uso compartido" style="max-width:100%; border:1px solid #ddd; border-radius:8px;"></div>
                                     </div>
                                 </div>
                                 <div class="step">
                                     <div class="step-num">4</div>
+                                    <div class="step-text">
+                                        <strong>Copiá el Calendar ID</strong>
+                                        Bajá hasta la parte llamada <strong>"Integrar calendario"</strong> y copiá el texto en <strong>ID del calendario</strong> (ej: <code>tucalendario@gmail.com</code>). Pegalo en el campo <strong>Calendar ID</strong> del dashboard.
+                                        <div style="margin:8px 0;"><img src="/img/4cap_mis_calendarios.png" alt="ID del calendario" style="max-width:100%; border:1px solid #ddd; border-radius:8px;"></div>
+                                    </div>
+                                </div>
+                                <div class="step">
+                                    <div class="step-num">5</div>
+                                    <div class="step-text">
+                                        <strong>Dale permisos de edición al bot</strong>
+                                        En <strong>"Compartir con usuarios específicos"</strong> agregá la cuenta del bot: <code>${process.env.ADMIN_EMAIL || 'la cuenta de Google vinculada al bot'}</code> y elegí el rol <strong>"Realizar cambios en eventos"</strong>.
+                                    </div>
+                                </div>
+                                <div class="step">
+                                    <div class="step-num">6</div>
                                     <div class="step-text">
                                         <strong>Aceptá la invitación</strong>
                                         Entrá a la cuenta del bot y aceptá el correo de invitación al calendario.

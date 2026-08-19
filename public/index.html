@@ -917,6 +917,7 @@
                 <input type="email" id="contactEmail" placeholder="tu@email.com" autocomplete="off" required>
                 <label for="contactMessage">Mensaje</label>
                 <textarea id="contactMessage" placeholder="Escribí tu consulta..." required></textarea>
+                <input type="text" id="b_website" name="b_website" style="display:none;" tabindex="-1" autocomplete="off" aria-hidden="true">
                 <div id="contactError" style="color:#d32f2f;font-size:0.82rem;margin-bottom:10px;display:none;"></div>
                 <div id="contactSuccess" style="color:#2e7d32;font-size:0.82rem;margin-bottom:10px;display:none;">✅ Mensaje enviado correctamente. Te responderemos pronto.</div>
                 <button class="plan-btn primary" id="btnContactSubmit" onclick="sendContact()">📤 Enviar mensaje</button>
@@ -1085,7 +1086,7 @@
                     <li><span class="ck">✓</span> Google Sheets con pedidos en tiempo real</li>
                     <li><span class="ck">✓</span> Carrito de compras y cálculo de total</li>
                     <li><span class="ck">✓</span> Captura de datos del cliente</li>
-                    <li><span class="ck">✓</span> Soporte por WhatsApp incluido</li>
+                    <li><span class="ck">✓</span> Bot de reserva de turnos con tu propio calendario</li>
                 </ul>
                 <button class="plan-btn primary" id="btnSubscribeStandard" onclick="openSubscribeModal()">💳 Suscribirme ahora</button>
             </div>
@@ -1561,6 +1562,7 @@ function closeContactModal() {
     document.getElementById('contactName').value = '';
     document.getElementById('contactEmail').value = '';
     document.getElementById('contactMessage').value = '';
+    document.getElementById('b_website').value = '';
     document.getElementById('contactError').style.display = 'none';
     document.getElementById('contactSuccess').style.display = 'none';
 }
@@ -1568,6 +1570,7 @@ async function sendContact() {
     var name = document.getElementById('contactName').value.trim();
     var email = document.getElementById('contactEmail').value.trim();
     var message = document.getElementById('contactMessage').value.trim();
+    var bWebsite = document.getElementById('b_website').value;
     var errorEl = document.getElementById('contactError');
     var successEl = document.getElementById('contactSuccess');
     var btn = document.getElementById('btnContactSubmit');
@@ -1586,7 +1589,7 @@ async function sendContact() {
         var res = await fetch('/api/contact', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ name: name, email: email, message: message })
+            body: JSON.stringify({ name: name, email: email, message: message, b_website: bWebsite })
         });
         var data = await res.json();
         if (!res.ok) throw new Error(data.error || 'Error del servidor');

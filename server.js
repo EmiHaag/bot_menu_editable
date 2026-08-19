@@ -102,7 +102,10 @@ app.get('/health', (req, res) => {
 
 // Contacto: enviar email a info@wamenu.com.ar
 app.post('/api/contact', async (req, res) => {
-    const { name, email, message } = req.body;
+    const { name, email, message, b_website } = req.body;
+    if (b_website) {
+        return res.status(200).json({ ok: true });
+    }
     if (!name || !email || !message) {
         return res.status(400).json({ error: 'Faltan campos' });
     }

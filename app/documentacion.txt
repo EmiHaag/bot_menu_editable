@@ -164,7 +164,12 @@ Configuración en el dashboard:
 Paso 1 (Elegir el tipo de bot): En la sección "🤖 Tipo de Bot", seleccioná "Gestor de Turnos / Agenda".
 
 Paso 2 (Configurar el calendario): En la sección "Configuración de Google Calendar" que se despliega:
-  - Calendar ID: Pegá el ID de tu calendario. Para obtenerlo, en Google Calendar entrá a Configuración (engranaje), elegí tu calendario y en "Integrar calendario" copiá el ID (ej: tucalendario@gmail.com o algo@group.calendar.google.com).
+  - Calendar ID: Pegá el ID de tu calendario. Para obtenerlo, seguí estos pasos:
+      1. Abrí Google Calendar en tu computadora: https://calendar.google.com/
+      2. Mirá el lado izquierdo de la pantalla y buscá la lista "Mis calendarios".
+      3. Poné el puntero sobre tu calendario (el que vas a usar para tu negocio) y hacé clic en los tres puntos.
+      4. Entrá en "Configuración y uso compartido".
+      5. Bajá hasta la parte llamada "Integrar calendario" y copiá el texto en "ID del calendario" (ej: tucalendario@gmail.com o algo@group.calendar.google.com).
   - Duración del turno (min): cuántos minutos dura cada turno (ej: 30).
   - Salto mínimo de reserva (hs): no permitir turnos con menos de estas horas de anticipación.
   - Días y Horarios de Atención: marcá los días que atiende tu negocio y el rango horario de cada día (hora local de Argentina).
@@ -189,10 +194,14 @@ Comandos del flujo de turnos:
   - Cualquier otra cosa en el paso de horario: elige el número del horario disponible.
 
 Compartir el calendario con el bot:
-  1. En Google Calendar, engranaje → Configuración → elegí tu calendario.
-  2. En "Compartir con usuarios específicos", agregá la cuenta de Google del bot (la que figura en el "?" del campo Calendar ID del dashboard).
-  3. Elegí el rol "Realizar cambios en eventos".
-  4. Aceptá la invitación al calendario desde la cuenta del bot.
+  1. Abrí Google Calendar en tu computadora: https://calendar.google.com/
+  2. Mirá el lado izquierdo de la pantalla y buscá la lista "Mis calendarios".
+  3. Poné el puntero sobre tu calendario (el que vas a usar para tu negocio) y hacé clic en los tres puntos.
+  4. Entrá en "Configuración y uso compartido".
+  5. Bajá hasta la parte llamada "Integrar calendario" y copiá el texto en "ID del calendario".
+  6. En "Compartir con usuarios específicos", agregá la cuenta de Google del bot: emilianohaag10@gmail.com (el email admin que figura en el "?" del campo Calendar ID del dashboard).
+  7. Elegí el rol "Realizar cambios en eventos".
+  8. Aceptá la invitación al calendario desde la cuenta del bot.
 
 Problemas comunes:
   - "El servicio de turnos no está configurado": el bot_type no es TURNOS o falta el Calendar ID.

@@ -486,6 +486,7 @@ class Dashboard {
                 }
 
                 const menuData = await service.getMenuData();
+                const hasMenuContent = menuData.length > 1;
                 const activeClients = await userService.getActiveClients();
 
                 const targetUser = (await userService.getUsers()).find(u => u.idCliente === botId);
@@ -501,14 +502,26 @@ class Dashboard {
                 ).join('');
 
                 botSelector = `
-                    <label>Bot:</label>
-                    <select onchange="window.location.href='/app/?botId=' + this.value">
+                    <label style="margin-right: auto; display:inline-flex; align-items:center;">Bot:
+                    <select onchange="window.location.href='/app/?botId=' + this.value" style="margin-left:6px;">
                         ${botOptions}
                     </select>
+                    </label>
                 `;
             } else {
-                botSelector = `<span style="background: #e9ecef; padding: 5px 10px; border-radius: 5px; font-weight: bold; color: #495057;">Cliente: ${req.user.nombreCliente}</span>`;
+                botSelector = `<span style="background: #e9ecef; padding: 5px 10px; border-radius: 5px; font-weight: bold; color: #495057; margin-right: auto;">${req.user.nombreCliente}</span>`;
             }
+
+            const depthMap = {};
+            menuData.forEach(n => {
+                let d = 0, cur = n, guard = 0;
+                while (cur.parentId && cur.parentId !== 'root' && guard < 20) {
+                    d++;
+                    cur = menuData.find(p => p.id === cur.parentId) || {};
+                    guard++;
+                }
+                depthMap[n.id] = d;
+            });
 
             let rowsHtml = menuData.map((node, idx) => {
                 let displayTrigger = node.trigger;
@@ -518,6 +531,8 @@ class Dashboard {
                     displayTrigger = '<span style="color: #999;">-</span>';
                     displayTitle = '<span style="color: #999; font-style: italic;">(Configuración Inicial)</span>';
                 }
+
+                const depth = depthMap[node.id] || 0;
 
                 const isOrder = node.message && node.message.includes('##PEDIDO##');
                 const isQty = node.message && node.message.includes('##CANTIDAD##');
@@ -536,27 +551,32 @@ class Dashboard {
                     .replace('##TURNO##', '')
                     .trim();
 
+                const connector = depth > 0 ? '└─ ' : '';
+                const indent = depth > 0 ? ` style="padding-left: ${depth * 16}px;"` : '';
                 return `
                 <tr>
-                    <td><b>${displayTrigger}</b></td>
+                    <td${indent}><span class="connector" style="color: #999;">${connector}</span><b>${displayTrigger}</b></td>
                     <td>${displayTitle}</td>
                     <td style="max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${cleanMessage}</td>
-                    <td>${node.price ? '$' + node.price : '-'}</td>
-                    <td style="text-align: center;">${isOrder ? '<span style="color: var(--primary-color);">✅</span>' : '⚪'}</td>
-                    <td style="text-align: center;">${isQty ? '<span style="color: var(--info-color);">🔢</span>' : '⚪'}</td>
-                    <td style="text-align: center;">${isFinal ? '<span style="color: var(--secondary-color);">🏁</span>' : '⚪'}</td>
-                    <td style="text-align: center;">${isData ? '<span style="color: var(--warning-color);">📝</span>' : '⚪'}</td>
-                    <td style="text-align: center;">${isArchivo ? '<span style="color: var(--info-color);">📎</span>' : '⚪'}</td>
-                    <td style="text-align: center;">${isPagar ? '<span style="color: var(--success-color);">💳</span>' : '⚪'}</td>
-                    <td style="text-align: center; max-width: 120px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${node.redirigirA || '<span style="color:#999;">-</span>'}</td>
-                    <td style="text-align: center;">${node.disponible === 'false' ? '<span style="color:#999;" title="No disponible">🚫</span>' : '<span style="color:var(--primary-color);" title="Disponible">✅</span>'}</td>
                     <td>
-                        <div style="display: flex; gap: 5px;">
+                        <div style="display: flex; flex-direction: column; gap: 3px;">
                             <button type="button" onclick="openEditModal(${idx})" class="btn-action btn-orange">Editar</button>
-                            <button type="button" onclick="openAddModal(${idx})" class="btn-action btn-blue">+ Hijo</button>
+                            <span class="tooltip-hover tooltip-left">
+                                <button type="button" onclick="openAddModal(${idx})" class="btn-action btn-blue">+ Hijo</button>
+                                <span class="tooltip-bubble" style="width: 200px;">Agrega un nodo hijo debajo de este. El usuario podrá llegar a él escribiendo este disparador. Usalo para crear submenús o subopciones de un item.</span>
+                            </span>
                             <button type="button" onclick="confirmDelete(${idx})" class="btn-action btn-red">Borrar</button>
                         </div>
                     </td>
+                    <td class="col-precio">${node.price ? '$' + node.price : '-'}</td>
+                    <td class="col-pedido" style="text-align: center;">${isOrder ? '<span style="color: var(--primary-color);">✅</span>' : '-'}</td>
+                    <td class="col-cant" style="text-align: center;">${isQty ? '<span style="color: var(--info-color);">🔢</span>' : '-'}</td>
+                    <td class="col-fin" style="text-align: center;">${isFinal ? '<span style="color: var(--secondary-color);">🏁</span>' : '-'}</td>
+                    <td class="col-datos" style="text-align: center;">${isData ? '<span style="color: var(--warning-color);">📝</span>' : '-'}</td>
+                    <td class="col-archivo" style="text-align: center;">${isArchivo ? '<span style="color: var(--info-color);">📎</span>' : '-'}</td>
+                    <td class="col-pagar" style="text-align: center;">${isPagar ? '<span style="color: var(--success-color);">💳</span>' : '-'}</td>
+                    <td class="col-redirigir" style="text-align: center; max-width: 120px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${node.redirigirA || '<span style="color:#999;">-</span>'}</td>
+                    <td class="col-disp" style="text-align: center;">${node.disponible === 'false' ? '<span style="color:#999;" title="No disponible">🚫</span>' : '<span style="color:var(--primary-color);" title="Disponible">✅</span>'}</td>
                 </tr>
                 `;
             }).join('');
@@ -606,11 +626,11 @@ class Dashboard {
                             border: 1px solid var(--border-color);
                             border-radius: 6px;
                             overflow: hidden;
-                            font-size: 13px;
+                            font-size: 12px;
                         }
 
                         th, td { 
-                            padding: 8px 10px; 
+                            padding: 4px 6px; 
                             border: 1px solid var(--border-color); 
                             text-align: left; 
                         }
@@ -620,12 +640,141 @@ class Dashboard {
                             color: var(--text-muted);
                             font-weight: 600;
                             text-transform: uppercase;
-                            font-size: 11px;
+                            font-size: 10px;
                             letter-spacing: 0.3px;
                         }
+                        th.th-mini {
+                            font-size: 8px;
+                            letter-spacing: 0;
+                        }
+                        .col-toggle-wrap { position: relative; }
+                        .col-toggle-btn {
+                            position: absolute;
+                            top: 8px;
+                            right: 8px;
+                            z-index: 10;
+                            background: var(--bg-box);
+                            border: 1px solid var(--border-color);
+                            border-radius: 6px;
+                            padding: 4px 8px;
+                            cursor: pointer;
+                            font-size: 14px;
+                            color: var(--text-muted);
+                            line-height: 1;
+                            box-shadow: 0 2px 6px rgba(0,0,0,0.08);
+                        }
+                        .col-toggle-menu {
+                            display: none;
+                            position: absolute;
+                            top: 34px;
+                            right: 8px;
+                            z-index: 20;
+                            background: var(--bg-white);
+                            border: 1px solid var(--border-color);
+                            border-radius: 8px;
+                            box-shadow: 0 8px 24px rgba(0,0,0,0.15);
+                            padding: 12px 14px;
+                            min-width: 170px;
+                        }
+                        .col-toggle-menu.open { display: block; }
+                        .col-toggle-menu .ctm-title {
+                            font-size: 12px;
+                            font-weight: 700;
+                            color: var(--text-main);
+                            margin-bottom: 8px;
+                        }
+                        .col-toggle-menu label {
+                            display: flex;
+                            align-items: center;
+                            gap: 8px;
+                            font-size: 13px;
+                            color: var(--text-muted);
+                            padding: 4px 0;
+                            cursor: pointer;
+                        }
+                        .col-toggle-menu input[type="checkbox"] { width: 15px; height: 15px; cursor: pointer; }
 
-                        .toolbar { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+                        .toolbar { display: flex; gap: 6px; align-items: center; flex-wrap: wrap;
+                            justify-content: flex-end;
+                            position: sticky;
+                            top: 0;
+                            z-index: 100;
+                            margin-top: 14px;
+                            padding: 12px 16px;
+                            border: 1px solid var(--border-color);
+                            background: var(--bg-box);
+                            border-radius: 12px;
+                            box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+                            transition: box-shadow 0.3s ease, padding 0.3s ease;
+                        }
+                        .toolbar.is-stuck {
+                            box-shadow: 0 4px 16px rgba(0,0,0,0.12);
+                            padding: 8px 16px;
+                        }
+                        .toolbar .btn { min-width: 0; padding: 6px 12px; font-size: 12px; }
                         .toolbar select, .toolbar label { font-size: 14px; white-space: nowrap; }
+                        .tooltip-hover { position: relative; display: inline-flex; }
+                        .tooltip-hover .tooltip-bubble {
+                            visibility: hidden;
+                            opacity: 0;
+                            position: absolute;
+                            bottom: calc(100% + 8px);
+                            left: 50%;
+                            transform: translateX(-50%);
+                            width: 260px;
+                            background: #333;
+                            color: #fff;
+                            font-size: 12px;
+                            line-height: 1.4;
+                            font-weight: 400;
+                            text-align: center;
+                            padding: 10px 12px;
+                            border-radius: 6px;
+                            box-shadow: 0 5px 15px rgba(0,0,0,0.2);
+                            z-index: 130;
+                            transition: opacity 0.2s;
+                            pointer-events: none;
+                            white-space: normal;
+                        }
+                        .tooltip-hover .tooltip-bubble::after {
+                            content: "";
+                            position: absolute;
+                            top: 100%;
+                            left: 50%;
+                            margin-left: -5px;
+                            border-width: 5px;
+                            border-style: solid;
+                            border-color: #333 transparent transparent transparent;
+                        }
+                        .tooltip-hover:hover .tooltip-bubble { visibility: visible; opacity: 1; }
+                        .tooltip-hover.tooltip-below .tooltip-bubble {
+                            bottom: auto;
+                            top: calc(100% + 8px);
+                            transform: translateX(-50%);
+                        }
+                        .tooltip-hover.tooltip-below .tooltip-bubble::after {
+                            top: auto;
+                            bottom: 100%;
+                            margin-left: -5px;
+                            border-color: transparent transparent #333 transparent;
+                        }
+                        .tooltip-hover.tooltip-left .tooltip-bubble {
+                            bottom: auto;
+                            top: 50%;
+                            left: auto;
+                            right: calc(100% + 8px);
+                            transform: translateY(-50%);
+                        }
+                        .tooltip-hover.tooltip-left .tooltip-bubble::after {
+                            top: 50%;
+                            left: 100%;
+                            margin-left: 0;
+                            margin-top: -5px;
+                            transform: translateY(-50%);
+                            border-width: 5px;
+                            border-style: solid;
+                            border-color: transparent transparent transparent #333;
+                        }
                         .status-box {
                             display: inline-flex;
                             align-items: center;
@@ -666,7 +815,11 @@ class Dashboard {
                             white-space: nowrap;
                             min-width: 100px;
                             box-sizing: border-box;
+                            font-family: inherit;
+                            line-height: 1;
                         }
+
+                        button.btn { padding: 11px 18px; }
 
                         .btn:hover { 
                             background: var(--primary-color); 
@@ -685,6 +838,14 @@ class Dashboard {
                             font-size: 11px; 
                             font-weight: 600; 
                             transition: all 0.15s; 
+                            box-sizing: border-box;
+                            font-family: inherit;
+                            line-height: 1;
+                            width: 62px;
+                            display: inline-flex;
+                            align-items: center;
+                            justify-content: center;
+                            height: 26px;
                         }
                         .btn-action:hover { 
                             background: var(--primary-color); 
@@ -729,7 +890,7 @@ class Dashboard {
                         .modal-content { 
                             background: var(--bg-white); 
                             margin: 20px auto; 
-                            padding: 30px; 
+                            padding: 18px 20px; 
                             width: 50%; 
                             max-height: calc(100vh - 80px);
                             overflow-y: auto;
@@ -738,17 +899,17 @@ class Dashboard {
                             border: 1px solid var(--border-color);
                             position: relative;
                         }
-                        .modal-content h2 { margin-top: 0; color: var(--text-main); margin-bottom: 25px; }
+                        .modal-content h2 { margin-top: 0; color: var(--text-main); margin-bottom: 14px; font-size: 18px; }
                         
-                        .form-group { margin-bottom: 20px; }
-                        .form-group label { display: block; margin-bottom: 8px; font-weight: 600; color: var(--text-muted); font-size: 14px; }
+                        .form-group { margin-bottom: 12px; }
+                        .form-group label { display: block; margin-bottom: 4px; font-weight: 600; color: var(--text-muted); font-size: 13px; }
                         .form-group input, .form-group textarea { 
                             width: 100%; 
-                            padding: 12px; 
+                            padding: 8px 10px; 
                             border: 1px solid var(--border-color); 
                             border-radius: 6px; 
                             box-sizing: border-box; 
-                            font-size: 15px;
+                            font-size: 14px;
                             background: var(--bg-box);
                             color: var(--text-main);
                             transition: border-color 0.2s;
@@ -781,9 +942,13 @@ class Dashboard {
                         }
 
                         /* WhatsApp Preview Styles */
-                        .modal-body-wrapper { display: flex; gap: 30px; align-items: flex-start; }
+                        .modal-body-wrapper { display: flex; gap: 18px; align-items: flex-start; }
                         .form-column { flex: 0 0 65%; }
                         .chat-column { flex: 0 0 35%; position: sticky; top: 0; }
+                        #cartModuleAdd .tags-flex-row label,
+                        #cartModuleEdit .tags-flex-row label,
+                        #turnoModuleAdd .tags-flex-row label,
+                        #turnoModuleEdit .tags-flex-row label { display: none; }
                         
                         .whatsapp-container {
                             background: #e5ddd5;
@@ -936,11 +1101,49 @@ ${helpGuideCSS}
                             flex-direction: column;
                             align-items: center;
                             gap: 2px;
-                            transition: transform 0.2s, box-shadow 0.2s;
+                            transition: transform 0.2s, box-shadow 0.2s, all 0.2s;
                             user-select: none;
                         }
+                        .support-toggle .support-toggle-min {
+                            position: absolute;
+                            top: -6px;
+                            right: -6px;
+                            width: 18px;
+                            height: 18px;
+                            border-radius: 50%;
+                            background: #dc3545;
+                            color: white;
+                            font-size: 12px;
+                            font-weight: 700;
+                            line-height: 16px;
+                            text-align: center;
+                            cursor: pointer;
+                            border: 1px solid white;
+                            box-shadow: 0 2px 6px rgba(0,0,0,0.2);
+                            z-index: 2;
+                        }
+                        .support-toggle.minimized {
+                            width: 24px;
+                            height: 24px;
+                            padding: 0;
+                            border-radius: 50%;
+                            background: var(--primary-color);
+                            box-shadow: 0 2px 10px rgba(0,0,0,0.2);
+                            animation: heartbeat 1.6s ease-in-out infinite;
+                        }
+                        .support-toggle.minimized:hover { transform: scale(1); box-shadow: 0 2px 10px rgba(0,0,0,0.2); }
+                        .support-toggle.minimized img,
+                        .support-toggle.minimized .label,
+                        .support-toggle.minimized .support-toggle-min { display: none; }
+                        @keyframes heartbeat {
+                            0%, 100% { transform: scale(1); }
+                            20% { transform: scale(1.15); }
+                            40% { transform: scale(1); }
+                            60% { transform: scale(1.12); }
+                            80% { transform: scale(1); }
+                        }
                         .support-toggle:hover { transform: scale(1.05); box-shadow: 0 6px 25px rgba(0,0,0,0.15); }
-                        .support-toggle canvas { display: block; }
+                        .support-toggle img { display: block; }
                         .support-toggle .label {
                             font-size: 11px;
                             color: var(--primary-color);
@@ -1081,11 +1284,14 @@ ${helpGuideCSS}
                             .header { flex-direction: column; align-items: stretch; gap: 12px; }
                             .header > div { justify-content: center; }
                             .header h3 { text-align: center; font-size: 16px; }
-                            .toolbar { justify-content: center; }
+                            .toolbar { justify-content: flex-end; position: static; }
+                            .toolbar.is-stuck { padding: 12px 16px; border-radius: 12px; box-shadow: none; }
                             .toolbar .btn, .toolbar select { width: 100%; min-width: unset; box-sizing: border-box; }
+                            .toolbar .tooltip-hover { width: 100%; box-sizing: border-box; }
+                            .toolbar .tooltip-hover .btn { width: 100%; }
                             .toolbar select { font-size: 14px; }
                             .table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; margin: 0 -4px; }
-                            .table-wrap table { min-width: 900px; }
+                            .table-wrap table { min-width: 680px; }
                             .modal-content { width: 95% !important; max-width: 100% !important; margin: 10px auto; padding: 16px; box-sizing: border-box; }
                             .modal { padding: 10px 0; }
                             .modal-body-wrapper { flex-direction: column; }
@@ -1138,49 +1344,34 @@ ${helpGuideCSS}
                                 <div class="status-box" id="statusBox"><span class="status-dot off" id="statusDot"></span> <span id="statusLabel">Verificando...</span></div>
                             </div>
                         </div>
-                        <div class="toolbar">
+                    </div>
+                    <div class="toolbar">
                             ${botSelector}
                             ${isAdmin ? '<a href="/app/admin" class="btn btn-blue" style="background: #007bff; color: white;">Panel Admin</a>' : ''}
                             <button onclick="showVisual()" class="btn btn-purple">Visualizar</button>
                             <a href="/app/qr" class="btn btn-green">WhatsApp QR</a>
                             <a href="/app/refresh?botId=${botId}" class="btn btn-orange">Refrescar</a>
-                            <a href="/app/pedidos/${botId}" target="_blank" class="btn btn-green">Ver Pedidos</a>
+                            <span class="tooltip-hover tooltip-below">
+                                <a href="/app/pedidos/${botId}" target="_blank" class="btn btn-green">Ver Pedidos</a>
+                                <span class="tooltip-bubble">Si configurás tu bot como "Bot de catálogo" podrás ver los pedidos en esta base de datos.</span>
+                            </span>
                             <a href="https://calendar.google.com/calendar/r" target="_blank" class="btn btn-blue" id="calendarBtn">Ver Calendario</a>
                             ${isAdmin ? `<a href="https://docs.google.com/spreadsheets/d/${service.spreadsheetId}" target="_blank" class="btn btn-blue">Abrir Sheet</a>` : ''}
                             <a href="/app/logout" class="btn btn-red">Salir</a>
-                        </div>
                     </div>
 
 ${helpGuideHTML}
 
-                    <div class="table-wrap">
-                    <table>
-                        <thead>
-                            <tr>
-                                <th>Disparador</th>
-                                <th>Título</th>
-                                <th>Mensaje (Resumen)</th>
-                                <th>Precio</th>
-                                <th>Pedido</th>
-                                <th>Cant.</th>
-                                <th>Fin</th>
-                                <th>Datos</th>
-                                <th>Archivo</th>
-                                <th>Pagar</th>
-                                <th>Redirigir</th>
-                                <th>Disp.</th>
-                                <th>Acciones</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            ${rowsHtml}
-                        </tbody>
-                    </table>
-                    </div>
-
                     <!-- Tipo de Bot + Google Calendar -->
                     <div class="schedule-section">
-                        <h3>🤖 Tipo de Bot</h3>
+                        <div class="step-toggle" onclick="toggleStep('step1Body', this)" style="display:flex; align-items:flex-start; justify-content:space-between; gap:10px;">
+                            <div>
+                                <div style="display:inline-block; background:#0f6b4f; color:#fff; font-size:11px; font-weight:700; letter-spacing:0.5px; padding:4px 10px; border-radius:4px; margin-bottom:8px;">PASO 1 · CONFIGURÁ EL TIPO DE BOT</div>
+                                <h3>🤖 Tipo de Bot</h3>
+                            </div>
+                            <span class="step-toggle-arrow" style="font-size:14px; color:var(--text-muted); transform:rotate(-90deg);">▼</span>
+                        </div>
+                        <div class="step-body" id="step1Body" style="display:none;">
                         <p class="muted">Definí qué tipo de operación maneja este bot. Al elegir <strong>"Gestor de Turnos"</strong> se ocultan los módulos de carrito y se habilita la configuración de Google Calendar.</p>
                         <div class="online-row">
                             <select id="botTypeInput" onchange="onBotTypeChange()" style="padding: 10px 14px; border: 1px solid var(--border-color); border-radius: 8px; font-size: 15px; width: 100%; max-width: 420px;">
@@ -1191,7 +1382,11 @@ ${helpGuideHTML}
                         </div>
 
                         <div id="calendarSection" style="display: none; margin-top: 18px; padding: 16px; background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 10px;">
-                            <div style="font-weight: 700; color: #166534; margin-bottom: 12px;">📅 Configuración de Google Calendar</div>
+                            <div onclick="toggleCalendarSection()" style="font-weight: 700; color: #166534; margin-bottom: 12px; display: flex; align-items: center; gap: 6px; cursor: pointer; user-select: none;">📅 Configuración de Google Calendar
+                                <span class="calendar-toggle-arrow" id="calendarToggleArrow" style="display:inline-flex;align-items:center;justify-content:center;font-size:12px;transition:transform 0.2s;transform:rotate(-90deg);">▼</span>
+                                <span onclick="event.stopPropagation(); openCalendarHelp()" style="display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;background:#e9ecef;color:#6c757d;border-radius:50%;font-size:12px;font-weight:bold;cursor:pointer;border:1px solid #ced4da;" title="Cómo conectar tu calendario">?</span>
+                            </div>
+                            <div id="calendarBody" style="display: none;">
                             <div style="display: flex; flex-direction: column; gap: 12px;">
                                 <div style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap;">
                                     <label style="font-weight: 600; min-width: 200px;">Calendar ID:<span class="info-icon" style="margin-left:4px;">i<span class="tooltip" style="width: 320px; margin-left: -160px; text-align: left;">
@@ -1242,19 +1437,51 @@ ${helpGuideHTML}
                                 <button class="btn btn-green schedule-save-btn" onclick="probarDisponibilidad()">Probar disponibilidad</button>
                                 <span class="schedule-status" id="availStatus"></span>
                             </div>
+                            </div>
                         </div>
 
                         <div class="schedule-actions">
                             <button class="btn btn-green schedule-save-btn" onclick="saveBotTypeConfig()">Guardar tipo de bot</button>
                             <span class="schedule-status" id="botTypeStatus"></span>
                         </div>
+                        </div>
                     </div>
+
+                        <!-- Modal Ayuda Google Calendar -->
+                        <div id="calendarHelpModal" class="modal">
+                            <div class="modal-content" style="width: 90%; max-width: 760px;">
+                                <span onclick="closeModal('calendarHelpModal')" style="float:right; cursor:pointer; font-size:24px;">&times;</span>
+                                <h2>📅 Cómo conectar tu Google Calendar</h2>
+                                <p style="color:#555; font-size:14px; line-height:1.6;">Seguí estos pasos para obtener el <strong>Calendar ID</strong> de tu calendario y compartirlo con el bot.</p>
+                                <ol style="font-size:14px; color:#333; line-height:1.7; padding-left:20px;">
+                                    <li>Abrí <a href="https://calendar.google.com/" target="_blank" rel="noopener">Google Calendar</a> en tu computadora.</li>
+                                    <li>Mirá el lado izquierdo de la pantalla.</li>
+                                    <li>Buscá la lista <strong>Mis calendarios</strong>.
+                                        <div style="margin:8px 0;"><img src="/img/1cap_mis_calendarios.png" alt="Lista Mis calendarios" style="max-width:100%; border:1px solid #ddd; border-radius:8px;"></div>
+                                    </li>
+                                    <li>Poné el puntero sobre tu calendario (el que vas a usar para tu negocio).</li>
+                                    <li>Hacé clic en los tres puntos.</li>
+                                    <li>Entrá en <strong>Configuración y uso compartido</strong>.
+                                        <div style="margin:8px 0;"><img src="/img/2cap_mis_calendarios.png" alt="Configuración y uso compartido" style="max-width:100%; border:1px solid #ddd; border-radius:8px;"></div>
+                                    </li>
+                                    <li>Bajá hasta la parte llamada <strong>Integrar calendario</strong>.</li>
+                                    <li>Copiá el texto en <strong>ID del calendario</strong>.
+                                        <div style="margin:8px 0;"><img src="/img/4cap_mis_calendarios.png" alt="ID del calendario" style="max-width:100%; border:1px solid #ddd; border-radius:8px;"></div>
+                                    </li>
+                                    <li>Dale permisos de edición a este email: <code style="background:#f0fdf4; padding:2px 6px; border-radius:4px; color:#166534; font-weight:600;">${process.env.ADMIN_EMAIL || 'la cuenta de Google vinculada al bot'}</code></li>
+                                </ol>
+                                <p style="color:#777; font-size:12px; line-height:1.5;">💡 Sin permisos de edición el bot no podrá crear turnos en tu calendario. Pegá el ID copiado en el campo <strong>Calendar ID</strong> de esta página.</p>
+                            </div>
+                        </div>
 
                     <!-- Horarios de Atención -->
                     <style>
                         .schedule-section { margin-top: 30px; padding: 20px 24px; border-top: 2px solid var(--border-color); background: var(--bg-box); border-radius: 12px; }
                         .schedule-section h3 { margin: 0 0 6px 0; color: var(--text-main); }
                         .schedule-section .muted { color: var(--text-muted); font-size: 13px; margin: 0 0 16px 0; line-height: 1.5; }
+                        .step-toggle { cursor: pointer; user-select: none; }
+                        .step-toggle:hover h3 { color: var(--primary-color); }
+                        .step-toggle .step-toggle-arrow { transition: transform 0.2s; display: inline-flex; }
                         .online-row { display: flex; align-items: center; gap: 10px; font-weight: 600; font-size: 15px; }
                         .online-row input[type="checkbox"] { width: 18px; height: 18px; cursor: pointer; }
                         .day-check { width: 17px; height: 17px; cursor: pointer; }
@@ -1272,7 +1499,14 @@ ${helpGuideHTML}
                         .schedule-save-btn:hover { background: var(--primary-hover) !important; color: white !important; border: none !important; }
                     </style>
                     <div class="schedule-section">
-                        <h3>🕒 Horarios de Atención del Bot</h3>
+                        <div class="step-toggle" onclick="toggleStep('step2Body', this)" style="display:flex; align-items:flex-start; justify-content:space-between; gap:10px;">
+                            <div>
+                                <div style="display:inline-block; background:#0f6b4f; color:#fff; font-size:11px; font-weight:700; letter-spacing:0.5px; padding:4px 10px; border-radius:4px; margin-bottom:8px;">PASO 2 · CONFIGURÁ LOS HORARIOS DE ATENCIÓN DEL BOT</div>
+                                <h3>🕒 Horarios de Atención del Bot</h3>
+                            </div>
+                            <span class="step-toggle-arrow" style="font-size:14px; color:var(--text-muted); transform:rotate(-90deg);">▼</span>
+                        </div>
+                        <div class="step-body" id="step2Body" style="display:none;">
                         <p class="muted">Estos son los horarios en los que <strong>el bot atiende y responde mensajes</strong>. Si está <strong>"online 24/7"</strong> responde todo el día, todos los días. Si lo destildás, indicá los días y rangos de horario (hora local de Argentina) en los que querés que responda. Se puede agregar más de un rango por día.<br>
                         <small>ℹ️ <strong>Distinto de</strong> los "Días y Horarios de Atención" de la configuración de Google Calendar, que definen cuándo hay turnos disponibles del negocio.</small></p>
                         <div class="online-row">
@@ -1285,6 +1519,71 @@ ${helpGuideHTML}
                         <div class="schedule-actions">
                             <button class="btn btn-green schedule-save-btn" onclick="saveSchedule()">Guardar horarios</button>
                             <span class="schedule-status" id="scheduleStatus"></span>
+                        </div>
+                        </div>
+                    </div>
+
+                    <div class="schedule-section" id="step3Section">
+                        <div class="step-toggle" onclick="toggleStep('step3Body', this)" style="display:flex; align-items:flex-start; justify-content:space-between; gap:10px;">
+                            <div>
+                                <div style="display:inline-block; background:#0f6b4f; color:#fff; font-size:11px; font-weight:700; letter-spacing:0.5px; padding:4px 10px; border-radius:4px; margin-bottom:8px;">PASO 3 · EDITÁ TU BOT. COMENZÁ HACIENDO CLIC EN EL BOTÓN "+ HIJO" EN LA COLUMNA DERECHA DE ACCIONES.</div>
+                                <h3>🛠️ Editor de Menú</h3>
+                            </div>
+                            <span class="step-toggle-arrow" style="font-size:14px; color:var(--text-muted); ${hasMenuContent ? '' : 'transform:rotate(-90deg);'}}">▼</span>
+                        </div>
+                        <div class="step-body" id="step3Body" style="${hasMenuContent ? '' : 'display:none;'}">
+                    <div class="col-toggle-wrap">
+                    <button type="button" class="col-toggle-btn" onclick="event.stopPropagation(); toggleColMenu()" title="Columnas visibles">⋮</button>
+                    <div class="col-toggle-menu" id="colToggleMenu">
+                        <div class="ctm-title">Ver</div>
+                        <label><input type="checkbox" checked onchange="toggleCol('precio', this.checked)"> Precio</label>
+                        <label><input type="checkbox" checked onchange="toggleCol('pedido', this.checked)"> Pedido</label>
+                        <label><input type="checkbox" checked onchange="toggleCol('cant', this.checked)"> Cant.</label>
+                        <label><input type="checkbox" checked onchange="toggleCol('fin', this.checked)"> Fin</label>
+                        <label><input type="checkbox" checked onchange="toggleCol('datos', this.checked)"> Datos</label>
+                        <label><input type="checkbox" checked onchange="toggleCol('archivo', this.checked)"> Archivo</label>
+                        <label><input type="checkbox" checked onchange="toggleCol('pagar', this.checked)"> Pagar</label>
+                        <label><input type="checkbox" checked onchange="toggleCol('redirigir', this.checked)"> Redirigir</label>
+                        <label><input type="checkbox" checked onchange="toggleCol('disp', this.checked)"> Disp.</label>
+                    </div>
+                    <div class="table-wrap">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Disparador</th>
+                                <th>Título</th>
+                                <th>Mensaje (Resumen)</th>
+                                <th>Acciones</th>
+                                <th class="th-mini col-precio">Precio</th>
+                                <th class="th-mini col-pedido">Pedido</th>
+                                <th class="th-mini col-cant">Cant.</th>
+                                <th class="th-mini col-fin">Fin</th>
+                                <th class="th-mini col-datos">Datos</th>
+                                <th class="th-mini col-archivo">Archivo</th>
+                                <th class="th-mini col-pagar">Pagar</th>
+                                <th class="th-mini col-redirigir">Redirigir</th>
+                                <th class="th-mini col-disp">Disp.</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${rowsHtml}
+                        </tbody>
+                    </table>
+                    </div>
+                    </div>
+                        </div>
+                    </div>
+
+                    <div class="schedule-section">
+                        <div class="step-toggle" onclick="toggleStep('step4Body', this)" style="display:flex; align-items:flex-start; justify-content:space-between; gap:10px;">
+                            <div>
+                                <div style="display:inline-block; background:#0f6b4f; color:#fff; font-size:11px; font-weight:700; letter-spacing:0.5px; padding:4px 10px; border-radius:4px; margin-bottom:8px;">PASO 4 · ACTIVÁ TU BOT EN WHATSAPP</div>
+                                <h3>📱 Conectá tu bot a WhatsApp</h3>
+                            </div>
+                            <span class="step-toggle-arrow" style="font-size:14px; color:var(--text-muted); transform:rotate(-90deg);">▼</span>
+                        </div>
+                        <div class="step-body" id="step4Body" style="display:none;">
+                        <div id="step4Status" style="font-size:14px; color:#444; line-height:1.6;">Verificando estado del bot...</div>
                         </div>
                     </div>
 
@@ -1478,9 +1777,9 @@ ${helpGuideHTML}
                             
                             <div class="modal-body-wrapper">
                                 <div class="form-column">
-                                    <div style="background: #fff3cd; padding: 15px; border-radius: 5px; margin-bottom: 20px; border-left: 5px solid #ffc107;">
-                                        <small style="color: #856404; display: block; margin-bottom: 10px;">Vista previa actual:</small>
-                                        <div id="editPreview" style="font-family: monospace; white-space: pre-wrap; font-size: 13px; max-height: 120px; overflow-y: auto; overflow-x: hidden;"></div>
+                                    <div style="background: #fff3cd; padding: 10px 12px; border-radius: 5px; margin-bottom: 12px; border-left: 5px solid #ffc107;">
+                                        <small style="color: #856404; display: block; margin-bottom: 8px;">Vista previa actual:</small>
+                                        <div id="editPreview" style="font-family: monospace; white-space: pre-wrap; font-size: 12px; max-height: 100px; overflow-y: auto; overflow-x: hidden;"></div>
                                     </div>
 
                                     <form action="/app/save" method="POST">
@@ -1489,12 +1788,12 @@ ${helpGuideHTML}
                                         <input type="hidden" id="editId" name="id">
                                         <input type="hidden" id="editParentId" name="parentId">
                                         
-                                        <div class="form-group" id="strictTriggerGroup" style="display: none; background: #f0fdf4; padding: 15px; border-radius: 6px; border: 1px solid #bbf7d0; margin-bottom: 20px;">
-                                            <div style="display: flex; align-items: center; gap: 12px;">
-                                                <input type="checkbox" id="editStrictTrigger" name="strictTrigger" value="true" style="width: 22px; height: 22px; cursor: pointer;" onchange="updatePreview('edit')">
+                                        <div class="form-group" id="strictTriggerGroup" style="display: none; background: #f0fdf4; padding: 10px 12px; border-radius: 6px; border: 1px solid #bbf7d0; margin-bottom: 12px;">
+                                            <div style="display: flex; align-items: center; gap: 10px;">
+                                                <input type="checkbox" id="editStrictTrigger" name="strictTrigger" value="true" style="width: 18px; height: 18px; cursor: pointer;" onchange="updatePreview('edit')">
                                                 <div>
-                                                    <label for="editStrictTrigger" style="margin-bottom: 2px; cursor: pointer; color: #166534; font-size: 14px; font-weight: 700;">Activar bot solo con disparador exacto</label>
-                                                    <p style="margin: 0; font-size: 12px; color: #15803d;">Si está marcado, el bot solo responderá si el usuario escribe exactamente el disparador inicial. Si no, responderá a cualquier palabra.</p>
+                                                    <label for="editStrictTrigger" style="margin-bottom: 2px; cursor: pointer; color: #166534; font-size: 13px; font-weight: 700;">Activar bot solo con disparador exacto</label>
+                                                    <p style="margin: 0; font-size: 11px; color: #15803d;">Si está marcado, el bot solo responderá si el usuario escribe exactamente el disparador inicial. Si no, responderá a cualquier palabra.</p>
                                                 </div>
                                             </div>
                                         </div>
@@ -1522,35 +1821,35 @@ ${helpGuideHTML}
                                             </label>
                                             <textarea id="editMessage" name="message" rows="4" oninput="updatePreview('edit')"></textarea>
                                         </div>
-                                        <div class="form-group" id="editTagsGroup" style="margin-bottom: 20px;">
-                                            <div style="border:1px solid var(--border-color);border-radius:8px;padding:12px 12px 8px 12px;margin:12px;" id="cartModuleEdit">
-                                                <div style="font-size:12px;font-weight:700;color:var(--text-main);margin-bottom:8px;">Carrito de compras</div>
-                                                <div class="tags-flex-row" style="display:flex;gap:10px;">
-                                                    <div style="flex:1;display:flex;align-items:center;gap:10px;background:#fff3cd;padding:10px;border-radius:6px;border:1px dashed #ffc107;">
+                                        <div class="form-group" id="editTagsGroup" style="margin-bottom: 12px;">
+                                            <div style="border:1px solid var(--border-color);border-radius:8px;padding:8px 10px 6px 10px;margin:8px;" id="cartModuleEdit">
+                                                <div style="font-size:12px;font-weight:700;color:var(--text-main);margin-bottom:6px;">Carrito de compras</div>
+                                                <div class="tags-flex-row" style="display:flex;gap:8px;">
+                                                    <div style="flex:1;display:flex;align-items:center;gap:8px;background:#fff3cd;padding:6px 8px;border-radius:6px;border:1px dashed #ffc107;">
                                                     <input type="checkbox" id="editIsOrder" onchange="toggleOrderTag('edit', '##PEDIDO##')" style="width:16px;height:16px;cursor:pointer;">
                                                     <label for="editIsOrder" style="margin-bottom:0;cursor:pointer;color:#856404;font-size:13px;">¿Crear pedido?<span class="info-icon" style="margin-left:4px;">i<span class="tooltip">Agrega "1 x Título" al carrito de compras.</span></span></label>
                                                 </div>
-                                                <div style="flex:1;display:flex;align-items:center;gap:10px;background:#eefbff;padding:10px;border-radius:6px;border:1px dashed #bee5eb;">
+                                                <div style="flex:1;display:flex;align-items:center;gap:8px;background:#eefbff;padding:6px 8px;border-radius:6px;border:1px dashed #bee5eb;">
                                                     <input type="checkbox" id="editIsQty" onchange="toggleOrderTag('edit', '##CANTIDAD##')" style="width:16px;height:16px;cursor:pointer;">
                                                     <label for="editIsQty" style="margin-bottom:0;cursor:pointer;color:#0c5460;font-size:13px;">¿Pedir cantidad?<span class="info-icon" style="margin-left:4px;">i<span class="tooltip">Pregunta al usuario cuántas unidades quiere llevar.</span></span></label>
                                                 </div>
-                                                <div style="flex:1;display:flex;align-items:center;gap:10px;background:#f3f0ff;padding:10px;border-radius:6px;border:1px dashed #d1d1ff;">
+                                                <div style="flex:1;display:flex;align-items:center;gap:8px;background:#f3f0ff;padding:6px 8px;border-radius:6px;border:1px dashed #d1d1ff;">
                                                     <input type="checkbox" id="editIsFinal" onchange="toggleOrderTag('edit', '##FINALIZAR##')" style="width:16px;height:16px;cursor:pointer;">
                                                     <label for="editIsFinal" style="margin-bottom:0;cursor:pointer;color:#5227cc;font-size:13px;">¿Finalizar?<span class="info-icon" style="margin-left:4px;">i<span class="tooltip">Muestra el resumen y vacía el carrito. Combinable con otros tags.</span></span></label>
                                                     </div>
                                                 </div>
-                                                <div class="tags-flex-row" style="display:flex;gap:10px;margin-top:6px;">
-                                                    <div style="flex:1;display:flex;align-items:center;gap:10px;background:#fff4e5;padding:10px;border-radius:6px;border:1px dashed #ff9800;">
+                                                <div class="tags-flex-row" style="display:flex;gap:8px;margin-top:6px;">
+                                                    <div style="flex:1;display:flex;align-items:center;gap:8px;background:#fff4e5;padding:6px 8px;border-radius:6px;border:1px dashed #ff9800;">
                                                         <input type="checkbox" id="editIsData" onchange="toggleOrderTag('edit', '##DATOS##')" style="width:16px;height:16px;cursor:pointer;">
                                                         <label for="editIsData" style="margin-bottom:0;cursor:pointer;color:#856404;font-size:13px;">¿Capturar dato?<span class="info-icon" style="margin-left:4px;">i<span class="tooltip">Espera que el usuario escriba texto libre (nombre, dirección, etc.).</span></span></label>
                                                     </div>
-                                                    <div style="flex:1;display:flex;align-items:center;gap:10px;background:#e8f5e9;padding:10px;border-radius:6px;border:1px dashed #66bb6a;">
+                                                    <div style="flex:1;display:flex;align-items:center;gap:8px;background:#e8f5e9;padding:6px 8px;border-radius:6px;border:1px dashed #66bb6a;">
                                                         <input type="checkbox" id="editIsArchivo" onchange="toggleOrderTag('edit', '##ARCHIVO##')" style="width:16px;height:16px;cursor:pointer;">
                                                         <label for="editIsArchivo" style="margin-bottom:0;cursor:pointer;color:#2e7d32;font-size:13px;">¿Solicitar archivo?<span class="info-icon" style="margin-left:4px;">i<span class="tooltip">Espera que el usuario envíe una imagen o archivo.</span></span></label>
                                                     </div>
                                                 </div>
-                                                <div class="tags-flex-row" style="display:flex;gap:10px;margin-top:6px;">
-                                                    <div style="flex:1;display:flex;align-items:center;gap:10px;background:#f0fdf4;padding:10px;border-radius:6px;border:1px dashed #86efac;">
+                                                <div class="tags-flex-row" style="display:flex;gap:8px;margin-top:6px;">
+                                                    <div style="flex:1;display:flex;align-items:center;gap:8px;background:#f0fdf4;padding:6px 8px;border-radius:6px;border:1px dashed #86efac;">
                                                         <input type="checkbox" id="editIsPagar" onchange="toggleOrderTag('edit', '##PAGAR##')" style="width:16px;height:16px;cursor:pointer;">
                                                         <label for="editIsPagar" style="margin-bottom:0;cursor:pointer;color:#166534;font-size:13px;">Ir a pagar<span class="info-icon" style="margin-left:4px;">i<span class="tooltip">Muestra "p. Ir a pagar" cuando hay items en el carrito. Al escribir p va al primer hijo con Finalizar.</span></span></label>
                                                     </div>
@@ -1558,11 +1857,11 @@ ${helpGuideHTML}
                                                 </div>
                                             </div>
                                         </div>
-                                        <div class="form-group" style="margin-bottom: 20px;" id="turnoModuleEdit">
-                                            <div style="border:1px solid #86efac;border-radius:8px;padding:12px 12px 8px 12px;background:#f0fdf4;">
-                                                <div style="font-size:12px;font-weight:700;color:#166534;margin-bottom:8px;">Reserva de turno</div>
-                                                <div class="tags-flex-row" style="display:flex;gap:10px;margin-top:6px;">
-                                                    <div style="flex:1;display:flex;align-items:center;gap:10px;">
+                                        <div class="form-group" style="margin-bottom: 12px;" id="turnoModuleEdit">
+                                            <div style="border:1px solid #86efac;border-radius:8px;padding:8px 10px 6px 10px;background:#f0fdf4;">
+                                                <div style="font-size:12px;font-weight:700;color:#166534;margin-bottom:6px;">Reserva de turno</div>
+                                                <div class="tags-flex-row" style="display:flex;gap:8px;margin-top:6px;">
+                                                    <div style="flex:1;display:flex;align-items:center;gap:8px;">
                                                         <input type="checkbox" id="editIsTurno" onchange="toggleOrderTag('edit', '##TURNO##')" style="width:16px;height:16px;cursor:pointer;">
                                                         <label for="editIsTurno" style="margin-bottom:0;cursor:pointer;color:#166534;font-size:13px;">Reserva de turno<span class="info-icon" style="margin-left:4px;">i<span class="tooltip">Inicia el flujo de reserva: fecha → horario → confirmación (requiere Gestor de Turnos).</span></span></label>
                                                     </div>
@@ -1578,9 +1877,9 @@ ${helpGuideHTML}
                                             </select>
                                             <small style="color:#888;">Al finalizar, irá directamente a este nodo.</small>
                                         </div>
-                                        <div class="form-group" style="display:flex;align-items:center;gap:10px;background:#fff3e0;padding:12px;border-radius:6px;border:1px dashed #ffb74d;">
-                                            <input type="checkbox" id="editNoDisponible" name="disponible" value="false" style="width:18px;height:18px;cursor:pointer;">
-                                            <label for="editNoDisponible" style="margin-bottom:0;cursor:pointer;font-weight:700;color:#e65100;">No disponible (sin stock)</label>
+                                        <div class="form-group" style="display:flex;align-items:center;gap:10px;background:#fff3e0;padding:8px 10px;border-radius:6px;border:1px dashed #ffb74d;margin-bottom:12px;">
+                                            <input type="checkbox" id="editNoDisponible" name="disponible" value="false" style="width:16px;height:16px;cursor:pointer;">
+                                            <label for="editNoDisponible" style="margin-bottom:0;cursor:pointer;font-weight:700;color:#e65100;font-size:13px;">No disponible (sin stock)</label>
                                         </div>
                                         <button type="submit" class="btn btn-green" style="width: 100%;">Guardar Cambios</button>
                                     </form>
@@ -1623,17 +1922,20 @@ ${helpGuideHTML}
 
                     <!-- Support Bot -->
                     <div class="support-toggle" id="supportToggle" onclick="toggleSupport()">
-                        <canvas id="botLogoSupport" width="200" height="200" style="width: 40px; height: 40px;"></canvas>
+                        <span class="support-toggle-min" id="supportToggleMin" onclick="event.stopPropagation(); minimizeSupport()" title="Minimizar">−</span>
+                        <img id="botLogoSupport" src="/img/wamenu_square.png" alt="Asistente" style="width: 40px; height: 40px; object-fit: contain; display: block;">
                         <span class="label">te ayudo?</span>
                     </div>
                     <div class="support-modal" id="supportModal">
                         <div class="support-header">
-                            <canvas id="botLogoSupportHeader" width="200" height="200" style="width: 36px; height: 36px;"></canvas>
                             <div>
                                 <h4>Asistente del Editor</h4>
                                 <div class="sub">Consultá cómo usar el editor</div>
                             </div>
-                            <button onclick="toggleSupport()" style="background:none;border:none;color:white;font-size:20px;cursor:pointer;">&times;</button>
+                            <div style="display:flex; align-items:center; gap:6px;">
+                                <button onclick="minimizeSupport()" title="Minimizar" style="background:none;border:none;color:white;font-size:18px;cursor:pointer;padding:0 4px;">&minus;</button>
+                                <button onclick="toggleSupport()" title="Cerrar" style="background:none;border:none;color:white;font-size:20px;cursor:pointer;">&times;</button>
+                            </div>
                         </div>
                         <div class="support-body" id="supportBody">
                             <div class="sb-bubble bot">¡Hola! Soy el asistente del editor de menú. Haceme cualquier pregunta sobre cómo crear o modificar el menú de tu bot de WhatsApp. 😊</div>
@@ -1928,8 +2230,6 @@ ${helpGuideHTML}
 
 ${helpGuideJS}
                         drawRobot('botLogoDash');
-                        drawRobot('botLogoSupport');
-                        drawRobot('botLogoSupportHeader');
 
                         function checkBotStatus() {
                             const dot = document.getElementById('statusDot');
@@ -1954,6 +2254,14 @@ ${helpGuideJS}
                                         data.status === 'error' || data.status === 'logged_out' || data.status === 'timeout_qr' ? 'error' : 'off';
                                     dot.className = 'status-dot ' + cls;
                                     label.textContent = labels[data.status] || data.status;
+                                    const step4 = document.getElementById('step4Status');
+                                    if (step4) {
+                                        if (data.status === 'connected') {
+                                            step4.innerHTML = '<span style="color:#2e7d32; font-weight:700;">✅ Tu bot se encuentra activo</span>';
+                                        } else {
+                                            step4.innerHTML = 'Ahora abre la cuenta de <strong>WhatsApp</strong> en la que va a trabajar tu bot asistente. Hacé clic en los <strong>3 puntitos</strong>, elegí <strong>"Vincular dispositivos"</strong> y escaneá el QR de tu bot ingresando acá: <a href="/app/qr" target="_blank" style="color:#0f6b4f; font-weight:700;">📱 Link de WhatsApp QR</a> y esperá a que diga <strong>activo</strong>. En ese momento el bot ya estará activo y cualquier cambio que realices en la tabla de edición de tu bot se verá reflejado en el bot online. ¡Muchos éxitos! 🎉';
+                                        }
+                                    }
                                 })
                                 .catch(function(){ dot.className = 'status-dot off'; label.textContent = 'Sin conexión'; });
                         }
@@ -1991,7 +2299,12 @@ ${helpGuideJS}
 
                         function showVisual() {
                             const container = document.getElementById('treeContainer');
-                            container.innerHTML = buildTree('root');
+                            const hasNodes = menuData.some(n => n.parentId === 'root');
+                            if (!hasNodes) {
+                                container.innerHTML = '<p style="color:#888; font-size:14px; text-align:center; padding:20px;">La estructura del bot aparecerá aquí debajo. Comienza a editarlo primero.</p>';
+                            } else {
+                                container.innerHTML = buildTree('root');
+                            }
                             document.getElementById('visualModal').style.display = "block";
                         }
 
@@ -2664,6 +2977,46 @@ ${helpGuideJS}
                             document.getElementById('deleteConfirmModal').style.display = "block";
                         }
 
+                        function openCalendarHelp() {
+                            document.getElementById('calendarHelpModal').style.display = "block";
+                        }
+
+                        function toggleCalendarSection() {
+                            const body = document.getElementById('calendarBody');
+                            const arrow = document.getElementById('calendarToggleArrow');
+                            if (!body) return;
+                            const hidden = body.style.display === 'none';
+                            body.style.display = hidden ? '' : 'none';
+                            if (arrow) arrow.style.transform = hidden ? '' : 'rotate(-90deg)';
+                        }
+
+                        function toggleStep(stepId, headerEl) {
+                            const body = document.getElementById(stepId);
+                            if (!body) return;
+                            const hidden = body.style.display === 'none';
+                            body.style.display = hidden ? '' : 'none';
+                            const arrow = headerEl ? headerEl.querySelector('.step-toggle-arrow') : null;
+                            if (arrow) arrow.style.transform = hidden ? '' : 'rotate(-90deg)';
+                        }
+
+                        function toggleColMenu() {
+                            const menu = document.getElementById('colToggleMenu');
+                            if (menu) menu.classList.toggle('open');
+                        }
+
+                        function toggleCol(col, show) {
+                            document.querySelectorAll('.col-' + col).forEach(el => {
+                                el.style.display = show ? '' : 'none';
+                            });
+                        }
+
+                        document.addEventListener('click', function (e) {
+                            const menu = document.getElementById('colToggleMenu');
+                            if (menu && menu.classList.contains('open') && !e.target.closest('.col-toggle-wrap')) {
+                                menu.classList.remove('open');
+                            }
+                        });
+
                         function closeModal(modalId) {
                             const el = document.getElementById(modalId);
                             if (el) el.style.display = "none";
@@ -2693,11 +3046,23 @@ ${helpGuideJS}
                         function toggleSupport() {
                             const modal = document.getElementById('supportModal');
                             const toggle = document.getElementById('supportToggle');
+                            if (toggle.classList.contains('minimized')) {
+                                toggle.classList.remove('minimized');
+                                return;
+                            }
                             modal.classList.toggle('open');
                             toggle.classList.toggle('open');
                             if (modal.classList.contains('open')) {
                                 setTimeout(() => document.getElementById('supportInput').focus(), 300);
                             }
+                        }
+
+                        function minimizeSupport() {
+                            const modal = document.getElementById('supportModal');
+                            const toggle = document.getElementById('supportToggle');
+                            modal.classList.remove('open');
+                            toggle.classList.remove('open');
+                            toggle.classList.add('minimized');
                         }
 
                         function sendSuggestion(el) {
@@ -2862,6 +3227,34 @@ ${helpGuideJS}
                             
                             updatePreview(type);
                         }
+
+                        (function () {
+                            const hasContent = ${hasMenuContent};
+                            const toolbar = document.querySelector('.toolbar');
+                            if (toolbar) {
+                                let ticking = false;
+                                function onScroll() {
+                                    if (ticking) return;
+                                    ticking = true;
+                                    requestAnimationFrame(function () {
+                                        const rect = toolbar.getBoundingClientRect();
+                                        const stuck = rect.top <= 0;
+                                        toolbar.classList.toggle('is-stuck', stuck);
+                                        if (stuck) toolbar.style.borderRadius = '0';
+                                        else toolbar.style.borderRadius = '12px';
+                                        ticking = false;
+                                    });
+                                }
+                                window.addEventListener('scroll', onScroll, { passive: true });
+                                onScroll();
+                            }
+                            if (!hasContent) return;
+                            const target = document.getElementById('step3Section');
+                            if (!target) return;
+                            window.addEventListener('load', function () {
+                                window.scrollTo({ top: target.getBoundingClientRect().top + window.scrollY - 10, behavior: 'smooth' });
+                            });
+                        })();
                     </script>
                 </body>
                 </html>
