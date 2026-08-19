@@ -19,7 +19,8 @@ function mapRow(row) {
         fechaPago: row.fecha_pago || '',
         fechaVencimiento: row.fecha_vencimiento || '',
         online24_7: row.online_24_7 !== false,
-        horarios: row.horarios || ''
+        horarios: row.horarios || '',
+        avisoSuspension: row.aviso_suspension || ''
     };
 }
 
@@ -56,6 +57,9 @@ class UserService {
             `;
             await sql`
                 ALTER TABLE users ADD COLUMN IF NOT EXISTS horarios TEXT DEFAULT ''
+            `;
+            await sql`
+                ALTER TABLE users ADD COLUMN IF NOT EXISTS aviso_suspension TEXT DEFAULT ''
             `;
             await sql`
                 CREATE UNIQUE INDEX IF NOT EXISTS users_email_uq ON users (LOWER(email)) WHERE email <> ''
@@ -291,6 +295,38 @@ class UserService {
             return true;
         } catch (error) {
             console.error('[UserService] Error updating subscription dates:', error.message);
+            return false;
+        }
+    }
+
+    async setActivo(idCliente, activo) {
+        if (!sql || !idCliente) return false;
+        try {
+            await sql`
+                UPDATE users
+                SET activo = ${!!activo}
+                WHERE id_cliente = ${idCliente}
+            `;
+            this.clearCache();
+            return true;
+        } catch (error) {
+            console.error('[UserService] Error updating activo:', error.message);
+            return false;
+        }
+    }
+
+    async guardarAvisoSuspension(idCliente, fecha) {
+        if (!sql || !idCliente) return false;
+        try {
+            await sql`
+                UPDATE users
+                SET aviso_suspension = ${fecha || ''}
+                WHERE id_cliente = ${idCliente}
+            `;
+            this.clearCache();
+            return true;
+        } catch (error) {
+            console.error('[UserService] Error guardando aviso de suspensión:', error.message);
             return false;
         }
     }

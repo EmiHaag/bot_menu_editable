@@ -13,6 +13,44 @@ function addMonths(date, months) {
   return d;
 }
 
+function addDays(date, days) {
+  const d = new Date(date);
+  d.setDate(d.getDate() + days);
+  return d;
+}
+
+// Período de gracia (días) antes de suspender el servicio tras el vencimiento
+const GRACE_DAYS = 10;
+
+// Clasifica el estado de una suscripción según su fecha de vencimiento.
+// Devuelve: 'activa' | 'gracia' | 'suspendida' | 'sin_suscripcion'
+function estadoSuscripcion(fechaVencimiento) {
+  if (!fechaVencimiento) return 'sin_suscripcion';
+  const vto = new Date(fechaVencimiento);
+  if (isNaN(vto.getTime())) return 'sin_suscripcion';
+  const hoy = new Date();
+  const diasVencido = Math.floor((hoy - vto) / (1000 * 60 * 60 * 24));
+  if (diasVencido < 0) return 'activa';
+  if (diasVencido <= GRACE_DAYS) return 'gracia';
+  return 'suspendida';
+}
+
+// Fecha en la que se suspende el servicio = vencimiento + período de gracia
+function fechaSuspension(fechaVencimiento) {
+  if (!fechaVencimiento) return null;
+  const vto = new Date(fechaVencimiento);
+  if (isNaN(vto.getTime())) return null;
+  return addDays(vto, GRACE_DAYS);
+}
+
+// Días vencidos (0 = vence hoy, positivo = vencido). -1 si no aplica.
+function diasVencido(fechaVencimiento) {
+  if (!fechaVencimiento) return -1;
+  const vto = new Date(fechaVencimiento);
+  if (isNaN(vto.getTime())) return -1;
+  return Math.floor((new Date() - vto) / (1000 * 60 * 60 * 24));
+}
+
 function fmtDate(d) {
   return d.toISOString();
 }
@@ -151,7 +189,7 @@ async function renovarSuscripcion(preapprovalId, { fechaPago, fechaVencimiento }
     if (rows.length > 0 && rows[0].id_cliente) {
       await sql`
         UPDATE users
-        SET fecha_pago = ${pago.toISOString()}, fecha_vencimiento = ${vto.toISOString()}
+        SET fecha_pago = ${pago.toISOString()}, fecha_vencimiento = ${vto.toISOString()}, activo = true, aviso_suspension = ''
         WHERE id_cliente = ${rows[0].id_cliente}
       `;
     }
@@ -196,8 +234,44 @@ async function getFacturaByPaymentId(paymentId) {
   }
 }
 
+// Historial de pagos/facturas de un cliente, ordenado del más reciente al más antiguo.
+async function getFacturasByIdCliente(idCliente) {
+  if (!sql || !idCliente) return [];
+  try {
+    const rows = await sql`
+      SELECT * FROM facturas
+      WHERE id_cliente = ${idCliente}
+      ORDER BY created_at DESC
+    `;
+    return rows.map(r => ({
+      paymentId: r.payment_id,
+      preapprovalId: r.preapproval_id,
+      idCliente: r.id_cliente,
+      tipo: r.tipo,
+      ptoVta: r.pto_vta,
+      cbteTipo: r.cbte_tipo,
+      cbteNro: r.cbte_nro,
+      cae: r.cae,
+      caeFchVto: r.cae_fch_vto,
+      fechaCbte: r.fecha_cbte,
+      monto: r.monto,
+      periodoDesde: r.periodo_desde,
+      periodoHasta: r.periodo_hasta,
+      createdAt: r.created_at
+    }));
+  } catch (err) {
+    console.error('[BillingService] Error obteniendo facturas del cliente:', err.message);
+    return [];
+  }
+}
+
 module.exports = {
   addMonths,
+  addDays,
+  GRACE_DAYS,
+  estadoSuscripcion,
+  fechaSuspension,
+  diasVencido,
   fmtDate,
   detectarDocumento,
   ensureTable,
@@ -207,4 +281,5 @@ module.exports = {
   renovarSuscripcion,
   registrarFactura,
   getFacturaByPaymentId,
+  getFacturasByIdCliente,
 };

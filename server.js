@@ -11,6 +11,8 @@ const emailService = require('./app/src/services/emailService');
 const billingService = require('./app/src/services/billingService');
 const configService = require('./app/src/services/configService');
 const arcaService = require('./app/src/services/arcaService');
+const logService = require('./app/src/services/logService');
+const logger = require('./app/src/utils/logger');
 const { Resend } = require('resend');
 const resend = new Resend(process.env.RESEND_API_KEY);
 
@@ -98,6 +100,31 @@ app.post('/api/config', async (req, res) => {
 
 app.get('/health', (req, res) => {
     res.status(200).send('OK');
+});
+
+// ─────────────────────────────────────────────────────────────
+// Rutas de administración de logs y eventos (solo admin)
+// ─────────────────────────────────────────────────────────────
+
+function isAdmin(req) {
+    return !!(req.session && req.session.user && req.session.user.idCliente === 'admin');
+}
+
+app.get('/api/admin/logs', async (req, res) => {
+    if (!isAdmin(req)) return res.status(403).json({ error: 'Acceso denegado' });
+    const { level, category, userId, search, limit, offset } = req.query;
+    const rows = await logService.getLogs({ level, category, userId, search, limit, offset });
+    const users = await logService.getLogUsers();
+    res.json({ logs: rows, users });
+});
+
+app.get('/api/admin/events', async (req, res) => {
+    if (!isAdmin(req)) return res.status(403).json({ error: 'Acceso denegado' });
+    const { userId, action, search, limit, offset } = req.query;
+    const rows = await logService.getEvents({ userId, action, search, limit, offset });
+    const users = await logService.getLogUsers();
+    const actions = await logService.getEventActions();
+    res.json({ events: rows, users, actions });
 });
 
 // Contacto: enviar email a info@wamenu.com.ar
@@ -656,6 +683,8 @@ async function procesarPagoAprobado({ paymentId, preapprovalId, monto, fechaPago
     }
 
     console.log(`[Webhook] Pago ${paymentId} procesado: Factura ${facturaArca.ptoVta}-${facturaArca.cbteNro} CAE ${facturaArca.cae} (${tipo})`);
+    logger.info('billing', sub.id_cliente, `Pago ${tipo.toLowerCase()} acreditado $${montoNum} (Factura ${facturaArca.ptoVta}-${facturaArca.cbteNro})`, { paymentId, preapprovalId: sub.preapproval_id });
+    logService.track({ userId: sub.id_cliente, action: 'pago_acreditado', entity: 'suscripcion', message: `Pago de ${montoNum} ARS acreditado (${tipo})`, meta: { paymentId, factura: `${facturaArca.ptoVta}-${facturaArca.cbteNro}`, periodoDesde: periodo.desde, periodoHasta: periodo.hasta } }).catch(() => {});
     return registrada;
 }
 
@@ -891,7 +920,87 @@ app.get('/pago_fallido', (req, res) => {
     res.send('<html><body style="font-family:sans-serif;display:flex;align-items:center;justify-content:center;min-height:100vh;"><h2>❌ Pago fallido</h2></body></html>');
 });
 
-const { appRouter, main } = require('./app/src/app');
+// ─────────────────────────────────────────────────────────────
+// Control de vencimiento de suscripciones
+// ─────────────────────────────────────────────────────────────
+
+const SUSPENSION_CHECK_INTERVAL = 6 * 60 * 60 * 1000; // cada 6 horas
+
+// Envía el aviso de vencimiento una vez por día como máximo (controlado por aviso_suspension)
+async function enviarAvisoSuspension(user, estado) {
+    try {
+        if (!user.email) return;
+
+        const fechaSusp = billingService.fechaSuspension(user.fechaVencimiento);
+        const hoy = new Date().toISOString().slice(0, 10);
+
+        // Avisar al entrar en período de gracia y luego máximo 1 vez por día
+        const ultimoAviso = (user.avisoSuspension || '').slice(0, 10);
+        if (estado === 'gracia' && ultimoAviso === hoy) return;
+        if (estado === 'suspendida' && ultimoAviso === hoy) return;
+
+        await emailService.sendSuspensionWarningEmail({
+            to: user.email,
+            name: user.nombreCliente || 'Cliente',
+            fechaVencimiento: user.fechaVencimiento,
+            fechaSuspension: fechaSusp ? fechaSusp.toISOString() : null
+        });
+        await userService.guardarAvisoSuspension(user.idCliente, hoy);
+        console.log(`[Suscripción] Aviso de suspensión enviado a ${user.email}`);
+    } catch (err) {
+        console.error('[Suscripción] Error enviando aviso de suspensión:', err.message);
+    }
+}
+
+// Revisa todos los clientes y aplica la política de vencimiento:
+//  - gracia: puede loguear pero el bot se detiene y no puede iniciarse.
+//  - suspendida: además de detener el bot, marca el usuario como inactivo (bloquea login).
+// Además, por cada suscripción vencida intenta reconciliar cobros con MercadoPago,
+// de modo que si el débito automático finalmente se acredita, el servicio se reactiva solo.
+async function verificarVencimientos() {
+    if (!process.env.NEON_DATABASE_URL) return;
+    try {
+        const users = await userService.getUsers();
+        const nonAdmin = users.filter(u => u.idCliente !== 'admin');
+        for (const user of nonAdmin) {
+            const estado = billingService.estadoSuscripcion(user.fechaVencimiento);
+            if (estado === 'activa' || estado === 'sin_suscripcion') {
+                continue;
+            }
+
+            // Detener el bot si está corriendo
+            stopBotConnection(user.idCliente, 'suspended_subscription');
+
+            if (estado === 'suspendida') {
+                if (user.activo) {
+                    await userService.setActivo(user.idCliente, false);
+                    console.log(`[Suscripción] ${user.idCliente} suspendido (${billingService.diasVencido(user.fechaVencimiento)} días vencido).`);
+                    logger.warn('suscripcion', user.idCliente, `Suscripción suspendida (${billingService.diasVencido(user.fechaVencimiento)} días vencido)`);
+                }
+            } else if (estado === 'gracia') {
+                logger.warn('suscripcion', user.idCliente, 'Suscripción en período de gracia', { fechaSuspension: billingService.fechaSuspension(user.fechaVencimiento)?.toISOString() });
+            }
+
+            // Aviso por email (gracia o suspendida)
+            await enviarAvisoSuspension(user, estado);
+
+            // Reintento de cobro: consultar a MP los cobros aprobados de la preaprobación.
+            // Si hubo un cobro aprobado que no llegó por webhook, se factura y se reactiva.
+            try {
+                const sub = await billingService.getSuscripcionByIdCliente(user.idCliente);
+                if (sub && sub.preapproval_id) {
+                    await reconciliarCobros(sub.preapproval_id);
+                }
+            } catch (err) {
+                console.error(`[Suscripción] Error reconciliando cobros de ${user.idCliente}:`, err.message);
+            }
+        }
+    } catch (err) {
+        console.error('[Suscripción] Error en verificación de vencimientos:', err.message);
+    }
+}
+
+const { appRouter, main, stopBotConnection } = require('./app/src/app');
 
 app.use('/app', appRouter);
 
@@ -903,6 +1012,9 @@ app.use((req, res) => {
     try {
         await configService.ensureTable();
         await configService.seed();
+        await logService.ensureTable();
+        logger.initConsoleCapture();
+        logger.info('system', '', 'Servidor iniciado');
     } catch (err) {
         console.error('[System] Error initializing config:', err.message);
     }
@@ -916,4 +1028,10 @@ app.use((req, res) => {
     main().catch(err => {
         console.error('[System] Error during bot initialization:', err);
     });
+
+    // Verificación de vencimientos de suscripciones: corre al inicio y luego cada 6 horas.
+    // Se ejecuta siempre, pero el job se saltea si no hay NEON_DATABASE_URL configurado.
+    setTimeout(() => verificarVencimientos(), 30 * 1000);
+    setInterval(verificarVencimientos, SUSPENSION_CHECK_INTERVAL);
+    console.log('[Suscripción] Job de vencimientos programado (cada 6 horas).');
 })();

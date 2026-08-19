@@ -33,6 +33,8 @@ const billingService = require('./services/billingService');
 const configService = require('./services/configService');
 const botConfigService = require('./services/botConfigService');
 const emailService = require('./services/emailService');
+const logService = require('./services/logService');
+const logger = require('./utils/logger');
 const crypto = require('crypto');
 
 const appRouter = express.Router();
@@ -520,11 +522,13 @@ appRouter.post('/login', async (req, res) => {
 
         // 1. Verificar si el usuario existe y la contraseña coincide
         if (!user || user.password !== password) {
+            logger.warn('auth', username, 'Intento de login fallido (credenciales inválidas)', { ip: clientIp });
             return res.redirect('/app/login?error=1');
         }
 
         // 2. Verificar si el usuario está activo
         if (!user.activo) {
+            logger.warn('auth', user.idCliente, 'Intento de login de cuenta inactiva/suspendida', { ip: clientIp });
             return res.redirect('/app/login?error=2');
         }
 
@@ -533,6 +537,8 @@ appRouter.post('/login', async (req, res) => {
 
         // Si todo está bien, iniciar sesión
         req.session.user = user;
+        logger.info('auth', user.idCliente, 'Login exitoso', { ip: clientIp });
+        logService.track({ userId: user.idCliente, action: 'login', entity: 'auth', message: 'Inicio de sesión', ip: clientIp }).catch(() => {});
         return res.redirect('/app/');
     } catch (error) {
         console.error(`${ts()} Login Error:`, error);
@@ -542,6 +548,10 @@ appRouter.post('/login', async (req, res) => {
 
 // Ruta de Logout
 appRouter.get('/logout', (req, res) => {
+    const uid = req.session && req.session.user ? req.session.user.idCliente : '';
+    if (uid) {
+        logService.track({ userId: uid, action: 'logout', entity: 'auth', message: 'Cierre de sesión' }).catch(() => {});
+    }
     req.session.destroy((err) => {
         if (err) {
             console.error(`${ts()} Error destroying session:`, err);
@@ -722,6 +732,26 @@ appRouter.use((req, res, next) => {
 
 const botQRs = {}; // Object to store status and data for each bot
 
+// Detiene la conexión de un bot (si está corriendo/conectando) y limpia el QR.
+// Reutilizable por los endpoints y por el job de vencimiento de suscripción.
+function stopBotConnection(id, reason = 'stopped_inactivity') {
+    const data = botQRs[id];
+    if (!data) return;
+    if (data.status === 'connected' || data.status === 'connecting' || data.status === 'qr_ready' || data.status === 'starting') {
+        console.log(`${ts()} [${id}] Stopping connection (${reason})`);
+        logger.info('bot', id, `Bot detenido (${reason})`);
+        if (data.sock) {
+            try {
+                data.sock.end();
+            } catch (e) {}
+        }
+        data.status = reason;
+        data.qr = null;
+        data.rawQr = null;
+        data.qrReadyTimestamp = null;
+    }
+}
+
 function initializeBotEntry(client) {
     if (botQRs[client.idCliente]) return botQRs[client.idCliente];
     if (client.idCliente === 'admin') return null;
@@ -854,10 +884,11 @@ async function startBot(botConfig, forceStart = false) {
                 const shouldReconnect = statusCode !== DisconnectReason.loggedOut && statusCode !== DisconnectReason.connectionReplaced;
 
                 console.log(`${ts()} [${id}] Connection closed. Status: ${statusCode}. Reconnecting: ${shouldReconnect}`);
+                logger.warn('bot', id, `Bot desconectado (código ${statusCode})`, { statusCode, reconnecting: shouldReconnect });
 
-                // Si fue cerrado por inactividad o timeout, no intentar reconectar automáticamente
-                if (botQRs[id].status === 'stopped_inactivity' || botQRs[id].status === 'timeout_qr') {
-                    console.log(`${ts()} [${id}] Connection stopped due to inactivity/timeout. Waiting for manual start.`);
+                // Si fue cerrado por inactividad, timeout o suscripción suspendida, no intentar reconectar automáticamente
+                if (botQRs[id].status === 'stopped_inactivity' || botQRs[id].status === 'timeout_qr' || botQRs[id].status === 'suspended_subscription') {
+                    console.log(`${ts()} [${id}] Connection stopped due to inactivity/timeout/suspension. Waiting for manual start.`);
                     return;
                 }
 
@@ -885,6 +916,7 @@ async function startBot(botConfig, forceStart = false) {
                 }
             } else if (connection === 'open') {
                 console.log(`${ts()} [${id}] ✅ Connection opened successfully!`);
+                logger.info('bot', id, 'Bot conectado a WhatsApp');
                 botQRs[id].status = 'connected';
                 botQRs[id].qr = null;
                 botQRs[id].rawQr = null;
@@ -997,6 +1029,77 @@ async function main() {
         }
     });
 
+    // API: Estado de la suscripción del usuario logueado
+    appRouter.get('/api/mi-suscripcion', async (req, res) => {
+        const loggedUser = req.user;
+        const user = await userService.getUserByIdCliente(loggedUser.idCliente);
+        if (!user) return res.status(404).json({ error: 'Usuario no encontrado' });
+
+        const estado = billingService.estadoSuscripcion(user.fechaVencimiento);
+        const fechaSusp = billingService.fechaSuspension(user.fechaVencimiento);
+        const sub = await billingService.getSuscripcionByIdCliente(loggedUser.idCliente);
+
+        res.json({
+            email: user.email,
+            nombreCliente: user.nombreCliente,
+            activo: user.activo,
+            estado,
+            fechaSuscripcion: user.fecha_suscripcion,
+            fechaPago: user.fecha_pago,
+            fechaVencimiento: user.fecha_vencimiento,
+            fechaSuspension: fechaSusp ? fechaSusp.toISOString() : null,
+            diasVencido: billingService.diasVencido(user.fechaVencimiento),
+            tienePreaprobacion: !!(sub && sub.preapproval_id)
+        });
+    });
+
+    // API: Historial de pagos/facturas de la suscripción del usuario logueado
+    appRouter.get('/api/mis-pagos', async (req, res) => {
+        const loggedUser = req.user;
+        const facturas = await billingService.getFacturasByIdCliente(loggedUser.idCliente);
+        const sub = await billingService.getSuscripcionByIdCliente(loggedUser.idCliente);
+
+        res.json({
+            facturas: facturas.map(f => ({
+                paymentId: f.paymentId,
+                tipo: f.tipo,
+                ptoVta: f.ptoVta,
+                cbteNro: f.cbteNro,
+                cae: f.cae,
+                fechaCbte: f.fechaCbte,
+                monto: Number(f.monto),
+                periodoDesde: f.periodoDesde,
+                periodoHasta: f.periodoHasta,
+                createdAt: f.createdAt
+            })),
+            suscripcion: sub ? {
+                preapprovalId: sub.preapproval_id,
+                email: sub.email,
+                nombreCliente: sub.nombre_cliente,
+                fechaPago: sub.fecha_pago,
+                fechaVencimiento: sub.fecha_vencimiento,
+                estado: sub.estado
+            } : null
+        });
+    });
+
+    // API: Registrar evento de uso del dashboard (tracking de actividad del usuario)
+    appRouter.post('/api/track-event', async (req, res) => {
+        const loggedUser = req.user;
+        const { action, entity, message, meta } = req.body || {};
+        const ip = req.headers['x-forwarded-for']?.split(',')[0]?.trim() || req.socket.remoteAddress || '';
+        if (!action) return res.status(400).json({ error: 'action requerido' });
+        await logService.track({
+            userId: String(loggedUser.idCliente || loggedUser.username),
+            action: String(action).slice(0, 100),
+            entity: String(entity || '').slice(0, 100),
+            message: String(message || '').slice(0, 500),
+            meta: meta || null,
+            ip
+        });
+        res.json({ ok: true });
+    });
+
     // API: Obtener estado de un bot
     appRouter.get('/api/bot/status/:id', async (req, res) => {
         const id = req.params.id;
@@ -1025,10 +1128,25 @@ async function main() {
             }
         }
 
+        let suscripcion = null;
+        if (loggedUser.idCliente !== 'admin') {
+            const user = await userService.getUserByIdCliente(loggedUser.idCliente);
+            if (user) {
+                const estado = billingService.estadoSuscripcion(user.fechaVencimiento);
+                const fechaSusp = billingService.fechaSuspension(user.fechaVencimiento);
+                suscripcion = {
+                    estado,
+                    fechaVencimiento: user.fechaVencimiento,
+                    fechaSuspension: fechaSusp ? fechaSusp.toISOString() : null
+                };
+            }
+        }
+
         res.json({
             status: data.status,
             qr: data.qr,
-            lastUpdate: data.lastUpdate
+            lastUpdate: data.lastUpdate,
+            suscripcion
         });
     });
 
@@ -1048,6 +1166,18 @@ async function main() {
             error: 'Config not found'
         });
 
+        // Bloquear inicio si la suscripción está vencida o en período de gracia
+        if (loggedUser.idCliente !== 'admin') {
+            const user = await userService.getUserByIdCliente(loggedUser.idCliente);
+            const estado = user ? billingService.estadoSuscripcion(user.fechaVencimiento) : 'sin_suscripcion';
+            if (estado === 'gracia' || estado === 'suspendida') {
+                return res.status(403).json({
+                    success: false,
+                    error: 'Suscripción vencida. Regularizá el pago para volver a activar tu bot.'
+                });
+            }
+        }
+
         if (data.status === 'connected' || data.status === 'connecting' || data.status === 'qr_ready') {
             return res.json({
                 success: true,
@@ -1055,6 +1185,8 @@ async function main() {
             });
         }
 
+        logger.info('bot', id, 'Bot iniciado manualmente');
+        logService.track({ userId: loggedUser.idCliente, action: 'bot_iniciado', entity: 'bot', message: 'Inició el bot de WhatsApp' }).catch(() => {});
         startBot(data.config, true);
         res.json({
             success: true,
@@ -1391,6 +1523,19 @@ async function main() {
                             
                             updateTime.textContent = 'Ultima actualización: ' + data.lastUpdate;
 
+                            // Bloqueo por suscripción vencida (período de gracia o suspendido)
+                            const sub = data.suscripcion;
+                            const subBlocked = sub && (sub.estado === 'gracia' || sub.estado === 'suspendida');
+                            if (subBlocked) {
+                                const fechaSusp = sub.fechaSuspension ? new Date(sub.fechaSuspension).toLocaleDateString('es-AR') : '';
+                                qrContainer.innerHTML = '<p style="color: #b45309; font-weight: bold;">Suscripción vencida</p>';
+                                instruction.textContent = sub.estado === 'gracia'
+                                    ? 'Tu suscripción venció. Podés seguir entrando a tu perfil, pero el bot no puede activarse hasta regularizar el pago. El servicio se suspenderá el ' + fechaSusp + '.'
+                                    : 'Tu suscripción está suspendida. Regularizá el pago para volver a usar tu bot.';
+                                actions.innerHTML = '<button class="btn-action" disabled style="background:#ccc;">Suscripción vencida</button>';
+                                return;
+                            }
+
                             if (data.status === 'connected') {
                                 qrContainer.innerHTML = '<p style="color: #00bc7d; font-weight: bold;">Sesión Activa ✅</p>';
                                 instruction.textContent = 'El bot está funcionando correctamente.';
@@ -1403,7 +1548,7 @@ async function main() {
                                     qrContainer.innerHTML = '<p>Generando código QR...</p>';
                                 }
                                 actions.innerHTML = '<button class="btn-action btn-danger" onclick="deleteSession(\\'' + id + '\\')">Cancelar / Reiniciar</button>';
-                            } else if (data.status === 'waiting_start' || data.status === 'stopped_inactivity' || data.status === 'logged_out' || data.status === 'disconnected' || data.status === 'timeout_qr') {
+                            } else if (data.status === 'waiting_start' || data.status === 'stopped_inactivity' || data.status === 'logged_out' || data.status === 'disconnected' || data.status === 'timeout_qr' || data.status === 'suspended_subscription') {
                                 qrContainer.innerHTML = '<p style="color: #666;">' + (data.status === 'timeout_qr' ? 'Tiempo Excedido' : 'Conexión Detenida') + '</p>';
                                 instruction.textContent = data.status === 'timeout_qr' ? 'El tiempo de escaneo ha terminado.' : 'Haz clic para iniciar la conexión y ver el QR.';
                                 actions.innerHTML = '<button class="btn-action" onclick="startBot(\\'' + id + '\\')">Iniciar Bot / Mostrar QR</button>';
@@ -1424,7 +1569,14 @@ async function main() {
                         }
                         const btn = document.querySelector('#actions-' + id + ' button');
                         if (btn) btn.disabled = true;
-                        await fetch('/app/api/bot/start/' + id, { method: 'POST' });
+                        const res = await fetch('/app/api/bot/start/' + id, { method: 'POST' });
+                        if (!res.ok) {
+                            const errData = await res.json().catch(() => ({}));
+                            alert(errData.error || 'No se pudo iniciar el bot.');
+                            if (btn) btn.disabled = false;
+                            updateBotStatus(id);
+                            return;
+                        }
                         updateBotStatus(id);
                     }
 
@@ -1539,12 +1691,16 @@ async function main() {
         const entry = initializeBotEntry(client);
         const credsFile = path.join(entry.config.authFolder, 'creds.json');
 
-        // Solo iniciar automáticamente si tiene sesión activa Y el cliente está marcado como activo
-        if (fs.existsSync(credsFile) && client.activo) {
+        // Solo iniciar automáticamente si tiene sesión activa, el cliente está marcado como activo
+        // y la suscripción está al día (no vencida ni en período de gracia).
+        const estado = billingService.estadoSuscripcion(client.fechaVencimiento);
+        const suscOk = client.idCliente === 'admin' || estado === 'activa' || estado === 'sin_suscripcion';
+
+        if (fs.existsSync(credsFile) && client.activo && suscOk) {
             console.log(`${ts()} [System] Auto-starting active session for ${client.idCliente}`);
             startBot(entry.config);
         } else {
-            console.log(`${ts()} [System] Bot ${client.idCliente} waiting for manual start (No active session or inactive).`);
+            console.log(`${ts()} [System] Bot ${client.idCliente} waiting for manual start (No active session, inactive or subscription expired).`);
         }
     }
 
@@ -1594,4 +1750,4 @@ async function main() {
     }, 30000);
 }
 
-module.exports = { appRouter, main };
+module.exports = { appRouter, main, stopBotConnection };

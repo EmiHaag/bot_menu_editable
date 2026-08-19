@@ -158,6 +158,8 @@ class Dashboard {
                             </div>
                             <div style="display: flex; gap: 8px; flex-wrap: wrap;">
                                 <button onclick="document.getElementById('addClientModal').style.display='block'" class="btn btn-green">+ Nuevo Cliente</button>
+                                <a href="/app/admin/logs" class="btn" style="border: 1px solid #ccc">📋 Ver Logs</a>
+                                <a href="/app/admin/events" class="btn" style="border: 1px solid #ccc">👤 Eventos de Usuarios</a>
                                 <a href="/app/" class="btn" style="border: 1px solid #ccc">Volver al Editor</a>
                             </div>
                         </div>
@@ -334,6 +336,305 @@ class Dashboard {
                 console.error('Error al obtener hoja de pedidos:', error);
                 res.status(500).send('Error al obtener la hoja de pedidos.');
             }
+        });
+
+        // --- VISOR DE LOGS (Solo admin) ---
+        const adminViewerStyle = `
+            <style>
+                body { font-family: 'Segoe UI', sans-serif; margin: 24px; background: #fafafa; }
+                .topbar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 18px; }
+                .topbar h2 { margin: 0; }
+                .filters { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; background: #fff; border: 1px solid #e7e3e4; border-radius: 10px; padding: 10px 12px; margin-bottom: 14px; }
+                .filters select, .filters input { padding: 6px 10px; border: 1px solid #ccc; border-radius: 6px; font-size: 13px; }
+                .filters .btn { padding: 7px 14px; border: none; border-radius: 6px; background: #0f6b4f; color: #fff; cursor: pointer; font-size: 13px; font-weight: 600; }
+                table { width: 100%; border-collapse: collapse; background: #fff; border: 1px solid #e7e3e4; border-radius: 10px; overflow: hidden; }
+                th, td { padding: 9px 10px; border-bottom: 1px solid #f0eeee; text-align: left; vertical-align: top; }
+                th { background: #f5f5f5; font-size: 12px; text-transform: uppercase; letter-spacing: 0.4px; color: #555; }
+                td { font-size: 13px; }
+                .badge { display: inline-block; padding: 2px 8px; border-radius: 20px; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.3px; }
+                .badge-info { background: #e0f2fe; color: #0369a1; }
+                .badge-warning { background: #fef3c7; color: #92400e; }
+                .badge-error { background: #fee2e2; color: #b91c1c; }
+                .msg { max-width: 520px; word-break: break-word; font-family: Consolas, monospace; font-size: 12px; color: #333; }
+                .meta { max-width: 320px; word-break: break-word; font-family: Consolas, monospace; font-size: 11px; color: #888; }
+                .user { font-weight: 600; color: #0f6b4f; }
+                .time { white-space: nowrap; color: #666; font-size: 12px; }
+                .empty { text-align: center; padding: 30px; color: #888; }
+                .back { text-decoration: none; color: #0f6b4f; font-weight: 600; font-size: 13px; }
+            </style>
+        `;
+        const adminViewerJs = `
+            <script src="/js/robot-logo.js"></script>
+            <script>
+                function drawPage() {
+                    if (window.__drawDone) return;
+                    window.__drawDone = true;
+                    var c = document.getElementById('logo');
+                    if (c && window.drawRobot) drawRobot('logo');
+                }
+                drawPage();
+            </script>
+        `;
+
+        router.get('/admin/logs', async (req, res) => {
+            if (req.user.idCliente !== 'admin') return res.status(403).send('Acceso denegado');
+            res.send(`
+                <html>
+                <head>
+                    <title>Visor de Logs - Administración</title>
+                    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+                    ${adminViewerStyle}
+                </head>
+                <body>
+                    <div class="topbar">
+                        <div style="display:flex; align-items:center; gap:12px;">
+                            <canvas id="logo" width="200" height="200" style="width:44px; height:44px;"></canvas>
+                            <h2>📋 Visor de Logs del Sistema</h2>
+                        </div>
+                        <div style="display:flex; gap:8px;">
+                            <a href="/app/admin/events" class="btn" style="padding:8px 14px; border:1px solid #ccc; border-radius:6px; text-decoration:none; color:#333; font-size:13px;">👤 Eventos de Usuarios</a>
+                            <a href="/app/admin" class="btn" style="padding:8px 14px; border:1px solid #ccc; border-radius:6px; text-decoration:none; color:#333; font-size:13px;">← Volver al Panel</a>
+                        </div>
+                    </div>
+
+                    <div class="filters">
+                        <select id="fLevel">
+                            <option value="">Todas las criticidades</option>
+                            <option value="info">Info</option>
+                            <option value="warning">Warning</option>
+                            <option value="error">Error</option>
+                        </select>
+                        <select id="fCategory">
+                            <option value="">Todas las categorías</option>
+                            <option value="system">system</option>
+                            <option value="bot">bot</option>
+                            <option value="auth">auth</option>
+                            <option value="billing">billing</option>
+                            <option value="suscripcion">suscripcion</option>
+                            <option value="console">console</option>
+                        </select>
+                        <select id="fUser"><option value="">Todos los usuarios</option></select>
+                        <input type="text" id="fSearch" placeholder="Buscar en mensaje / usuario / categoría..." style="flex:1; min-width:200px;">
+                        <button class="btn" onclick="loadLogs()">Filtrar</button>
+                        <span id="countLabel" style="font-size:12px; color:#888;"></span>
+                    </div>
+
+                    <div style="overflow-x:auto;">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Fecha</th>
+                                <th>Criticidad</th>
+                                <th>Categoría</th>
+                                <th>Usuario</th>
+                                <th>Mensaje</th>
+                                <th>Detalle</th>
+                            </tr>
+                        </thead>
+                        <tbody id="logsBody">
+                            <tr><td colspan="6" class="empty">Cargando logs...</td></tr>
+                        </tbody>
+                    </table>
+                    </div>
+
+                    <script>
+                        var autoTimer = null;
+                        function fmtTime(iso) {
+                            if (!iso) return '-';
+                            var d = new Date(iso);
+                            if (isNaN(d.getTime())) return iso;
+                            return d.toLocaleDateString('es-AR') + ' ' + d.toLocaleTimeString('es-AR');
+                        }
+                        function badge(level) {
+                            var cls = level === 'error' ? 'badge-error' : level === 'warning' ? 'badge-warning' : 'badge-info';
+                            var txt = (level === 'warning' ? 'warning' : level) || 'info';
+                            return '<span class="badge ' + cls + '">' + txt + '</span>';
+                        }
+                        function metaHtml(m) {
+                            if (!m) return '—';
+                            try {
+                                var s = typeof m === 'string' ? m : JSON.stringify(m);
+                                return '<span class="meta">' + s.slice(0, 400) + '</span>';
+                            } catch(e) { return '—'; }
+                        }
+                        function escapeHtml(s) {
+                            return String(s == null ? '' : s).replace(/[&<>"']/g, function(c) {
+                                return { '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c];
+                            });
+                        }
+                        function loadLogs() {
+                            var params = new URLSearchParams();
+                            var level = document.getElementById('fLevel').value;
+                            var category = document.getElementById('fCategory').value;
+                            var user = document.getElementById('fUser').value;
+                            var search = document.getElementById('fSearch').value.trim();
+                            if (level) params.set('level', level);
+                            if (category) params.set('category', category);
+                            if (user) params.set('userId', user);
+                            if (search) params.set('search', search);
+                            fetch('/api/admin/logs?' + params.toString())
+                                .then(function(r) { return r.json(); })
+                                .then(function(data) {
+                                    if (data.users && document.getElementById('fUser').options.length <= 1) {
+                                        var sel = document.getElementById('fUser');
+                                        data.users.forEach(function(u) {
+                                            var o = document.createElement('option');
+                                            o.value = u; o.textContent = u;
+                                            sel.appendChild(o);
+                                        });
+                                    }
+                                    var tbody = document.getElementById('logsBody');
+                                    document.getElementById('countLabel').textContent = data.logs.length + ' registro(s)';
+                                    if (!data.logs.length) {
+                                        tbody.innerHTML = '<tr><td colspan="6" class="empty">No se encontraron logs con los filtros aplicados.</td></tr>';
+                                        return;
+                                    }
+                                    tbody.innerHTML = data.logs.map(function(l) {
+                                        return '<tr>' +
+                                            '<td class="time">' + fmtTime(l.created_at) + '</td>' +
+                                            '<td>' + badge(l.level) + '</td>' +
+                                            '<td>' + escapeHtml(l.category) + '</td>' +
+                                            '<td class="user">' + (l.user_id ? escapeHtml(l.user_id) : '—') + '</td>' +
+                                            '<td class="msg">' + escapeHtml(l.message) + '</td>' +
+                                            '<td>' + metaHtml(l.meta) + '</td>' +
+                                            '</tr>';
+                                    }).join('');
+                                })
+                                .catch(function(err) {
+                                    document.getElementById('logsBody').innerHTML = '<tr><td colspan="6" class="empty">Error cargando logs (¿sesión expirada?).</td></tr>';
+                                });
+                        }
+                        document.getElementById('fSearch').addEventListener('keydown', function(e) { if (e.key === 'Enter') loadLogs(); });
+                        document.getElementById('fLevel').addEventListener('change', loadLogs);
+                        document.getElementById('fCategory').addEventListener('change', loadLogs);
+                        document.getElementById('fUser').addEventListener('change', loadLogs);
+                        loadLogs();
+                        autoTimer = setInterval(loadLogs, 15000);
+                    </script>
+                    ${adminViewerJs}
+                </body>
+                </html>
+            `);
+        });
+
+        router.get('/admin/events', async (req, res) => {
+            if (req.user.idCliente !== 'admin') return res.status(403).send('Acceso denegado');
+            res.send(`
+                <html>
+                <head>
+                    <title>Eventos de Usuarios - Administración</title>
+                    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+                    ${adminViewerStyle}
+                </head>
+                <body>
+                    <div class="topbar">
+                        <div style="display:flex; align-items:center; gap:12px;">
+                            <canvas id="logo" width="200" height="200" style="width:44px; height:44px;"></canvas>
+                            <h2>👤 Visor de Eventos del Dashboard</h2>
+                        </div>
+                        <div style="display:flex; gap:8px;">
+                            <a href="/app/admin/logs" class="btn" style="padding:8px 14px; border:1px solid #ccc; border-radius:6px; text-decoration:none; color:#333; font-size:13px;">📋 Logs del Sistema</a>
+                            <a href="/app/admin" class="btn" style="padding:8px 14px; border:1px solid #ccc; border-radius:6px; text-decoration:none; color:#333; font-size:13px;">← Volver al Panel</a>
+                        </div>
+                    </div>
+
+                    <div class="filters">
+                        <select id="fUser"><option value="">Todos los usuarios</option></select>
+                        <select id="fAction"><option value="">Todas las acciones</option></select>
+                        <input type="text" id="fSearch" placeholder="Buscar en mensaje / entidad / usuario..." style="flex:1; min-width:200px;">
+                        <button class="btn" onclick="loadEvents()">Filtrar</button>
+                        <span id="countLabel" style="font-size:12px; color:#888;"></span>
+                    </div>
+
+                    <div style="overflow-x:auto;">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Fecha</th>
+                                <th>Usuario</th>
+                                <th>Acción</th>
+                                <th>Entidad</th>
+                                <th>Mensaje</th>
+                                <th>IP</th>
+                            </tr>
+                        </thead>
+                        <tbody id="eventsBody">
+                            <tr><td colspan="6" class="empty">Cargando eventos...</td></tr>
+                        </tbody>
+                    </table>
+                    </div>
+
+                    <script>
+                        var autoTimer = null;
+                        function fmtTime(iso) {
+                            if (!iso) return '-';
+                            var d = new Date(iso);
+                            if (isNaN(d.getTime())) return iso;
+                            return d.toLocaleDateString('es-AR') + ' ' + d.toLocaleTimeString('es-AR');
+                        }
+                        function escapeHtml(s) {
+                            return String(s == null ? '' : s).replace(/[&<>"']/g, function(c) {
+                                return { '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c];
+                            });
+                        }
+                        function loadEvents() {
+                            var params = new URLSearchParams();
+                            var user = document.getElementById('fUser').value;
+                            var action = document.getElementById('fAction').value;
+                            var search = document.getElementById('fSearch').value.trim();
+                            if (user) params.set('userId', user);
+                            if (action) params.set('action', action);
+                            if (search) params.set('search', search);
+                            fetch('/api/admin/events?' + params.toString())
+                                .then(function(r) { return r.json(); })
+                                .then(function(data) {
+                                    if (data.users && document.getElementById('fUser').options.length <= 1) {
+                                        var sel = document.getElementById('fUser');
+                                        data.users.forEach(function(u) {
+                                            var o = document.createElement('option');
+                                            o.value = u; o.textContent = u;
+                                            sel.appendChild(o);
+                                        });
+                                    }
+                                    if (data.actions && document.getElementById('fAction').options.length <= 1) {
+                                        var selA = document.getElementById('fAction');
+                                        data.actions.forEach(function(a) {
+                                            var o = document.createElement('option');
+                                            o.value = a; o.textContent = a;
+                                            selA.appendChild(o);
+                                        });
+                                    }
+                                    var tbody = document.getElementById('eventsBody');
+                                    document.getElementById('countLabel').textContent = data.events.length + ' evento(s)';
+                                    if (!data.events.length) {
+                                        tbody.innerHTML = '<tr><td colspan="6" class="empty">No se encontraron eventos con los filtros aplicados.</td></tr>';
+                                        return;
+                                    }
+                                    tbody.innerHTML = data.events.map(function(e) {
+                                        return '<tr>' +
+                                            '<td class="time">' + fmtTime(e.created_at) + '</td>' +
+                                            '<td class="user">' + escapeHtml(e.user_id) + '</td>' +
+                                            '<td><span class="badge badge-info">' + escapeHtml(e.action) + '</span></td>' +
+                                            '<td>' + (e.entity ? escapeHtml(e.entity) : '—') + '</td>' +
+                                            '<td class="msg">' + escapeHtml(e.message) + '</td>' +
+                                            '<td>' + (e.ip ? escapeHtml(e.ip) : '—') + '</td>' +
+                                            '</tr>';
+                                    }).join('');
+                                })
+                                .catch(function(err) {
+                                    document.getElementById('eventsBody').innerHTML = '<tr><td colspan="6" class="empty">Error cargando eventos (¿sesión expirada?).</td></tr>';
+                                });
+                        }
+                        document.getElementById('fSearch').addEventListener('keydown', function(e) { if (e.key === 'Enter') loadEvents(); });
+                        document.getElementById('fUser').addEventListener('change', loadEvents);
+                        document.getElementById('fAction').addEventListener('change', loadEvents);
+                        loadEvents();
+                        autoTimer = setInterval(loadEvents, 15000);
+                    </script>
+                    ${adminViewerJs}
+                </body>
+                </html>
+            `);
         });
 
         // --- FIN RUTAS ADMINISTRACIÓN ---
@@ -1348,6 +1649,7 @@ ${helpGuideCSS}
                     <div class="toolbar">
                             ${botSelector}
                             ${isAdmin ? '<a href="/app/admin" class="btn btn-blue" style="background: #007bff; color: white;">Panel Admin</a>' : ''}
+                            ${isAdmin ? '' : '<button onclick="showMisPagos()" class="btn btn-blue" style="background:#0f6b4f; color:white;">Mis Pagos</button>'}
                             <button onclick="showVisual()" class="btn btn-purple">Visualizar</button>
                             <a href="/app/qr" class="btn btn-green">WhatsApp QR</a>
                             <a href="/app/refresh?botId=${botId}" class="btn btn-orange">Refrescar</a>
@@ -1446,6 +1748,34 @@ ${helpGuideHTML}
                         </div>
                         </div>
                     </div>
+
+                        <!-- Modal Mis Pagos (historial de suscripción) -->
+                        <div id="pagosModal" class="modal">
+                            <div class="modal-content" style="width: 90%; max-width: 760px;">
+                                <span onclick="closeModal('pagosModal')" style="float:right; cursor:pointer; font-size:24px;">&times;</span>
+                                <h2>🧾 Mis Pagos</h2>
+                                <div id="pagosSuscripcionInfo" style="margin-bottom:16px;"></div>
+                                <div id="pagosTableWrap" style="overflow-x:auto;">
+                                    <table style="width:100%; border-collapse:collapse; font-size:14px;">
+                                        <thead>
+                                            <tr style="background:#f3f4f6; text-align:left;">
+                                                <th style="padding:8px 10px; border-bottom:2px solid #e5e7eb;">Fecha</th>
+                                                <th style="padding:8px 10px; border-bottom:2px solid #e5e7eb;">Concepto</th>
+                                                <th style="padding:8px 10px; border-bottom:2px solid #e5e7eb;">Período</th>
+                                                <th style="padding:8px 10px; border-bottom:2px solid #e5e7eb; text-align:right;">Monto</th>
+                                                <th style="padding:8px 10px; border-bottom:2px solid #e5e7eb;">Factura</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="pagosTableBody">
+                                            <tr><td colspan="5" style="padding:20px; text-align:center; color:#888;">Cargando...</td></tr>
+                                        </tbody>
+                                    </table>
+                                </div>
+                                <p style="color:#777; font-size:12px; line-height:1.5; margin-top:12px;">
+                                    💡 Estos son los pagos que se acreditaron en tu suscripción. Ante cualquier consulta sobre un pago, escribinos por WhatsApp.
+                                </p>
+                            </div>
+                        </div>
 
                         <!-- Modal Ayuda Google Calendar -->
                         <div id="calendarHelpModal" class="modal">
@@ -2057,6 +2387,7 @@ ${helpGuideHTML}
                                     scheduleConfig.online24_7 = document.getElementById('online247').checked;
                                     scheduleConfig.horarios = horarios;
                                     status.textContent = '✅ Horarios guardados';
+                                    track('horarios_guardados', 'horarios', 'Guardó los horarios de atención');
                                 } else {
                                     status.textContent = '❌ ' + (d.error || 'Error al guardar');
                                 }
@@ -2248,6 +2579,7 @@ ${helpGuideJS}
                                         logged_out: 'Sesión cerrada',
                                         stopped_inactivity: 'Detenido',
                                         timeout_qr: 'QR expiró',
+                                        suspended_subscription: 'Detenido (suscripción)',
                                         error: 'Error'
                                     };
                                     const cls = data.status === 'connected' ? 'on' :
@@ -2256,7 +2588,15 @@ ${helpGuideJS}
                                     label.textContent = labels[data.status] || data.status;
                                     const step4 = document.getElementById('step4Status');
                                     if (step4) {
-                                        if (data.status === 'connected') {
+                                        const sub = data.suscripcion;
+                                        if (sub && (sub.estado === 'gracia' || sub.estado === 'suspendida')) {
+                                            const fechaSusp = sub.fechaSuspension ? new Date(sub.fechaSuspension).toLocaleDateString('es-AR') : '';
+                                            if (sub.estado === 'gracia') {
+                                                step4.innerHTML = '<div style="background:#fff7ed;border:1px solid #fdba74;border-radius:8px;padding:12px 16px;color:#9a3412;font-size:0.9rem;">⚠️ <strong>Tu suscripción venció.</strong> Podés seguir editando tu menú, pero el bot no puede activarse hasta regularizar el pago. El servicio se suspenderá el <strong>' + fechaSusp + '</strong>.</div>';
+                                            } else {
+                                                step4.innerHTML = '<div style="background:#fef2f2;border:1px solid #fecaca;border-radius:8px;padding:12px 16px;color:#991b1b;font-size:0.9rem;">⛔ <strong>Tu suscripción está suspendida.</strong> Regularizá el pago para volver a usar tu bot.</div>';
+                                            }
+                                        } else if (data.status === 'connected') {
                                             step4.innerHTML = '<span style="color:#2e7d32; font-weight:700;">✅ Tu bot se encuentra activo</span>';
                                         } else {
                                             step4.innerHTML = 'Ahora abre la cuenta de <strong>WhatsApp</strong> en la que va a trabajar tu bot asistente. Hacé clic en los <strong>3 puntitos</strong>, elegí <strong>"Vincular dispositivos"</strong> y escaneá el QR de tu bot ingresando acá: <a href="/app/qr" target="_blank" style="color:#0f6b4f; font-weight:700;">📱 Link de WhatsApp QR</a> y esperá a que diga <strong>activo</strong>. En ese momento el bot ya estará activo y cualquier cambio que realices en la tabla de edición de tu bot se verá reflejado en el bot online. ¡Muchos éxitos! 🎉';
@@ -2306,6 +2646,59 @@ ${helpGuideJS}
                                 container.innerHTML = buildTree('root');
                             }
                             document.getElementById('visualModal').style.display = "block";
+                        }
+
+                        // --- Mis Pagos ---
+                        function fmtMoney(n) {
+                            return new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS' }).format(Number(n) || 0);
+                        }
+                        function fmtFechaPago(iso) {
+                            if (!iso) return '-';
+                            const d = new Date(iso);
+                            if (isNaN(d.getTime())) return '-';
+                            return d.toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric' });
+                        }
+                        function fmtPeriodo(f) {
+                            if (!f) return '-';
+                            const s = String(f);
+                            return s.length === 8 ? s.slice(0, 4) + '/' + s.slice(4, 6) + '/' + s.slice(6, 8) : s;
+                        }
+
+                        function showMisPagos() {
+                            const modal = document.getElementById('pagosModal');
+                            const info = document.getElementById('pagosSuscripcionInfo');
+                            const tbody = document.getElementById('pagosTableBody');
+                            modal.style.display = "block";
+                            info.innerHTML = '<p style="color:#888;">Consultando tus pagos...</p>';
+                            tbody.innerHTML = '<tr><td colspan="5" style="padding:20px; text-align:center; color:#888;">Cargando...</td></tr>';
+
+                            fetch('/app/api/mis-pagos')
+                                .then(function(r) { if (!r.ok) throw new Error('Error de autenticación'); return r.json(); })
+                                .then(function(data) {
+                                    const facturas = data.facturas || [];
+                                    if (facturas.length === 0) {
+                                        info.innerHTML = '<p style="color:#777; font-size:14px; background:#f8f9fa; padding:12px 16px; border-radius:8px;">Aún no hay pagos registrados para tu suscripción. Cuando realices tu primer pago, aparecerá acá.</p>';
+                                    } else {
+                                        info.innerHTML = '<p style="color:#555; font-size:14px; background:#f0fdf4; padding:12px 16px; border-radius:8px;">Se encontraron <strong>' + facturas.length + '</strong> pago(s) acreditado(s) en tu suscripción.</p>';
+                                    }
+
+                                    tbody.innerHTML = facturas.map(function(f) {
+                                        const tipo = f.tipo === 'INICIAL' ? 'Suscripción inicial' : 'Renovación';
+                                        const factura = (f.ptoVta ? f.ptoVta + '-' : '') + (f.cbteNro || '');
+                                        return '<tr>' +
+                                            '<td style="padding:8px 10px; border-bottom:1px solid #eee;">' + fmtFechaPago(f.createdAt) + '</td>' +
+                                            '<td style="padding:8px 10px; border-bottom:1px solid #eee;">' + tipo + '</td>' +
+                                            '<td style="padding:8px 10px; border-bottom:1px solid #eee;">' + fmtPeriodo(f.periodoDesde) + ' → ' + fmtPeriodo(f.periodoHasta) + '</td>' +
+                                            '<td style="padding:8px 10px; border-bottom:1px solid #eee; text-align:right; font-weight:600;">' + fmtMoney(f.monto) + '</td>' +
+                                            '<td style="padding:8px 10px; border-bottom:1px solid #eee;">' + (factura || '—') + '</td>' +
+                                            '</tr>';
+                                    }).join('');
+                                })
+                                .catch(function(err) {
+                                    console.error('Error cargando mis pagos:', err);
+                                    info.innerHTML = '<p style="color:#b91c1c; font-size:14px;">No se pudieron cargar tus pagos. Intentalo nuevamente.</p>';
+                                    tbody.innerHTML = '<tr><td colspan="5" style="padding:20px; text-align:center; color:#888;">Sin datos</td></tr>';
+                                });
                         }
 
                         // --- Wizard State ---

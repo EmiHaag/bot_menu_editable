@@ -74,6 +74,72 @@ class EmailService {
     return info;
   }
 
+  async sendSuspensionWarningEmail({ to, name, fechaVencimiento, fechaSuspension }) {
+    const siteUrl = process.env.SITE_URL || 'http://localhost:8000';
+    const fSusp = fechaSuspension ? new Date(fechaSuspension) : new Date();
+    const fVto = fechaVencimiento ? new Date(fechaVencimiento) : new Date();
+    const fechaSuspStr = `${String(fSusp.getDate()).padStart(2, '0')}/${String(fSusp.getMonth() + 1).padStart(2, '0')}/${fSusp.getFullYear()}`;
+    const fechaVtoStr = `${String(fVto.getDate()).padStart(2, '0')}/${String(fVto.getMonth() + 1).padStart(2, '0')}/${fVto.getFullYear()}`;
+    console.log(`[Email] Enviando aviso de suspensión a ${to} (suspensión ${fechaSuspStr})...`);
+
+    const html = `
+      <div style="font-family: Arial, sans-serif; max-width: 560px; margin: 0 auto; padding: 24px;">
+        <div style="background: #b45309; color: white; padding: 24px; border-radius: 12px 12px 0 0; text-align: center;">
+          <h1 style="margin: 0; font-size: 1.4rem;">⚠️ Aviso de vencimiento de suscripción</h1>
+        </div>
+        <div style="background: #f8f9fa; padding: 24px; border-radius: 0 0 12px 12px; border: 1px solid #e0e0e0; border-top: none;">
+          <p style="font-size: 1rem; color: #333;">Hola <strong>${name || '!'}</strong>,</p>
+          <p style="font-size: 0.95rem; color: #555; line-height: 1.6;">
+            Te recordamos que tu suscripción venció el día <strong>${fechaVtoStr}</strong>. Tu servicio
+            sigue disponible por un período de gracia y se mantendrá activo hasta el día
+            <strong>${fechaSuspStr}</strong>.
+          </p>
+
+          <div style="background: #fff7ed; border: 1px solid #fdba74; border-radius: 8px; padding: 20px; margin: 20px 0;">
+            <p style="margin: 0 0 12px 0; font-size: 0.85rem; font-weight: 700; color: #9a3412;">
+              Si el pago no se acredita antes de esa fecha, tu servicio será suspendido y tu bot de WhatsApp dejará de responder.
+            </p>
+            <p style="margin: 0; font-size: 0.9rem; color: #7c2d12; line-height: 1.6;">
+              Recordá que tu suscripción se debita <strong>automáticamente</strong> de tu cuenta de Mercado Pago
+              todos los meses. Es posible que, justo en el momento del cobro, tu cuenta no tuviera fondos disponibles.
+              En ese caso, el débito <strong>se seguirá intentando automáticamente</strong> hasta que se acredite.
+              Apenas el pago se procese, tu servicio se reactiva solo, sin necesidad de que hagas nada.
+            </p>
+          </div>
+
+          <p style="font-size: 0.9rem; color: #555; line-height: 1.6;">
+            Si ya realizaste el pago o cargaste fondos en Mercado Pago, no es necesario que hagas nada más:
+            el débito se completará en los próximos días.
+          </p>
+
+          <p style="font-size: 0.9rem; color: #555; line-height: 1.6;">
+            Ante cualquier consulta, respondé este correo o escribinos por WhatsApp.
+          </p>
+
+          <hr style="border: none; border-top: 1px solid #e0e0e0; margin: 20px 0;">
+          <p style="font-size: 0.8rem; color: #999; text-align: center;">
+            Bot Menu — WhatsApp Business Automation<br>
+            ${siteUrl}
+          </p>
+        </div>
+      </div>
+    `;
+
+    const info = await this.transporter.sendMail({
+      from: `"Bot Menu" <${process.env.SMTP_USER}>`,
+      to,
+      bcc: process.env.CONTACT_EMAIL_TO || process.env.ADMIN_EMAIL || '',
+      subject: '⚠️ Tu suscripción vence pronto — Bot Menu',
+      html
+    }).catch(err => {
+      console.error(`[Email] Error enviando aviso de suspensión a ${to}:`, err.message);
+      throw err;
+    });
+
+    console.log(`[Email] Suspension warning sent to ${to}: ${info.messageId}`);
+    return info;
+  }
+
   async sendPasswordResetEmail({ to, name, resetUrl }) {
     const siteUrl = process.env.SITE_URL || 'http://localhost:8000';
     console.log(`[Email] Enviando email de recuperación a ${to}...`);
