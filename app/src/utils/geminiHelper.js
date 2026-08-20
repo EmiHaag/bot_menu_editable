@@ -1,6 +1,7 @@
 const { GoogleGenerativeAI } = require('@google/generative-ai');
 const fs = require('fs');
 const path = require('path');
+const { icon } = require('./icons');
 
 const DOCS_PATH = path.resolve(__dirname, '../../documentacion.txt');
 let systemInstructionText = '';
@@ -13,7 +14,7 @@ try {
 }
 
 const RATE_LIMIT_MSG =
-  '⏳ El asistente está saturado por el momento. Esperá unos minutos y volvé a preguntar. También podés consultar la guía en el panel izquierdo.';
+  `${icon('clock', 'w-4 h-4 inline')} El asistente está saturado por el momento. Esperá unos minutos y volvé a preguntar. También podés consultar la guía en el panel izquierdo.`;
 
 async function askGemini(userMessage) {
   const MAX_RETRIES = 3; // Intentos máximos antes de rendirse
@@ -90,7 +91,7 @@ async function askGemini(userMessage) {
       }
       if (isServiceUnavailable) {
         console.error(`[GeminiHelper] Se agotaron los ${MAX_RETRIES} reintentos por error 503.`);
-        return '⏳ El asistente está experimentando una alta demanda en este momento. Este pico de consultas suele ser temporal; por favor, intentá de nuevo en unos instantes.';
+        return `${icon('clock', 'w-4 h-4 inline')} El asistente está experimentando una alta demanda en este momento. Este pico de consultas suele ser temporal; por favor, intentá de nuevo en unos instantes.`;
       }
       console.error('[GeminiHelper] Error consultando Gemini:', error.message);
       return 'Ocurrió un error al procesar tu consulta. Intentá de nuevo más tarde.';

@@ -242,6 +242,142 @@
         }
         .modal-form textarea { resize: vertical; min-height: 80px; }
         .modal-contact .modal { max-width: 460px; }
+        .compare-section {
+            margin-top: 56px;
+            text-align: left;
+        }
+        .compare-section h3 {
+            text-align: center;
+            font-size: 1.5rem;
+            font-weight: 800;
+            color: #222;
+            margin-bottom: 24px;
+        }
+        .compare-wrap {
+            overflow-x: auto;
+            background: white;
+            border: 1px solid #eee;
+            border-radius: 16px;
+            box-shadow: 0 2px 12px rgba(0,0,0,0.04);
+        }
+        .compare-table {
+            width: 100%;
+            border-collapse: collapse;
+            min-width: 480px;
+        }
+        .compare-table th, .compare-table td {
+            padding: 14px 16px;
+            text-align: center;
+            font-size: 0.88rem;
+            border-bottom: 1px solid #f0f0f0;
+        }
+        .compare-table thead th {
+            background: #fafafa;
+            font-weight: 800;
+            color: #222;
+            font-size: 0.95rem;
+        }
+        .compare-table thead th.feature-col { text-align: left; }
+        .compare-table thead th.estandar-col { color: #0f6b4f; }
+        .compare-table tbody th {
+            text-align: left;
+            font-weight: 600;
+            color: #444;
+            background: #fafafa;
+        }
+        .compare-table tbody tr:hover { background: #f8fbfa; }
+        .compare-table tbody tr:last-child th,
+        .compare-table tbody tr:last-child td { border-bottom: none; }
+        .compare-table td.estandar-col { background: #f3faf6; }
+        .compare-table .yes { color: #0f6b4f; font-weight: 700; }
+        .compare-table .no { color: #ccc; }
+        .compare-note {
+            text-align: center;
+            color: #999;
+            font-size: 0.8rem;
+            margin-top: 16px;
+        }
+        .plan-note {
+            font-size: 0.75rem;
+            color: #888;
+            margin: 0 0 14px;
+            line-height: 1.4;
+        }
+        .compare-mp-note {
+            text-align: center;
+            color: #0f6b4f;
+            font-size: 0.82rem;
+            margin-top: 8px;
+            font-weight: 600;
+        }
+        .faq-section {
+            margin-top: 56px;
+            text-align: left;
+            max-width: 760px;
+            margin-left: auto;
+            margin-right: auto;
+        }
+        .faq-section h3 {
+            text-align: center;
+            font-size: 1.5rem;
+            font-weight: 800;
+            color: #222;
+            margin-bottom: 8px;
+        }
+        .faq-section > p.sub {
+            text-align: center;
+            color: #666;
+            font-size: 0.95rem;
+            margin-bottom: 24px;
+        }
+        .faq-card {
+            background: white;
+            border: 1px solid #eee;
+            border-radius: 12px;
+            margin-bottom: 12px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.03);
+            overflow: hidden;
+        }
+        .faq-card summary {
+            list-style: none;
+            cursor: pointer;
+            padding: 18px 20px;
+            font-weight: 700;
+            font-size: 0.95rem;
+            color: #222;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+            user-select: none;
+        }
+        .faq-card summary::-webkit-details-marker { display: none; }
+        .faq-card summary::after {
+            content: '＋';
+            color: #0f6b4f;
+            font-size: 1.1rem;
+            font-weight: 700;
+            transition: transform 0.2s;
+            flex-shrink: 0;
+        }
+        .faq-card[open] summary::after { content: '－'; }
+        .faq-card .faq-body {
+            padding: 0 20px 18px;
+            color: #555;
+            font-size: 0.9rem;
+            line-height: 1.6;
+        }
+        .faq-card .faq-body ul {
+            margin: 10px 0 0 18px;
+            padding: 0;
+        }
+        .faq-card .faq-body li { margin-bottom: 10px; }
+        .faq-card .faq-body strong { color: #333; }
+        @keyframes faqFadeIn {
+            from { opacity: 0; transform: translateY(-4px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        .faq-card[open] .faq-body { animation: faqFadeIn 0.2s ease; }
         .footer {
             padding: 32px 24px;
             text-align: center;
@@ -267,7 +403,7 @@
     </header>
 
     <section class="plan-section">
-        <h2>💰 Planes</h2>
+        <h2>Planes</h2>
         <p>Elegí el plan que mejor se adapte a tu negocio. Sin contratos largos, sin sorpresas.</p>
         <div class="plan-grid">
             <div class="plan-card standard">
@@ -283,6 +419,7 @@
                     <li><span class="ck">✓</span> Captura de datos del cliente</li>
                     <li><span class="ck">✓</span> Bot de reserva de turnos con tu propio calendario</li>
                 </ul>
+                <p class="plan-note">💳 Pagás cada mes mediante suscripción vía MercadoPago</p>
                 <button class="plan-btn primary" id="btnSubscribeStandard" onclick="openSubscribeModal()">💳 Suscribirme ahora</button>
             </div>
             <div class="plan-card">
@@ -300,6 +437,117 @@
                 </ul>
                 <button class="plan-btn secondary" onclick="openModal()">✍️ Quiero saber más</button>
             </div>
+        </div>
+
+        <div class="compare-section">
+            <h3>Comparativa de planes</h3>
+            <div class="compare-wrap">
+                <table class="compare-table">
+                    <thead>
+                        <tr>
+                            <th class="feature-col">Característica</th>
+                            <th class="estandar-col">Plan Estándar ($<span id="comparePriceDisplay"></span> ARS)</th>
+                            <th>Plan Personalizado</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <th>Bot de WhatsApp con menú interactivo</th>
+                            <td class="estandar-col"><span class="yes">✓</span></td>
+                            <td><span class="yes">✓</span></td>
+                        </tr>
+                        <tr>
+                            <th>Panel editor desde el navegador</th>
+                            <td class="estandar-col"><span class="yes">✓</span></td>
+                            <td><span class="yes">✓</span></td>
+                        </tr>
+                        <tr>
+                            <th>Google Sheets con pedidos en tiempo real</th>
+                            <td class="estandar-col"><span class="yes">✓</span></td>
+                            <td><span class="yes">✓</span></td>
+                        </tr>
+                        <tr>
+                            <th>Carrito de compras y cálculo de total</th>
+                            <td class="estandar-col"><span class="yes">✓</span></td>
+                            <td><span class="yes">✓</span></td>
+                        </tr>
+                        <tr>
+                            <th>Captura de datos del cliente</th>
+                            <td class="estandar-col"><span class="yes">✓</span></td>
+                            <td><span class="yes">✓</span></td>
+                        </tr>
+                        <tr>
+                            <th>Bot de reserva de turnos con tu propio calendario</th>
+                            <td class="estandar-col"><span class="yes">✓</span></td>
+                            <td><span class="yes">✓</span></td>
+                        </tr>
+                        <tr>
+                            <th>Sin límite de productos</th>
+                            <td class="estandar-col"><span class="yes">✓</span></td>
+                            <td><span class="yes">✓</span></td>
+                        </tr>
+                        <tr>
+                            <th>Inteligencia Artificial para respuestas naturales</th>
+                            <td class="estandar-col"><span class="no">—</span></td>
+                            <td><span class="yes">✓</span></td>
+                        </tr>
+                        <tr>
+                            <th>Integraciones (MercadoPago, Calendar, APIs)</th>
+                            <td class="estandar-col"><span class="no">—</span></td>
+                            <td><span class="yes">✓</span></td>
+                        </tr>
+                        <tr>
+                            <th>Flujos personalizados (turnos, encuestas, etc.)</th>
+                            <td class="estandar-col"><span class="no">—</span></td>
+                            <td><span class="yes">✓</span></td>
+                        </tr>
+                        <tr>
+                            <th>Hosting y mantenimiento incluidos</th>
+                            <td class="estandar-col"><span class="no">—</span></td>
+                            <td><span class="yes">✓</span></td>
+                        </tr>
+                        <tr>
+                            <th>Soporte prioritario</th>
+                            <td class="estandar-col"><span class="no">—</span></td>
+                            <td><span class="yes">✓</span></td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+            <p class="compare-note">El plan personalizado se cotiza según las necesidades de tu negocio.</p>
+            <p class="compare-mp-note">💳 Plan Estándar: pagás cada mes mediante suscripción vía MercadoPago.</p>
+        </div>
+
+        <div class="faq-section">
+            <h3>Preguntas Frecuentes</h3>
+            <p class="sub">Resolvemos las dudas más comunes sobre Wamenu.</p>
+
+            <details class="faq-card">
+                <summary>¿Las conversaciones ocurren en WhatsApp?</summary>
+                <div class="faq-body">
+                    Sí, totalmente. Tus clientes te escribirán a tu número habitual desde su aplicación de WhatsApp y recibirán tus menús, catálogos e interactuarán con el bot dentro de WhatsApp, de la misma manera que chatean con cualquier otro contacto.
+                </div>
+            </details>
+
+            <details class="faq-card">
+                <summary>¿Wamenu es una herramienta oficial de Meta / WhatsApp LLC?</summary>
+                <div class="faq-body">
+                    No. Wamenu es un software independiente desarrollado con tecnología de código abierto (Baileys) que conecta tu número de WhatsApp con un panel de control autoadministrable. No tenemos afiliación ni relación comercial con Meta Platforms, Inc.
+                </div>
+            </details>
+
+            <details class="faq-card">
+                <summary>¿Qué ventajas tiene usar Wamenu frente a la API Oficial de Meta Cloud?</summary>
+                <div class="faq-body">
+                    Utilizar nuestra plataforma te brinda ventajas operativas y económicas clave:
+                    <ul>
+                        <li><strong>Tarifa plana sin costo por mensaje:</strong> Meta cobra por cada conversación iniciada. Con Wamenu pagás una suscripción mensual fija y enviás o recibís mensajes ilimitados.</li>
+                        <li><strong>Sin aprobaciones de plantillas:</strong> Podés modificar tus menús, ofertas y respuestas cuando quieras, sin esperar la revisión previa de Meta.</li>
+                        <li><strong>Sin verificación empresarial obligatoria:</strong> No necesitás presentar documentación corporativa ni pasar por complejos trámites de aprobación en Facebook Business Manager. Escaneás el código QR y tu bot empieza a funcionar al instante.</li>
+                        <li><strong>Todo integrado desde un panel sencillo:</strong> Gestionás tus productos, capturás datos, recibís pedidos en Google Sheets en tiempo real y gestionás turnos sin necesidad de programar ni contratar desarrolladores.</li>
+                    </ul>
+                </div>
+            </details>
         </div>
     </section>
 
@@ -377,6 +625,7 @@
                 if (d.phone) BOT_PHONE = d.phone;
                 if (d.precioEstandar) PRECIO_ESTANDAR = d.precioEstandar;
                 document.getElementById('precioDisplay').textContent = PRECIO_ESTANDAR;
+                document.getElementById('comparePriceDisplay').textContent = PRECIO_ESTANDAR;
                 if (d.trialGratis === false) {
                     var badge = document.getElementById('badgePrimerMes');
                     if (badge) badge.style.display = 'none';
@@ -525,5 +774,7 @@
             btn.textContent = '📤 Enviar mensaje';
         }
     </script>
+    <script src="/js/icons.js"></script>
+    <script>document.addEventListener('DOMContentLoaded',function(){replaceEmojis();});</script>
 </body>
 </html>

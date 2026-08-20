@@ -16,6 +16,7 @@ const calendarService = require('../services/googleCalendarService');
 const logService = require('../services/logService');
 const { helpGuideCSS, helpGuideHTML, helpGuideJS } = require('./helpGuide');
 const { askGemini } = require('./geminiHelper');
+const { icon } = require('./icons');
 
 function parseHorariosJson(str) {
     try {
@@ -159,8 +160,8 @@ class Dashboard {
                             </div>
                             <div style="display: flex; gap: 8px; flex-wrap: wrap;">
                                 <button onclick="document.getElementById('addClientModal').style.display='block'" class="btn btn-green">+ Nuevo Cliente</button>
-                                <a href="/app/admin/logs" class="btn" style="border: 1px solid #ccc">📋 Ver Logs</a>
-                                <a href="/app/admin/events" class="btn" style="border: 1px solid #ccc">👤 Eventos de Usuarios</a>
+                                <a href="/app/admin/logs" class="btn" style="border: 1px solid #ccc">${icon('clipboardDocumentList', 'w-4 h-4 inline')} Ver Logs</a>
+                                <a href="/app/admin/events" class="btn" style="border: 1px solid #ccc">${icon('user', 'w-4 h-4 inline')} Eventos de Usuarios</a>
                                 <a href="/app/" class="btn" style="border: 1px solid #ccc">Volver al Editor</a>
                             </div>
                         </div>
@@ -184,7 +185,7 @@ class Dashboard {
                         </div>
 
                             <div style="margin-top: 30px; padding-top: 20px; border-top: 2px solid #e7e3e4;">
-                            <h3>⚙️ Configuración General</h3>
+                            <h3>${icon('cog6Tooth', 'w-4 h-4 inline')} Configuración General</h3>
                             <div style="display: flex; align-items: center; gap: 12px; margin-top: 12px; flex-wrap: wrap;">
                                 <label style="font-weight: 600;">Precio Plan Estándar ($):</label>
                                 <input type="number" id="precioInput" style="padding: 8px 12px; border: 1px solid #ccc; border-radius: 6px; width: 120px; font-size: 1rem;">
@@ -241,7 +242,7 @@ class Dashboard {
                                     headers: {'Content-Type': 'application/json'},
                                     body: JSON.stringify(payload)
                                 }).then(function(r){return r.json()}).then(function(){
-                                    document.getElementById('priceStatus').textContent = '✅ Guardado';
+                                    document.getElementById('priceStatus').textContent = '${icon('checkCircle', 'w-4 h-4 inline text-green-400')} Guardado';
                                     setTimeout(function(){document.getElementById('priceStatus').textContent = '';}, 3000);
                                 });
                             }
@@ -390,11 +391,11 @@ class Dashboard {
                     <div class="topbar">
                         <div style="display:flex; align-items:center; gap:12px;">
                             <canvas id="logo" width="200" height="200" style="width:44px; height:44px;"></canvas>
-                            <h2>📋 Visor de Logs del Sistema</h2>
+                            <h2>${icon('clipboardDocumentList', 'w-4 h-4 inline')} Visor de Logs del Sistema</h2>
                         </div>
                         <div style="display:flex; gap:8px;">
-                            <a href="/app/admin/events" class="btn" style="padding:8px 14px; border:1px solid #ccc; border-radius:6px; text-decoration:none; color:#333; font-size:13px;">👤 Eventos de Usuarios</a>
-                            <a href="/app/admin" class="btn" style="padding:8px 14px; border:1px solid #ccc; border-radius:6px; text-decoration:none; color:#333; font-size:13px;">← Volver al Panel</a>
+                            <a href="/app/admin/events" class="btn" style="padding:8px 14px; border:1px solid #ccc; border-radius:6px; text-decoration:none; color:#333; font-size:13px;">${icon('user', 'w-4 h-4 inline')} Eventos de Usuarios</a>
+                            <a href="/app/admin" class="btn" style="padding:8px 14px; border:1px solid #ccc; border-radius:6px; text-decoration:none; color:#333; font-size:13px;">${icon('arrowLeft', 'w-4 h-4 inline')} Volver al Panel</a>
                         </div>
                     </div>
 
@@ -531,11 +532,11 @@ class Dashboard {
                     <div class="topbar">
                         <div style="display:flex; align-items:center; gap:12px;">
                             <canvas id="logo" width="200" height="200" style="width:44px; height:44px;"></canvas>
-                            <h2>👤 Visor de Eventos del Dashboard</h2>
+                            <h2>${icon('user', 'w-4 h-4 inline')} Visor de Eventos del Dashboard</h2>
                         </div>
                         <div style="display:flex; gap:8px;">
-                            <a href="/app/admin/logs" class="btn" style="padding:8px 14px; border:1px solid #ccc; border-radius:6px; text-decoration:none; color:#333; font-size:13px;">📋 Logs del Sistema</a>
-                            <a href="/app/admin" class="btn" style="padding:8px 14px; border:1px solid #ccc; border-radius:6px; text-decoration:none; color:#333; font-size:13px;">← Volver al Panel</a>
+                            <a href="/app/admin/logs" class="btn" style="padding:8px 14px; border:1px solid #ccc; border-radius:6px; text-decoration:none; color:#333; font-size:13px;">${icon('clipboardDocumentList', 'w-4 h-4 inline')} Logs del Sistema</a>
+                            <a href="/app/admin" class="btn" style="padding:8px 14px; border:1px solid #ccc; border-radius:6px; text-decoration:none; color:#333; font-size:13px;">${icon('arrowLeft', 'w-4 h-4 inline')} Volver al Panel</a>
                         </div>
                     </div>
 
@@ -911,14 +912,14 @@ class Dashboard {
                         </div>
                     </td>
                     <td class="col-precio">${node.price ? '$' + node.price : '-'}</td>
-                    <td class="col-pedido" style="text-align: center;">${isOrder ? '<span style="color: var(--primary-color);">✅</span>' : '-'}</td>
-                    <td class="col-cant" style="text-align: center;">${isQty ? '<span style="color: var(--info-color);">🔢</span>' : '-'}</td>
-                    <td class="col-fin" style="text-align: center;">${isFinal ? '<span style="color: var(--secondary-color);">🏁</span>' : '-'}</td>
-                    <td class="col-datos" style="text-align: center;">${isData ? '<span style="color: var(--warning-color);">📝</span>' : '-'}</td>
-                    <td class="col-archivo" style="text-align: center;">${isArchivo ? '<span style="color: var(--info-color);">📎</span>' : '-'}</td>
-                    <td class="col-pagar" style="text-align: center;">${isPagar ? '<span style="color: var(--success-color);">💳</span>' : '-'}</td>
+                    <td class="col-pedido" style="text-align: center;">${isOrder ? '<span style="color: var(--primary-color);">' + icon('checkCircle', 'w-4 h-4 inline text-green-400') + '</span>' : '-'}</td>
+                    <td class="col-cant" style="text-align: center;">${isQty ? '<span style="color: var(--info-color);">' + icon('hashtag', 'w-4 h-4 inline') + '</span>' : '-'}</td>
+                    <td class="col-fin" style="text-align: center;">${isFinal ? '<span style="color: var(--secondary-color);">' + icon('flag', 'w-4 h-4 inline') + '</span>' : '-'}</td>
+                    <td class="col-datos" style="text-align: center;">${isData ? '<span style="color: var(--warning-color);">' + icon('documentText', 'w-4 h-4 inline') + '</span>' : '-'}</td>
+                    <td class="col-archivo" style="text-align: center;">${isArchivo ? '<span style="color: var(--info-color);">' + icon('paperClip', 'w-4 h-4 inline') + '</span>' : '-'}</td>
+                    <td class="col-pagar" style="text-align: center;">${isPagar ? '<span style="color: var(--success-color);">' + icon('creditCard', 'w-4 h-4 inline') + '</span>' : '-'}</td>
                     <td class="col-redirigir" style="text-align: center; max-width: 120px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${node.redirigirA || '<span style="color:#999;">-</span>'}</td>
-                    <td class="col-disp" style="text-align: center;">${node.disponible === 'false' ? '<span style="color:#999;" title="No disponible">🚫</span>' : '<span style="color:var(--primary-color);" title="Disponible">✅</span>'}</td>
+                    <td class="col-disp" style="text-align: center;">${node.disponible === 'false' ? '<span style="color:#999;" title="No disponible">' + icon('noSymbol', 'w-4 h-4 inline text-red-400') + '</span>' : '<span style="color:var(--primary-color);" title="Disponible">' + icon('checkCircle', 'w-4 h-4 inline text-green-400') + '</span>'}</td>
                 </tr>
                 `;
             }).join('');
@@ -1710,23 +1711,23 @@ ${helpGuideHTML}
                         <div class="step-toggle" onclick="toggleStep('step1Body', this)" style="display:flex; align-items:flex-start; justify-content:space-between; gap:10px;">
                             <div>
                                 <div style="display:inline-block; background:#0f6b4f; color:#fff; font-size:11px; font-weight:700; letter-spacing:0.5px; padding:4px 10px; border-radius:4px; margin-bottom:8px;">PASO 1 · CONFIGURÁ EL TIPO DE BOT</div>
-                                <h3>🤖 Tipo de Bot</h3>
+                                <h3>${icon('sparkles', 'w-4 h-4 inline text-purple-400')} Tipo de Bot</h3>
                             </div>
-                            <span class="step-toggle-arrow" style="font-size:14px; color:var(--text-muted); transform:rotate(-90deg);">▼</span>
+                            <span class="step-toggle-arrow" style="font-size:14px; color:var(--text-muted); transform:rotate(-90deg);">${icon('chevronDown', 'w-4 h-4 inline')}</span>
                         </div>
                         <div class="step-body" id="step1Body" style="display:none;">
                         <p class="muted">Definí qué tipo de operación maneja este bot. Al elegir <strong>"Gestor de Turnos"</strong> se ocultan los módulos de carrito y se habilita la configuración de Google Calendar.</p>
                         <div class="online-row">
                             <select id="botTypeInput" onchange="onBotTypeChange()" style="padding: 10px 14px; border: 1px solid var(--border-color); border-radius: 8px; font-size: 15px; width: 100%; max-width: 420px;">
-                                <option value="CARRITO">🛒 Bot de Catálogo / Carrito de Compras (Ventas, Menú, Productos)</option>
-                                <option value="TURNOS">📅 Bot Gestor de Turnos / Agenda (Reservas, Citas)</option>
-                                <option value="FAQ">❓ Bot de Consultas Generales / FAQ</option>
+                                <option value="CARRITO">${icon('shoppingCart', 'w-4 h-4 inline')} Bot de Catálogo / Carrito de Compras (Ventas, Menú, Productos)</option>
+                                <option value="TURNOS">${icon('calendar', 'w-4 h-4 inline')} Bot Gestor de Turnos / Agenda (Reservas, Citas)</option>
+                                <option value="FAQ">${icon('questionMarkCircle', 'w-4 h-4 inline')} Bot de Consultas Generales / FAQ</option>
                             </select>
                         </div>
 
                         <div id="calendarSection" style="display: none; margin-top: 18px; padding: 16px; background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 10px;">
-                            <div onclick="toggleCalendarSection()" style="font-weight: 700; color: #166534; margin-bottom: 12px; display: flex; align-items: center; gap: 6px; cursor: pointer; user-select: none;">📅 Configuración de Google Calendar
-                                <span class="calendar-toggle-arrow" id="calendarToggleArrow" style="display:inline-flex;align-items:center;justify-content:center;font-size:12px;transition:transform 0.2s;transform:rotate(-90deg);">▼</span>
+                            <div onclick="toggleCalendarSection()" style="font-weight: 700; color: #166534; margin-bottom: 12px; display: flex; align-items: center; gap: 6px; cursor: pointer; user-select: none;">${icon('calendar', 'w-4 h-4 inline')} Configuración de Google Calendar
+                                <span class="calendar-toggle-arrow" id="calendarToggleArrow" style="display:inline-flex;align-items:center;justify-content:center;font-size:12px;transition:transform 0.2s;transform:rotate(-90deg);">${icon('chevronDown', 'w-4 h-4 inline')}</span>
                                 <span onclick="event.stopPropagation(); openCalendarHelp()" style="display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;background:#e9ecef;color:#6c757d;border-radius:50%;font-size:12px;font-weight:bold;cursor:pointer;border:1px solid #ced4da;" title="Cómo conectar tu calendario">?</span>
                             </div>
                             <div id="calendarBody" style="display: none;">
@@ -1735,7 +1736,7 @@ ${helpGuideHTML}
                                     <label style="font-weight: 600; min-width: 200px;">Calendar ID:<span class="info-icon" style="margin-left:4px;">i<span class="tooltip" style="width: 320px; margin-left: -160px; text-align: left;">
                                         <strong>¿Cómo obtener el Calendar ID?</strong><br><br>
                                         1. Abrí <strong>Google Calendar</strong> en el navegador.<br>
-                                        2. Hacé clic en el engranaje ⚙️ → <strong>Configuración</strong>.<br>
+                                        2. Hacé clic en el engranaje ${icon('cog6Tooth', 'w-4 h-4 inline')} ${icon('arrowRight', 'w-4 h-4 inline')} <strong>Configuración</strong>.<br>
                                         3. En el panel izquierdo, buscá tu calendario y hacé clic en su nombre.<br>
                                         4. En "Integrar calendario" está el <strong>ID del calendario</strong> (ej: <code>tucalendario@gmail.com</code> o <code>...@group.calendar.google.com</code>).<br><br>
                                         <strong>¿Cómo darle permisos de edición al bot?</strong><br><br>
@@ -1743,7 +1744,7 @@ ${helpGuideHTML}
                                         2. Agregá la cuenta de Google del bot: <code>${process.env.ADMIN_EMAIL || 'la cuenta de Google vinculada al bot'}</code><br>
                                         3. En el rol, elegí <strong>Realizar cambios en eventos</strong> (no solo "Ver").<br>
                                         4. Aceptá la invitación que llegue a esa cuenta.<br><br>
-                                        💡 Sin este permiso el bot no podrá crear turnos.
+                                        ${icon('lightBulb', 'w-4 h-4 inline text-yellow-400')} Sin este permiso el bot no podrá crear turnos.
                                     </span></span></label>
                                     <input type="text" id="calendarIdInput" placeholder="xxxx@gmail.com o /c/...@group.calendar.google.com" style="flex: 1; min-width: 260px; padding: 8px 12px; border: 1px solid var(--border-color); border-radius: 6px; font-size: 14px; box-sizing: border-box;">
                                 </div>
@@ -1762,7 +1763,7 @@ ${helpGuideHTML}
                             <div style="margin-top: 16px;">
                                 <div style="font-weight: 700; color: #166534; margin-bottom: 8px;">Días y Horarios de Atención del Negocio</div>
                                 <div style="font-size: 12px; color: #777; margin-bottom: 8px;">Estos son los horarios en los que tu <strong>negocio atiende</strong> y hay <strong>turnos disponibles</strong> para reservar. Solo se ofrecerán turnos dentro de estos rangos (hora local de Argentina).<br>
-                                <small>ℹ️ <strong>Distinto de</strong> los "Horarios de Atención del Bot" (más arriba), que definen cuándo el bot responde mensajes.</small></div>
+                                <small>${icon('informationCircle', 'w-4 h-4 inline')} <strong>Distinto de</strong> los "Horarios de Atención del Bot" (más arriba), que definen cuándo el bot responde mensajes.</small></div>
                                 <table id="businessHoursTable" style="width: 100%; max-width: 560px; border-collapse: collapse; font-size: 14px;">
                                     <thead>
                                         <tr style="text-align:left; color:#166534;">
@@ -1794,7 +1795,7 @@ ${helpGuideHTML}
                         <div id="pagosModal" class="modal">
                             <div class="modal-content" style="width: 90%; max-width: 760px;">
                                 <span onclick="closeModal('pagosModal')" style="float:right; cursor:pointer; font-size:24px;">&times;</span>
-                                <h2>🧾 Mis Pagos</h2>
+                                <h2>${icon('receiptPercent', 'w-4 h-4 inline')} Mis Pagos</h2>
                                 <div id="pagosSuscripcionInfo" style="margin-bottom:16px;"></div>
                                 <div id="pagosTableWrap" style="overflow-x:auto;">
                                     <table style="width:100%; border-collapse:collapse; font-size:14px;">
@@ -1813,7 +1814,7 @@ ${helpGuideHTML}
                                     </table>
                                 </div>
                                 <p style="color:#777; font-size:12px; line-height:1.5; margin-top:12px;">
-                                    💡 Estos son los pagos que se acreditaron en tu suscripción. Ante cualquier consulta sobre un pago, escribinos por WhatsApp.
+                                    ${icon('lightBulb', 'w-4 h-4 inline text-yellow-400')} Estos son los pagos que se acreditaron en tu suscripción. Ante cualquier consulta sobre un pago, escribinos por WhatsApp.
                                 </p>
                             </div>
                         </div>
@@ -1822,7 +1823,7 @@ ${helpGuideHTML}
                         <div id="calendarHelpModal" class="modal">
                             <div class="modal-content" style="width: 90%; max-width: 760px;">
                                 <span onclick="closeModal('calendarHelpModal')" style="float:right; cursor:pointer; font-size:24px;">&times;</span>
-                                <h2>📅 Cómo conectar tu Google Calendar</h2>
+                                <h2>${icon('calendar', 'w-4 h-4 inline')} Cómo conectar tu Google Calendar</h2>
                                 <p style="color:#555; font-size:14px; line-height:1.6;">Seguí estos pasos para obtener el <strong>Calendar ID</strong> de tu calendario y compartirlo con el bot.</p>
                                 <ol style="font-size:14px; color:#333; line-height:1.7; padding-left:20px;">
                                     <li>Abrí <a href="https://calendar.google.com/" target="_blank" rel="noopener">Google Calendar</a> en tu computadora.</li>
@@ -1841,7 +1842,7 @@ ${helpGuideHTML}
                                     </li>
                                     <li>Dale permisos de edición a este email: <code style="background:#f0fdf4; padding:2px 6px; border-radius:4px; color:#166534; font-weight:600;">${process.env.ADMIN_EMAIL || 'la cuenta de Google vinculada al bot'}</code></li>
                                 </ol>
-                                <p style="color:#777; font-size:12px; line-height:1.5;">💡 Sin permisos de edición el bot no podrá crear turnos en tu calendario. Pegá el ID copiado en el campo <strong>Calendar ID</strong> de esta página.</p>
+                                <p style="color:#777; font-size:12px; line-height:1.5;">${icon('lightBulb', 'w-4 h-4 inline text-yellow-400')} Sin permisos de edición el bot no podrá crear turnos en tu calendario. Pegá el ID copiado en el campo <strong>Calendar ID</strong> de esta página.</p>
                             </div>
                         </div>
 
@@ -1873,13 +1874,13 @@ ${helpGuideHTML}
                         <div class="step-toggle" onclick="toggleStep('step2Body', this)" style="display:flex; align-items:flex-start; justify-content:space-between; gap:10px;">
                             <div>
                                 <div style="display:inline-block; background:#0f6b4f; color:#fff; font-size:11px; font-weight:700; letter-spacing:0.5px; padding:4px 10px; border-radius:4px; margin-bottom:8px;">PASO 2 · CONFIGURÁ LOS HORARIOS DE ATENCIÓN DEL BOT</div>
-                                <h3>🕒 Horarios de Atención del Bot</h3>
+                                <h3>${icon('clock', 'w-4 h-4 inline')} Horarios de Atención del Bot</h3>
                             </div>
-                            <span class="step-toggle-arrow" style="font-size:14px; color:var(--text-muted); transform:rotate(-90deg);">▼</span>
+                            <span class="step-toggle-arrow" style="font-size:14px; color:var(--text-muted); transform:rotate(-90deg);">${icon('chevronDown', 'w-4 h-4 inline')}</span>
                         </div>
                         <div class="step-body" id="step2Body" style="display:none;">
                         <p class="muted">Estos son los horarios en los que <strong>el bot atiende y responde mensajes</strong>. Si está <strong>"online 24/7"</strong> responde todo el día, todos los días. Si lo destildás, indicá los días y rangos de horario (hora local de Argentina) en los que querés que responda. Se puede agregar más de un rango por día.<br>
-                        <small>ℹ️ <strong>Distinto de</strong> los "Días y Horarios de Atención" de la configuración de Google Calendar, que definen cuándo hay turnos disponibles del negocio.</small></p>
+                        <small>${icon('informationCircle', 'w-4 h-4 inline')} <strong>Distinto de</strong> los "Días y Horarios de Atención" de la configuración de Google Calendar, que definen cuándo hay turnos disponibles del negocio.</small></p>
                         <div class="online-row">
                             <input type="checkbox" id="online247" onchange="toggleScheduleEditor()">
                             <label for="online247" style="margin:0;cursor:pointer;">Bot online 24/7</label>
@@ -1898,9 +1899,9 @@ ${helpGuideHTML}
                         <div class="step-toggle" onclick="toggleStep('step3Body', this)" style="display:flex; align-items:flex-start; justify-content:space-between; gap:10px;">
                             <div>
                                 <div style="display:inline-block; background:#0f6b4f; color:#fff; font-size:11px; font-weight:700; letter-spacing:0.5px; padding:4px 10px; border-radius:4px; margin-bottom:8px;">PASO 3 · EDITÁ TU BOT. COMENZÁ HACIENDO CLIC EN EL BOTÓN "+ HIJO" EN LA COLUMNA DERECHA DE ACCIONES.</div>
-                                <h3>🛠️ Editor de Menú</h3>
+                                <h3>${icon('wrenchScrewdriver', 'w-4 h-4 inline')} Editor de Menú</h3>
                             </div>
-                            <span class="step-toggle-arrow" style="font-size:14px; color:var(--text-muted); ${hasMenuContent ? '' : 'transform:rotate(-90deg);'}}">▼</span>
+                            <span class="step-toggle-arrow" style="font-size:14px; color:var(--text-muted); ${hasMenuContent ? '' : 'transform:rotate(-90deg);'}}">${icon('chevronDown', 'w-4 h-4 inline')}</span>
                         </div>
                         <div class="step-body" id="step3Body" style="${hasMenuContent ? '' : 'display:none;'}">
                     <div class="col-toggle-wrap">
@@ -1949,9 +1950,9 @@ ${helpGuideHTML}
                         <div class="step-toggle" onclick="toggleStep('step4Body', this)" style="display:flex; align-items:flex-start; justify-content:space-between; gap:10px;">
                             <div>
                                 <div style="display:inline-block; background:#0f6b4f; color:#fff; font-size:11px; font-weight:700; letter-spacing:0.5px; padding:4px 10px; border-radius:4px; margin-bottom:8px;">PASO 4 · ACTIVÁ TU BOT EN WHATSAPP</div>
-                                <h3>📱 Conectá tu bot a WhatsApp</h3>
+                                <h3>${icon('devicePhoneMobile', 'w-4 h-4 inline')} Conectá tu bot a WhatsApp</h3>
                             </div>
-                            <span class="step-toggle-arrow" style="font-size:14px; color:var(--text-muted); transform:rotate(-90deg);">▼</span>
+                            <span class="step-toggle-arrow" style="font-size:14px; color:var(--text-muted); transform:rotate(-90deg);">${icon('chevronDown', 'w-4 h-4 inline')}</span>
                         </div>
                         <div class="step-body" id="step4Body" style="display:none;">
                         <div id="step4Status" style="font-size:14px; color:#444; line-height:1.6;">Verificando estado del bot...</div>
@@ -2060,7 +2061,7 @@ ${helpGuideHTML}
                                                     <div class="tags-flex-row" style="display:flex;gap:10px;margin-top:6px;">
                                                         <div style="flex:1;display:flex;align-items:center;gap:10px;">
                                                             <input type="checkbox" id="addIsTurno" onchange="toggleOrderTag('add', '##TURNO##')" style="width:16px;height:16px;cursor:pointer;">
-                                                            <label for="addIsTurno" style="margin-bottom:0;cursor:pointer;font-size:13px;">Reserva de turno<span class="info-icon" style="margin-left:4px;">i<span class="tooltip">Inicia el flujo de reserva: fecha → horario → confirmación (requiere Gestor de Turnos).</span></span></label>
+                                                            <label for="addIsTurno" style="margin-bottom:0;cursor:pointer;font-size:13px;">Reserva de turno<span class="info-icon" style="margin-left:4px;">i<span class="tooltip">Inicia el flujo de reserva: fecha ${icon('arrowRight', 'w-4 h-4 inline')} horario ${icon('arrowRight', 'w-4 h-4 inline')} confirmación (requiere Gestor de Turnos).</span></span></label>
                                                         </div>
                                                         <div style="flex:1;"></div>
                                                     </div>
@@ -2234,7 +2235,7 @@ ${helpGuideHTML}
                                                 <div class="tags-flex-row" style="display:flex;gap:8px;margin-top:6px;">
                                                     <div style="flex:1;display:flex;align-items:center;gap:8px;">
                                                         <input type="checkbox" id="editIsTurno" onchange="toggleOrderTag('edit', '##TURNO##')" style="width:16px;height:16px;cursor:pointer;">
-                                                        <label for="editIsTurno" style="margin-bottom:0;cursor:pointer;color:#166534;font-size:13px;">Reserva de turno<span class="info-icon" style="margin-left:4px;">i<span class="tooltip">Inicia el flujo de reserva: fecha → horario → confirmación (requiere Gestor de Turnos).</span></span></label>
+                                                        <label for="editIsTurno" style="margin-bottom:0;cursor:pointer;color:#166534;font-size:13px;">Reserva de turno<span class="info-icon" style="margin-left:4px;">i<span class="tooltip">Inicia el flujo de reserva: fecha ${icon('arrowRight', 'w-4 h-4 inline')} horario ${icon('arrowRight', 'w-4 h-4 inline')} confirmación (requiere Gestor de Turnos).</span></span></label>
                                                     </div>
                                                     <div style="flex:1;"></div>
                                                 </div>
@@ -2309,7 +2310,7 @@ ${helpGuideHTML}
                             </div>
                         </div>
                         <div class="support-body" id="supportBody">
-                            <div class="sb-bubble bot">¡Hola! Soy el asistente del editor de menú. Haceme cualquier pregunta sobre cómo crear o modificar el menú de tu bot de WhatsApp. 😊</div>
+                            <div class="sb-bubble bot">¡Hola! Soy el asistente del editor de menú. Haceme cualquier pregunta sobre cómo crear o modificar el menú de tu bot de WhatsApp. ${icon('faceSmile', 'w-4 h-4 inline text-yellow-400')}</div>
                         </div>
                         <div class="support-footer">
                             <div style="flex:1;display:flex;flex-direction:column;gap:6px;">
@@ -2320,7 +2321,7 @@ ${helpGuideHTML}
                                 </div>
                                 <div style="display:flex;gap:8px;">
                                     <input type="text" id="supportInput" placeholder="Escribí tu pregunta..." onkeydown="if(event.key==='Enter') sendSupportMessage()">
-                                    <button id="supportSendBtn" onclick="sendSupportMessage()">➤</button>
+                                    <button id="supportSendBtn" onclick="sendSupportMessage()">${icon('chevronRight', 'w-4 h-4 inline')}</button>
                                 </div>
                             </div>
                         </div>
@@ -2427,14 +2428,14 @@ ${helpGuideHTML}
                                 if (d.success) {
                                     scheduleConfig.online24_7 = document.getElementById('online247').checked;
                                     scheduleConfig.horarios = horarios;
-                                    status.textContent = '✅ Horarios guardados';
+                                    status.textContent = '${icon('checkCircle', 'w-4 h-4 inline text-green-400')} Horarios guardados';
                                     track('horarios_guardados', 'horarios', 'Guardó los horarios de atención');
                                 } else {
-                                    status.textContent = '❌ ' + (d.error || 'Error al guardar');
+                                    status.textContent = '${icon('xCircle', 'w-4 h-4 inline text-red-400')} ' + (d.error || 'Error al guardar');
                                 }
                                 setTimeout(function() { status.textContent = ''; }, 3000);
                             }).catch(function() {
-                                status.textContent = '❌ Error de conexión';
+                                status.textContent = '${icon('xCircle', 'w-4 h-4 inline text-red-400')} Error de conexión';
                                 setTimeout(function() { status.textContent = ''; }, 3000);
                             });
                         }
@@ -2564,13 +2565,13 @@ ${helpGuideHTML}
                                 if (d.success) {
                                     botType = payload.bot_type;
                                     calendarConfig = payload.calendar_config;
-                                    status.textContent = '✅ Tipo de bot guardado';
+                                    status.textContent = '${icon('checkCircle', 'w-4 h-4 inline text-green-400')} Tipo de bot guardado';
                                 } else {
-                                    status.textContent = '❌ ' + (d.error || 'Error al guardar');
+                                    status.textContent = '${icon('xCircle', 'w-4 h-4 inline text-red-400')} ' + (d.error || 'Error al guardar');
                                 }
                                 setTimeout(function() { status.textContent = ''; }, 3000);
                             }).catch(function() {
-                                status.textContent = '❌ Error de conexión';
+                                status.textContent = '${icon('xCircle', 'w-4 h-4 inline text-red-400')} Error de conexión';
                                 setTimeout(function() { status.textContent = ''; }, 3000);
                             });
                         }
@@ -2583,16 +2584,16 @@ ${helpGuideHTML}
                                 .then(function(r) { return r.json(); })
                                 .then(function(d) {
                                     if (d.error) {
-                                        status.textContent = '❌ ' + d.error;
+                                        status.textContent = '${icon('xCircle', 'w-4 h-4 inline text-red-400')} ' + d.error;
                                     } else if (!d.slots || d.slots.length === 0) {
-                                        status.textContent = '😕 Sin horarios disponibles para hoy (' + d.fecha + ')';
+                                        status.textContent = '${icon('faceFrown', 'w-4 h-4 inline text-yellow-400')} Sin horarios disponibles para hoy (' + d.fecha + ')';
                                     } else {
-                                        status.textContent = '✅ ' + d.slots.length + ' horarios disponibles hoy: ' + d.slots.map(function(s) { return s.label; }).join(', ');
+                                        status.textContent = '${icon('checkCircle', 'w-4 h-4 inline text-green-400')} ' + d.slots.length + ' horarios disponibles hoy: ' + d.slots.map(function(s) { return s.label; }).join(', ');
                                     }
                                     setTimeout(function() { status.textContent = ''; }, 8000);
                                 })
                                 .catch(function() {
-                                    status.textContent = '❌ Error de conexión';
+                                    status.textContent = '${icon('xCircle', 'w-4 h-4 inline text-red-400')} Error de conexión';
                                     setTimeout(function() { status.textContent = ''; }, 3000);
                                 });
                         }
@@ -2633,14 +2634,14 @@ ${helpGuideJS}
                                         if (sub && (sub.estado === 'gracia' || sub.estado === 'suspendida')) {
                                             const fechaSusp = sub.fechaSuspension ? new Date(sub.fechaSuspension).toLocaleDateString('es-AR') : '';
                                             if (sub.estado === 'gracia') {
-                                                step4.innerHTML = '<div style="background:#fff7ed;border:1px solid #fdba74;border-radius:8px;padding:12px 16px;color:#9a3412;font-size:0.9rem;">⚠️ <strong>Tu suscripción venció.</strong> Podés seguir editando tu menú, pero el bot no puede activarse hasta regularizar el pago. El servicio se suspenderá el <strong>' + fechaSusp + '</strong>.</div>';
+                                                step4.innerHTML = '<div style="background:#fff7ed;border:1px solid #fdba74;border-radius:8px;padding:12px 16px;color:#9a3412;font-size:0.9rem;">${icon('exclamationTriangle', 'w-4 h-4 inline text-yellow-400')} <strong>Tu suscripción venció.</strong> Podés seguir editando tu menú, pero el bot no puede activarse hasta regularizar el pago. El servicio se suspenderá el <strong>' + fechaSusp + '</strong>.</div>';
                                             } else {
-                                                step4.innerHTML = '<div style="background:#fef2f2;border:1px solid #fecaca;border-radius:8px;padding:12px 16px;color:#991b1b;font-size:0.9rem;">⛔ <strong>Tu suscripción está suspendida.</strong> Regularizá el pago para volver a usar tu bot.</div>';
+                                                step4.innerHTML = '<div style="background:#fef2f2;border:1px solid #fecaca;border-radius:8px;padding:12px 16px;color:#991b1b;font-size:0.9rem;">${icon('noSymbol', 'w-4 h-4 inline text-red-400')} <strong>Tu suscripción está suspendida.</strong> Regularizá el pago para volver a usar tu bot.</div>';
                                             }
                                         } else if (data.status === 'connected') {
-                                            step4.innerHTML = '<span style="color:#2e7d32; font-weight:700;">✅ Tu bot se encuentra activo</span>';
+                                            step4.innerHTML = '<span style="color:#2e7d32; font-weight:700;">${icon('checkCircle', 'w-4 h-4 inline text-green-400')} Tu bot se encuentra activo</span>';
                                         } else {
-                                            step4.innerHTML = 'Ahora abre la cuenta de <strong>WhatsApp</strong> en la que va a trabajar tu bot asistente. Hacé clic en los <strong>3 puntitos</strong>, elegí <strong>"Vincular dispositivos"</strong> y escaneá el QR de tu bot ingresando acá: <a href="/app/qr" target="_blank" style="color:#0f6b4f; font-weight:700;">📱 Link de WhatsApp QR</a> y esperá a que diga <strong>activo</strong>. En ese momento el bot ya estará activo y cualquier cambio que realices en la tabla de edición de tu bot se verá reflejado en el bot online. ¡Muchos éxitos! 🎉';
+                                            step4.innerHTML = 'Ahora abre la cuenta de <strong>WhatsApp</strong> en la que va a trabajar tu bot asistente. Hacé clic en los <strong>3 puntitos</strong>, elegí <strong>"Vincular dispositivos"</strong> y escaneá el QR de tu bot ingresando acá: <a href="/app/qr" target="_blank" style="color:#0f6b4f; font-weight:700;">${icon('devicePhoneMobile', 'w-4 h-4 inline')} Link de WhatsApp QR</a> y esperá a que diga <strong>activo</strong>. En ese momento el bot ya estará activo y cualquier cambio que realices en la tabla de edición de tu bot se verá reflejado en el bot online. ¡Muchos éxitos! ${icon('sparkles', 'w-4 h-4 inline text-purple-400')}';
                                         }
                                     }
                                 })
@@ -2729,7 +2730,7 @@ ${helpGuideJS}
                                         return '<tr>' +
                                             '<td style="padding:8px 10px; border-bottom:1px solid #eee;">' + fmtFechaPago(f.createdAt) + '</td>' +
                                             '<td style="padding:8px 10px; border-bottom:1px solid #eee;">' + tipo + '</td>' +
-                                            '<td style="padding:8px 10px; border-bottom:1px solid #eee;">' + fmtPeriodo(f.periodoDesde) + ' → ' + fmtPeriodo(f.periodoHasta) + '</td>' +
+                                            '<td style="padding:8px 10px; border-bottom:1px solid #eee;">' + fmtPeriodo(f.periodoDesde) + ' ${icon('arrowRight', 'w-4 h-4 inline')} ' + fmtPeriodo(f.periodoHasta) + '</td>' +
                                             '<td style="padding:8px 10px; border-bottom:1px solid #eee; text-align:right; font-weight:600;">' + fmtMoney(f.monto) + '</td>' +
                                             '<td style="padding:8px 10px; border-bottom:1px solid #eee;">' + (factura || '—') + '</td>' +
                                             '</tr>';
@@ -3123,9 +3124,9 @@ ${helpGuideJS}
                             if (items.length > 0) {
                                 const nextNum = wizardState.nextTrigger + items.length;
                                 if (wizardState.isTurno) {
-                                    content += '<div class="wa-bubble" style="background: #f0fdf4; border: 1px dashed #86efac;">📅 Reservar turno (' + nextNum + ')</div>\\n';
+                                    content += '<div class="wa-bubble" style="background: #f0fdf4; border: 1px dashed #86efac;">${icon('calendar', 'w-4 h-4 inline')} Reservar turno (' + nextNum + ')</div>\\n';
                                 } else {
-                                    content += '<div class="wa-bubble" style="background: #f3f0ff; border: 1px dashed #d1d1ff;">✅ Finalizar (' + nextNum + ')</div>\\n';
+                                    content += '<div class="wa-bubble" style="background: #f3f0ff; border: 1px dashed #d1d1ff;">${icon('checkCircle', 'w-4 h-4 inline text-green-400')} Finalizar (' + nextNum + ')</div>\\n';
                                 }
                             }
 
@@ -3142,7 +3143,7 @@ ${helpGuideJS}
                                 items.forEach((item, i) => {
                                     const num = wizardState.nextTrigger + i;
                                     const isCurrent = i === wizardState.currentItemIdx;
-                                    const qtyBadge = item.askQty ? ' <span style="background: #eefbff; padding: 1px 6px; border-radius: 4px; font-size: 10px;">🔢 cant.</span>' : '';
+                                    const qtyBadge = item.askQty ? ' <span style="background: #eefbff; padding: 1px 6px; border-radius: 4px; font-size: 10px;">${icon('hashtag', 'w-4 h-4 inline')} cant.</span>' : '';
                                     listHtml += '<div style="display: flex; align-items: center; gap: 8px; padding: 6px 0; ' + (isCurrent ? 'background: #f0fdf4; margin: 0 -8px; padding: 6px 8px; border-radius: 6px;' : '') + '">' +
                                         '<span style="background: ' + (isCurrent ? 'var(--primary-color)' : '#e9ecef') + '; color: ' + (isCurrent ? 'white' : '#666') + '; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 600;">' + num + '</span>' +
                                         '<span style="flex: 1; font-size: 13px;">' + item.title + '</span>' +
@@ -3152,7 +3153,7 @@ ${helpGuideJS}
                                 });
                                 listHtml += '<div style="border-top: 1px dashed var(--border-color); margin-top: 6px; padding-top: 6px; display: flex; align-items: center; gap: 8px;">' +
                                     '<span style="background: #e9ecef; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 600; color: #666;">' + (wizardState.nextTrigger + items.length) + '</span>' +
-                                    '<span style="flex: 1; font-size: 13px; color: ' + (wizardState.isTurno ? '#166534' : '#6f42c1') + ';">' + (wizardState.isTurno ? '📅 Reservar turno (auto)' : '✅ Finalizar (auto)') + '</span>' +
+                                    '<span style="flex: 1; font-size: 13px; color: ' + (wizardState.isTurno ? '#166534' : '#6f42c1') + ';">' + (wizardState.isTurno ? '${icon('calendar', 'w-4 h-4 inline')} Reservar turno (auto)' : '${icon('checkCircle', 'w-4 h-4 inline text-green-400')} Finalizar (auto)') + '</span>' +
                                     '</div>';
                                 listHtml += '</div>';
                                 listContainer.innerHTML = listHtml;

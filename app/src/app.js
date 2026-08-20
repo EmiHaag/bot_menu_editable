@@ -36,6 +36,7 @@ const emailService = require('./services/emailService');
 const logService = require('./services/logService');
 const logger = require('./utils/logger');
 const crypto = require('crypto');
+const { icon } = require('./utils/icons');
 
 const appRouter = express.Router();
 const AUTH_SESSIONS_DIR = path.resolve(
@@ -308,7 +309,7 @@ appRouter.get('/login', (req, res) => {
         </head>
         <body>
             <div class="login-box" style="position: relative;">
-                <img src="/img/wamenu_logo_name.png" alt="WaMenu Banner" width="1408" height="768" style="width:100%;max-width:240px;height:auto;margin-bottom:10px;display:block;margin-left:auto;margin-right:auto;object-fit:contain;">
+                <a href="/" style="display:block;"><img src="/img/wamenu_logo_name.png" alt="WaMenu Banner" width="1408" height="768" style="width:100%;max-width:240px;height:auto;margin-bottom:10px;display:block;margin-left:auto;margin-right:auto;object-fit:contain;"></a>
                 <h2>Editor de Menú de WhatsApp</h2>
                 ${errorMsg}
                 ${successMsg}
@@ -335,7 +336,7 @@ appRouter.get('/login', (req, res) => {
             <!-- Modal Suscripción -->
             <div class="modal-overlay" id="modalSubscribe">
                 <div class="modal">
-                    <button class="modal-close" onclick="closeSubscribeModal()">✕</button>
+                    <button class="modal-close" onclick="closeSubscribeModal()">${icon('xMark', 'w-4 h-4 inline')}</button>
                     <h3>Suscribite al Plan Estándar</h3>
                     <p>Completá tus datos para iniciar la suscripción mensual por <strong>$<span id="modalSubscribePrice"></span> ARS/mes</strong>.</p>
                     <p style="font-size:0.78rem;color:#999;margin-top:-12px;margin-bottom:16px;">El primer mes es gratis</p>
@@ -359,7 +360,7 @@ appRouter.get('/login', (req, res) => {
             <!-- Modal Recuperar Contraseña -->
             <div class="modal-overlay" id="modalReset">
                 <div class="modal">
-                    <button class="modal-close" onclick="closeResetModal()">✕</button>
+                    <button class="modal-close" onclick="closeResetModal()">${icon('xMark', 'w-4 h-4 inline')}</button>
                     <h3>Recuperar contraseña</h3>
                     <p>Ingresá el email asociado a tu cuenta y te enviaremos un link para restablecer tu contraseña.</p>
                     <div class="modal-form">
@@ -915,7 +916,7 @@ async function startBot(botConfig, forceStart = false) {
                     }
                 }
             } else if (connection === 'open') {
-                console.log(`${ts()} [${id}] ✅ Connection opened successfully!`);
+                console.log(`${ts()} [${id}] ${icon('checkCircle', 'w-4 h-4 inline text-green-400')} Connection opened successfully!`);
                 logger.info('bot', id, 'Bot conectado a WhatsApp');
                 botQRs[id].status = 'connected';
                 botQRs[id].qr = null;
@@ -937,7 +938,7 @@ async function startBot(botConfig, forceStart = false) {
                         if (msg.broadcast || jid.endsWith('@broadcast')) continue;
                         // Log para diagnosticar mensajes de stories que llegan desde JID del contacto
                         if (!jid.endsWith('@s.whatsapp.net') && !jid.endsWith('@lid')) {
-                            console.log(`${ts()} [${id}] ⚠️ MSG inusual:`, JSON.stringify({ jid, remoteJid: msg.key.remoteJid, remoteJidAlt: msg.key.remoteJidAlt, participant: msg.key.participant, category: msg.category, broadcast: msg.broadcast, stubType: msg.messageStubType, hasMessage: !!msg.message, msgKeys: Object.keys(msg.message || {}) }));
+                            console.log(`${ts()} [${id}] ${icon('exclamationTriangle', 'w-4 h-4 inline text-yellow-400')} MSG inusual:`, JSON.stringify({ jid, remoteJid: msg.key.remoteJid, remoteJidAlt: msg.key.remoteJidAlt, participant: msg.key.participant, category: msg.category, broadcast: msg.broadcast, stubType: msg.messageStubType, hasMessage: !!msg.message, msgKeys: Object.keys(msg.message || {}) }));
                         }
                         const content = extractMessageContent(msg.message) || msg.message;
                         // 🚨 FILTRO: Ignorar protocolos de distribución de estados y sincronización
@@ -1540,7 +1541,7 @@ async function main() {
                             }
 
                             if (data.status === 'connected') {
-                                qrContainer.innerHTML = '<p style="color: #00bc7d; font-weight: bold;">Sesión Activa ✅</p>';
+                                qrContainer.innerHTML = '<p style="color: #00bc7d; font-weight: bold;">Sesión Activa ${icon('checkCircle', 'w-4 h-4 inline text-green-400')}</p>';
                                 instruction.textContent = 'El bot está funcionando correctamente.';
                                 actions.innerHTML = '<button class="btn-action btn-danger" onclick="deleteSession(\\'' + id + '\\')">Cerrar Sesión WhatsApp</button>';
                             } else if (data.status === 'qr_ready') {

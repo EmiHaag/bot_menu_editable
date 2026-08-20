@@ -342,6 +342,75 @@
             margin-right: auto;
             line-height: 1.6;
         }
+        .faq-section {
+            margin-top: 56px;
+            padding: 0 24px;
+            text-align: left;
+            max-width: 760px;
+            margin-left: auto;
+            margin-right: auto;
+        }
+        .faq-section h3 {
+            text-align: center;
+            font-size: 1.5rem;
+            font-weight: 800;
+            color: #222;
+            margin-bottom: 8px;
+        }
+        .faq-section > p.sub {
+            text-align: center;
+            color: #666;
+            font-size: 0.95rem;
+            margin-bottom: 24px;
+        }
+        .faq-card {
+            background: white;
+            border: 1px solid #eee;
+            border-radius: 12px;
+            margin-bottom: 12px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.03);
+            overflow: hidden;
+        }
+        .faq-card summary {
+            list-style: none;
+            cursor: pointer;
+            padding: 18px 20px;
+            font-weight: 700;
+            font-size: 0.95rem;
+            color: #222;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+            user-select: none;
+        }
+        .faq-card summary::-webkit-details-marker { display: none; }
+        .faq-card summary::after {
+            content: '＋';
+            color: #0f6b4f;
+            font-size: 1.1rem;
+            font-weight: 700;
+            transition: transform 0.2s;
+            flex-shrink: 0;
+        }
+        .faq-card[open] summary::after { content: '－'; }
+        .faq-card .faq-body {
+            padding: 0 20px 18px;
+            color: #555;
+            font-size: 0.9rem;
+            line-height: 1.6;
+        }
+        .faq-card .faq-body ul {
+            margin: 10px 0 0 18px;
+            padding: 0;
+        }
+        .faq-card .faq-body li { margin-bottom: 10px; }
+        .faq-card .faq-body strong { color: #333; }
+        @keyframes faqFadeIn {
+            from { opacity: 0; transform: translateY(-4px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        .faq-card[open] .faq-body { animation: faqFadeIn 0.2s ease; }
         .footer {
             padding: 32px 24px;
             text-align: center;
@@ -977,10 +1046,10 @@
         <div class="phone-demo-row">
             <div class="phone-scenarios">
                 <button class="scenario-btn active" onclick="setScenario(0)">
-                    <span class="s-icon">🍕</span> Menú de comida
+                    <span class="s-icon">📋</span> Menú de comida
                 </button>
                 <button class="scenario-btn" onclick="setScenario(1)">
-                    <span class="s-icon">🩺</span> Solicitud de turnos
+                    <span class="s-icon">📅</span> Solicitud de turnos
                 </button>
                 <button class="scenario-btn" onclick="setScenario(2)">
                     <span class="s-icon">👗</span> Tienda online
@@ -1200,13 +1269,44 @@
             <h3>Asistente IA</h3>
             <p>Bot de ayuda integrado que responde tus dudas sobre la configuración directamente en el panel.</p>
         </div>
-        <div class="feature">
+<div class="feature">
             <div class="feature-icon">⚡</div>
             <h3>Wizard inteligente</h3>
             <p>El asistente te guía paso a paso para crear productos con cantidad, variantes y flujo de pago en segundos.</p>
         </div>
     </section>
 
+    <div class="faq-section">
+        <h3>Preguntas Frecuentes</h3>
+        <p class="sub">Resolvemos las dudas más comunes sobre Wamenu.</p>
+
+        <details class="faq-card">
+            <summary>¿Las conversaciones ocurren en WhatsApp?</summary>
+            <div class="faq-body">
+                Sí, totalmente. Tus clientes te escribirán a tu número habitual desde su aplicación de WhatsApp y recibirán tus menús, catálogos e interactuarán con el bot dentro de WhatsApp, de la misma manera que chatean con cualquier otro contacto.
+            </div>
+        </details>
+
+        <details class="faq-card">
+            <summary>¿Wamenu es una herramienta oficial de Meta / WhatsApp LLC?</summary>
+            <div class="faq-body">
+                No. Wamenu es un software independiente desarrollado con tecnología de código abierto (Baileys) que conecta tu número de WhatsApp con un panel de control autoadministrable. No tenemos afiliación ni relación comercial con Meta Platforms, Inc.
+            </div>
+        </details>
+
+        <details class="faq-card">
+            <summary>¿Qué ventajas tiene usar Wamenu frente a la API Oficial de Meta Cloud?</summary>
+            <div class="faq-body">
+                Utilizar nuestra plataforma te brinda ventajas operativas y económicas clave:
+                <ul>
+                    <li><strong>Tarifa plana sin costo por mensaje:</strong> Meta cobra por cada conversación iniciada. Con Wamenu pagás una suscripción mensual fija y enviás o recibís mensajes ilimitados.</li>
+                    <li><strong>Sin aprobaciones de plantillas:</strong> Podés modificar tus menús, ofertas y respuestas cuando quieras, sin esperar la revisión previa de Meta.</li>
+                    <li><strong>Sin verificación empresarial obligatoria:</strong> No necesitás presentar documentación corporativa ni pasar por complejos trámites de aprobación en Facebook Business Manager. Escaneás el código QR y tu bot empieza a funcionar al instante.</li>
+                    <li><strong>Todo integrado desde un panel sencillo:</strong> Gestionás tus productos, capturás datos, recibís pedidos en Google Sheets en tiempo real y gestionás turnos sin necesidad de programar ni contratar desarrolladores.</li>
+                </ul>
+            </div>
+        </details>
+    </div>
 
     <section class="cta-section">
         <h2>¿Probamos?</h2>
@@ -1608,5 +1708,7 @@ async function sendContact() {
     btn.textContent = '📤 Enviar mensaje';
 }
 </script>
+<script src="/js/icons.js"></script>
+<script>document.addEventListener('DOMContentLoaded',function(){replaceEmojis();});</script>
 </body>
 </html>

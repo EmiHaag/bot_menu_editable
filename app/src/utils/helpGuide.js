@@ -1,3 +1,5 @@
+const { icon } = require('./icons');
+
 const helpGuideCSS = `
                         /* Help Sidebar */
                         .help-toggle {
@@ -157,30 +159,30 @@ const helpGuideCSS = `
 
 const helpGuideHTML = `
                     <!-- Help Sidebar -->
-                    <button class="help-toggle" id="helpToggle" onclick="toggleHelp()">📖 GUÍA</button>
+                    <button class="help-toggle" id="helpToggle" onclick="toggleHelp()">${icon('bookOpen', 'w-4 h-4 inline')} GUÍA</button>
                     <div class="help-sidebar" id="helpSidebar">
-                        <h3>📖 Guía del Editor</h3>
+                        <h3>${icon('bookOpen', 'w-4 h-4 inline')} Guía del Editor</h3>
                         <div class="subtitle">Aprendé a crear el menú de tu bot paso a paso</div>
 
-                        <input type="text" class="help-search" id="helpSearch" placeholder="🔍 Buscar en la guía...">
+                        <input type="text" class="help-search" id="helpSearch" placeholder="${icon('magnifyingGlass', 'w-4 h-4 inline')} Buscar en la guía...">
 
-                        <div class="help-no-results" id="helpNoResults">😕 No encontré nada con ese término</div>
+                        <div class="help-no-results" id="helpNoResults">${icon('faceFrown', 'w-4 h-4 inline text-yellow-400')} No encontré nada con ese término</div>
 
                         <details class="help-section">
-                            <summary>🔤 ¿Qué es cada columna de la tabla?</summary>
+                            <summary>${icon('language', 'w-4 h-4 inline')} ¿Qué es cada columna de la tabla?</summary>
                             <div class="content">
                                 <p><strong>Disparador</strong> — El número o letra que el usuario escribe para elegir esta opción (ej: <code>1</code>, <code>2</code>, <code>3</code>).</p>
                                 <p><strong>Título</strong> — El texto que ve el usuario en el menú (ej: <code>Hamburguesa</code>).</p>
                                 <p><strong>Mensaje</strong> — Lo que responde el bot cuando el usuario elige esta opción.</p>
                                 <p><strong>Precio</strong> — Opcional. Si lo ponés, se muestra al lado del título (ej: <code>$1500</code>).</p>
-                                <p><strong>Carrito de compras</strong> — Grupo de checkboxes que activan comportamientos especiales: <span class="tag">✅ Pedido</span> <span class="tag">🔢 Cantidad</span> <span class="tag">🏁 Finalizar</span> <span class="tag">📝 Datos</span> <span class="tag">📎 Archivo</span> <span class="tag">💳 Pagar</span> <span class="tag">📅 Turno</span>.</p>
+                                <p><strong>Carrito de compras</strong> — Grupo de checkboxes que activan comportamientos especiales: <span class="tag">${icon('checkCircle', 'w-4 h-4 inline text-green-400')} Pedido</span> <span class="tag">${icon('clipboardDocumentList', 'w-4 h-4 inline')} Cantidad</span> <span class="tag">${icon('flag', 'w-4 h-4 inline')} Finalizar</span> <span class="tag">${icon('documentText', 'w-4 h-4 inline')} Datos</span> <span class="tag">${icon('paperClip', 'w-4 h-4 inline')} Archivo</span> <span class="tag">${icon('creditCard', 'w-4 h-4 inline')} Pagar</span> <span class="tag">${icon('calendar', 'w-4 h-4 inline')} Turno</span>.</p>
                             </div>
                         </details>
 
                         <details class="help-section">
-                            <summary>🌳 ¿Cómo crear submenús?</summary>
+                            <summary>${icon('globeAlt', 'w-4 h-4 inline')} ¿Cómo crear submenús?</summary>
                             <div class="content">
-                                <p>Un submenú es una opción que lleva a más opciones. Por ejemplo: "Bebidas" → "Coca", "Sprite", "Agua".</p>
+                                <p>Un submenú es una opción que lleva a más opciones. Por ejemplo: "Bebidas" ${icon('arrowRight', 'w-4 h-4 inline')} "Coca", "Sprite", "Agua".</p>
                                 <div class="step">
                                     <div class="step-num">1</div>
                                     <div class="step-text">
@@ -193,7 +195,7 @@ const helpGuideHTML = `
                                     <div class="step-text">
                                         <strong>Completá los datos</strong>
                                         Poné un disparador (ej: <code>3</code>), un título (ej: <code>Bebidas</code>), y en el mensaje poné algo como <em>"Elegí tu bebida:"</em>.<br>
-                                        <small>✏️ Este mensaje se muestra cuando el usuario elige "Bebidas".</small>
+                                        <small>${icon('pencil', 'w-4 h-4 inline')} Este mensaje se muestra cuando el usuario elige "Bebidas".</small>
                                     </div>
                                 </div>
                                 <div class="step">
@@ -204,13 +206,13 @@ const helpGuideHTML = `
                                     </div>
                                 </div>
                                 <div class="example">
-                                    💡 <strong>Tip:</strong> Si un nodo tiene hijos, al elegirlo se muestran los hijos como opciones. Si no tiene hijos, se muestra el mensaje final.
+                                    ${icon('lightBulb', 'w-4 h-4 inline text-yellow-400')} <strong>Tip:</strong> Si un nodo tiene hijos, al elegirlo se muestran los hijos como opciones. Si no tiene hijos, se muestra el mensaje final.
                                 </div>
                             </div>
                         </details>
 
                         <details class="help-section">
-                            <summary>📝 ¿Cómo pedir datos al usuario (nombre, dirección)?</summary>
+                            <summary>${icon('documentText', 'w-4 h-4 inline')} ¿Cómo pedir datos al usuario (nombre, dirección)?</summary>
                             <div class="content">
                                 <p>El bot puede pedirle al usuario que escriba texto libre (como su nombre o dirección).</p>
                                 <div class="step">
@@ -235,16 +237,16 @@ const helpGuideHTML = `
                                     </div>
                                 </div>
                                 <div class="example">
-                                    💡 <strong>Ejemplo:</strong> "Nombre" (📝) → "Dirección" (📝) → "Confirmar" (🏁)
+                                    ${icon('lightBulb', 'w-4 h-4 inline text-yellow-400')} <strong>Ejemplo:</strong> "Nombre" (${icon('documentText', 'w-4 h-4 inline')}) ${icon('arrowRight', 'w-4 h-4 inline')} "Dirección" (${icon('documentText', 'w-4 h-4 inline')}) ${icon('arrowRight', 'w-4 h-4 inline')} "Confirmar" (${icon('flag', 'w-4 h-4 inline')})
                                 </div>
                                 <div class="example">
-                                    ✅ <strong>Confirmación:</strong> Cuando el usuario escribe su dato, el bot responde con <em>"✅ Datos recibidos: [lo que escribió]"</em> para que pueda verificar antes de continuar.
+                                    ${icon('checkCircle', 'w-4 h-4 inline text-green-400')} <strong>Confirmación:</strong> Cuando el usuario escribe su dato, el bot responde con <em>"${icon('checkCircle', 'w-4 h-4 inline text-green-400')} Datos recibidos: [lo que escribió]"</em> para que pueda verificar antes de continuar.
                                 </div>
                             </div>
                         </details>
 
                         <details class="help-section">
-                            <summary>📎 ¿Cómo pedir un archivo o foto?</summary>
+                            <summary>${icon('paperClip', 'w-4 h-4 inline')} ¿Cómo pedir un archivo o foto?</summary>
                             <div class="content">
                                 <p>El bot puede recibir imágenes o PDFs del usuario, como comprobantes o recetas.</p>
                                 <div class="step">
@@ -269,16 +271,16 @@ const helpGuideHTML = `
                                     </div>
                                 </div>
                                 <div class="example">
-                                    📎 <strong>Tip:</strong> El usuario debe enviar el archivo adjunto (imagen o PDF). Si solo escribe texto sin archivo, el bot no lo procesará.
+                                    ${icon('paperClip', 'w-4 h-4 inline')} <strong>Tip:</strong> El usuario debe enviar el archivo adjunto (imagen o PDF). Si solo escribe texto sin archivo, el bot no lo procesará.
                                 </div>
                                 <div class="example">
-                                    ℹ️ <strong>Después del archivo:</strong> El bot confirma la recepción (<em>"✅ Archivo recibido correctamente."</em>) sin enviar menús automáticos. Cuando el usuario escriba de nuevo, el bot muestra el menú correspondiente.
+                                    ${icon('informationCircle', 'w-4 h-4 inline')} <strong>Después del archivo:</strong> El bot confirma la recepción (<em>"${icon('checkCircle', 'w-4 h-4 inline text-green-400')} Archivo recibido correctamente."</em>) sin enviar menús automáticos. Cuando el usuario escriba de nuevo, el bot muestra el menú correspondiente.
                                 </div>
                             </div>
                         </details>
 
                         <details class="help-section">
-                            <summary>🛒 ¿Cómo crear un menú de pedidos?</summary>
+                            <summary>${icon('shoppingCart', 'w-4 h-4 inline')} ¿Cómo crear un menú de pedidos?</summary>
                             <div class="content">
                                 <p>Podés armar un carrito de compras donde el usuario va agregando productos.</p>
                                 <div class="step">
@@ -292,7 +294,7 @@ const helpGuideHTML = `
                                     <div class="step-num">2</div>
                                     <div class="step-text">
                                         <strong>Opcional: activá "Pedir cantidad"</strong>
-                                        Si querés que el usuario elija cuántas unidades, marcá también <strong>"Pedir cantidad"</strong> (color celeste). El bot muestra el resumen del pedido actual seguido de <em>"✅ Agregado: *Producto*"</em> y abajo <em>"¿Cuántos querés?"</em>.
+                                        Si querés que el usuario elija cuántas unidades, marcá también <strong>"Pedir cantidad"</strong> (color celeste). El bot muestra el resumen del pedido actual seguido de <em>"${icon('checkCircle', 'w-4 h-4 inline text-green-400')} Agregado: *Producto*"</em> y abajo <em>"¿Cuántos querés?"</em>.
                                     </div>
                                 </div>
                                 <div class="step">
@@ -307,7 +309,7 @@ const helpGuideHTML = `
                                     <div class="step-text">
                                         <strong>Opcional: activá "Ir a pagar"</strong>
                                         En el nodo raíz o categoría, marcá <strong>"Ir a pagar"</strong> (color verde). Cuando haya items, el menú muestra <code>*p*. Ir a pagar</code> en el pie. Al escribir <code>p</code>, va al primer hijo con "Finalizar".<br>
-                                        <small>ℹ️ Cuando "Ir a pagar" está activado, los nodos "✅ Finalizar" se ocultan de la lista de opciones numeradas para no ocupar triggers innecesariamente.</small>
+                                        <small>${icon('informationCircle', 'w-4 h-4 inline')} Cuando "Ir a pagar" está activado, los nodos "${icon('checkCircle', 'w-4 h-4 inline text-green-400')} Finalizar" se ocultan de la lista de opciones numeradas para no ocupar triggers innecesariamente.</small>
                                     </div>
                                 </div>
                                 <div class="step">
@@ -315,19 +317,19 @@ const helpGuideHTML = `
                                     <div class="step-text">
                                         <strong>Creá un nodo "Finalizar"</strong>
                                         Agregá un hijo con el tag <strong>"Finalizar"</strong> (color violeta). El mensaje podría ser <em>"Gracias por tu pedido"</em>. El bot mostrará el resumen con el total antes de finalizar.<br>
-                                        <small>ℹ️ Si usás el wizard para agregar más items a una categoría que ya tiene "✅ Finalizar", el wizard detecta que ya existe y no crea un duplicado.</small>
+                                        <small>${icon('informationCircle', 'w-4 h-4 inline')} Si usás el wizard para agregar más items a una categoría que ya tiene "${icon('checkCircle', 'w-4 h-4 inline text-green-400')} Finalizar", el wizard detecta que ya existe y no crea un duplicado.</small>
                                     </div>
                                 </div>
                                 <div class="example">
-                                    🛍️ <strong>Ejemplo:</strong><br>
-                                    Menú Principal (💳) → 1. Hamburguesa (✅🔢) → 2. Pizza (✅🔢) → 3. Finalizar (🏁)<br>
+                                    ${icon('shoppingBag', 'w-4 h-4 inline')} <strong>Ejemplo:</strong><br>
+                                    Menú Principal (${icon('creditCard', 'w-4 h-4 inline')}) ${icon('arrowRight', 'w-4 h-4 inline')} 1. Hamburguesa (${icon('checkCircle', 'w-4 h-4 inline text-green-400')}${icon('clipboardDocumentList', 'w-4 h-4 inline')}) ${icon('arrowRight', 'w-4 h-4 inline')} 2. Pizza (${icon('checkCircle', 'w-4 h-4 inline text-green-400')}${icon('clipboardDocumentList', 'w-4 h-4 inline')}) ${icon('arrowRight', 'w-4 h-4 inline')} 3. Finalizar (${icon('flag', 'w-4 h-4 inline')})<br>
                                     El usuario puede escribir <code>vaciar</code> para limpiar el carrito, y <code>p</code> si está habilitado "Ir a pagar".
                                 </div>
                             </div>
                         </details>
 
                         <details class="help-section">
-                            <summary>🎮 ¿Cómo funciona el bot?</summary>
+                            <summary>${icon('play', 'w-4 h-4 inline')} ¿Cómo funciona el bot?</summary>
                             <div class="content">
                                 <div class="step">
                                     <div class="step-num">1</div>
@@ -365,14 +367,14 @@ const helpGuideHTML = `
                             </div>
                         </details>
                     <details class="help-section">
-                            <summary>📅 ¿Cómo crear un Gestor de Turnos?</summary>
+                            <summary>${icon('calendar', 'w-4 h-4 inline')} ¿Cómo crear un Gestor de Turnos?</summary>
                             <div class="content">
                                 <p>Si tu negocio agenda citas o reservas (consultas, turnos, citas), podés convertir el bot en un <strong>Gestor de Turnos</strong> integrado con Google Calendar. El cliente elige fecha y horario en WhatsApp y el turno se crea automáticamente en tu calendario.</p>
                                 <div class="step">
                                     <div class="step-num">1</div>
                                     <div class="step-text">
                                         <strong>Configurá el tipo de bot</strong>
-                                        En la sección <strong>"🤖 Tipo de Bot"</strong> elegí <strong>"Gestor de Turnos / Agenda"</strong>.
+                                        En la sección <strong>"${icon('chatBubbleOvalLeft', 'w-4 h-4 inline')} Tipo de Bot"</strong> elegí <strong>"Gestor de Turnos / Agenda"</strong>.
                                     </div>
                                 </div>
                                 <div class="step">
@@ -380,7 +382,7 @@ const helpGuideHTML = `
                                     <div class="step-text">
                                         <strong>Configurá el Google Calendar</strong>
                                         Pegá el <strong>Calendar ID</strong>, definí la <strong>duración del turno</strong> (ej: 30 min) y el <strong>salto mínimo de reserva</strong>. También marcá los <strong>días y horarios de atención</strong>.<br>
-                                        <small>ℹ️ El calendario debe estar compartido con la cuenta de Google del bot (con permisos de edición). Ver la guía del "?" del campo Calendar ID.</small>
+                                        <small>${icon('informationCircle', 'w-4 h-4 inline')} El calendario debe estar compartido con la cuenta de Google del bot (con permisos de edición). Ver la guía del "?" del campo Calendar ID.</small>
                                     </div>
                                 </div>
                                 <div class="step">
@@ -401,20 +403,20 @@ const helpGuideHTML = `
                                     <div class="step-num">5</div>
                                     <div class="step-text">
                                         <strong>Creá el nodo de reserva</strong>
-                                        Agregá un nodo con el tag <span class="tag">📅 Turno</span> (o escribí <code>##TURNO##</code> en el mensaje). Cuando el cliente lo elija, arranca el flujo de reserva.
+                                        Agregá un nodo con el tag <span class="tag">${icon('calendar', 'w-4 h-4 inline')} Turno</span> (o escribí <code>##TURNO##</code> en el mensaje). Cuando el cliente lo elija, arranca el flujo de reserva.
                                     </div>
                                 </div>
                                 <div class="example">
-                                    💡 <strong>Flujo en WhatsApp:</strong> El cliente escribe la fecha (ej: <code>25/12</code>) → elige un horario disponible → escribe su nombre → confirma con <code>1</code>. El turno queda creado en Google Calendar.
+                                    ${icon('lightBulb', 'w-4 h-4 inline text-yellow-400')} <strong>Flujo en WhatsApp:</strong> El cliente escribe la fecha (ej: <code>25/12</code>) ${icon('arrowRight', 'w-4 h-4 inline')} elige un horario disponible ${icon('arrowRight', 'w-4 h-4 inline')} escribe su nombre ${icon('arrowRight', 'w-4 h-4 inline')} confirma con <code>1</code>. El turno queda creado en Google Calendar.
                                 </div>
                                 <div class="example">
-                                    🔄 <strong>Comandos del flujo:</strong> <code>v</code> vuelve al paso anterior y <code>0</code> vuelve al menú principal.
+                                    ${icon('arrowPath', 'w-4 h-4 inline')} <strong>Comandos del flujo:</strong> <code>v</code> vuelve al paso anterior y <code>0</code> vuelve al menú principal.
                                 </div>
                             </div>
                         </details>
 
                         <details class="help-section">
-                            <summary>🌐 ¿Cómo compartir mi calendario con el bot?</summary>
+                            <summary>${icon('globeAlt', 'w-4 h-4 inline')} ¿Cómo compartir mi calendario con el bot?</summary>
                             <div class="content">
                                 <p>Para que el bot pueda consultar y crear turnos, tu calendario debe estar compartido con la <strong>cuenta de Google del bot</strong> con permisos de <strong>edición</strong>. Seguí estos pasos:</p>
                                 <div class="step">
@@ -463,7 +465,7 @@ const helpGuideHTML = `
                                     </div>
                                 </div>
                                 <div class="example">
-                                    ⚠️ <strong>Importante:</strong> Sin permisos de edición el bot no podrá crear turnos en tu calendario.
+                                    ${icon('exclamationTriangle', 'w-4 h-4 inline text-yellow-400')} <strong>Importante:</strong> Sin permisos de edición el bot no podrá crear turnos en tu calendario.
                                 </div>
                             </div>
                         </details>
