@@ -13,6 +13,7 @@ const GoogleDriveService = require('../services/googleDriveService');
 const orderService = require('../services/orderService');
 const botConfigService = require('../services/botConfigService');
 const calendarService = require('../services/googleCalendarService');
+const logService = require('../services/logService');
 const { helpGuideCSS, helpGuideHTML, helpGuideJS } = require('./helpGuide');
 const { askGemini } = require('./geminiHelper');
 
@@ -638,6 +639,46 @@ class Dashboard {
         });
 
         // --- FIN RUTAS ADMINISTRACIÓN ---
+
+        // API: Obtener logs del sistema (solo admin)
+        router.get('/api/admin/logs', async (req, res) => {
+            if (req.user.idCliente !== 'admin') return res.status(403).json({ error: 'Acceso denegado' });
+            try {
+                const { level, category, userId, search, limit, offset } = req.query;
+                const logs = await logService.getLogs({
+                    level: level || '',
+                    category: category || '',
+                    userId: userId || '',
+                    search: search || '',
+                    limit: Math.min(Number(limit) || 200, 500),
+                    offset: Number(offset) || 0
+                });
+                const users = await logService.getLogUsers();
+                res.json({ logs, users });
+            } catch (err) {
+                res.status(500).json({ error: 'Error obteniendo logs' });
+            }
+        });
+
+        // API: Obtener eventos de usuarios (solo admin)
+        router.get('/api/admin/events', async (req, res) => {
+            if (req.user.idCliente !== 'admin') return res.status(403).json({ error: 'Acceso denegado' });
+            try {
+                const { userId, action, search, limit, offset } = req.query;
+                const events = await logService.getEvents({
+                    userId: userId || '',
+                    action: action || '',
+                    search: search || '',
+                    limit: Math.min(Number(limit) || 200, 500),
+                    offset: Number(offset) || 0
+                });
+                const users = await logService.getEventUsers();
+                const actions = await logService.getEventActions();
+                res.json({ events, users, actions });
+            } catch (err) {
+                res.status(500).json({ error: 'Error obteniendo eventos' });
+            }
+        });
 
         // Ruta para guardar horarios de atención de un cliente
         router.post('/api/schedule', async (req, res) => {

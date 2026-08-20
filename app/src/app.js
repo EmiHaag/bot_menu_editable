@@ -1002,6 +1002,9 @@ async function main() {
     await configService.ensureTable();
     await configService.seed();
     await botConfigService.ensureTable();
+    await logService.ensureTable();
+    logService.startCleanup();
+    logger.initConsoleCapture();
 
     // API: Check terms approval status
     appRouter.get('/api/terms/status/:userId', async (req, res) => {

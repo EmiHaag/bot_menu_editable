@@ -47,55 +47,132 @@ async function ensureTable() {
   }
 }
 
-async function log({ level = 'info', category = 'system', userId = '', message = '', meta = null }) {
-  if (!sql) return null;
+// --- Batch de escritura: acumula inserts y los vuelca en una sola query ---
+const FLUSH_INTERVAL_MS = 5 * 60 * 1000;
+const MAX_QUEUE = 5000;
+
+let logQueue = [];
+let eventQueue = [];
+let flushTimer = null;
+let flushing = false;
+
+function scheduleFlush() {
+  if (flushing) return;
+  if (flushTimer) return;
+  flushTimer = setTimeout(flush, FLUSH_INTERVAL_MS);
+}
+
+async function flush() {
+  if (flushing) return;
+  if (!sql) return;
+  if (logQueue.length === 0 && eventQueue.length === 0) return;
+  flushing = true;
+  flushTimer = null;
+  const logs = logQueue.splice(0, MAX_QUEUE);
+  const events = eventQueue.splice(0, MAX_QUEUE);
   try {
-    const rows = await sql`
-      INSERT INTO system_logs (level, category, user_id, message, meta)
-      VALUES (${level}, ${category}, ${userId || ''}, ${message || ''}, ${meta ? JSON.stringify(meta) : null})
-      RETURNING id
-    `;
-    return rows[0]?.id || null;
+    if (logs.length) await insertLogsBatch(logs);
+    if (events.length) await insertEventsBatch(events);
   } catch (err) {
-    console.error('[LogService] Error insertando log:', err.message);
-    return null;
+    console.error('[LogService] Error volcando logs a la BD:', err.message);
+  } finally {
+    flushing = false;
+    if (logQueue.length || eventQueue.length) scheduleFlush();
   }
 }
 
-async function track({ userId = '', action = '', entity = '', message = '', meta = null, ip = '' }) {
-  if (!sql) return null;
+async function insertLogsBatch(entries) {
+  const levels = entries.map(e => e.level || 'info');
+  const categories = entries.map(e => e.category || 'system');
+  const userIds = entries.map(e => e.userId || '');
+  const messages = entries.map(e => String(e.message || '').slice(0, 2000));
+  const metas = entries.map(e => (e.meta !== null && e.meta !== undefined) ? JSON.stringify(e.meta) : null);
+  await sql.query(`
+    INSERT INTO system_logs (level, category, user_id, message, meta)
+    SELECT * FROM unnest($1::text[], $2::text[], $3::text[], $4::text[], $5::jsonb[])
+  `, [levels, categories, userIds, messages, metas]);
+}
+
+async function insertEventsBatch(entries) {
+  const userIds = entries.map(e => e.userId || '');
+  const actions = entries.map(e => e.action || '');
+  const entities = entries.map(e => e.entity || '');
+  const messages = entries.map(e => String(e.message || ''));
+  const metas = entries.map(e => (e.meta !== null && e.meta !== undefined) ? JSON.stringify(e.meta) : null);
+  const ips = entries.map(e => e.ip || '');
+  await sql.query(`
+    INSERT INTO user_events (user_id, action, entity, message, meta, ip)
+    SELECT * FROM unnest($1::text[], $2::text[], $3::text[], $4::text[], $5::jsonb[], $6::text[])
+  `, [userIds, actions, entities, messages, metas, ips]);
+}
+
+// Intento de volcar lo pendiente antes de que el proceso se apague
+async function flushOnExit() {
+  try { await flush(); } catch (e) {}
+}
+process.on('SIGTERM', flushOnExit);
+process.on('SIGINT', flushOnExit);
+process.on('beforeExit', flushOnExit);
+
+// --- Limpieza periódica: elimina logs/eventos con más de 7 días ---
+const RETENTION_DAYS = 7;
+const CLEANUP_INTERVAL_MS = 7 * 24 * 60 * 60 * 1000;
+
+async function cleanupOld() {
+  if (!sql) return;
   try {
-    const rows = await sql`
-      INSERT INTO user_events (user_id, action, entity, message, meta, ip)
-      VALUES (${userId || ''}, ${action || ''}, ${entity || ''}, ${message || ''}, ${meta ? JSON.stringify(meta) : null}, ${ip || ''})
-      RETURNING id
-    `;
-    return rows[0]?.id || null;
+    const logs = await sql`DELETE FROM system_logs WHERE created_at < NOW() - make_interval(days => ${RETENTION_DAYS}) RETURNING id`;
+    const events = await sql`DELETE FROM user_events WHERE created_at < NOW() - make_interval(days => ${RETENTION_DAYS}) RETURNING id`;
+    if (logs.length || events.length) {
+      console.log(`[LogService] Limpieza: ${logs.length} logs y ${events.length} eventos antiguos eliminados`);
+    }
   } catch (err) {
-    console.error('[LogService] Error insertando evento de usuario:', err.message);
-    return null;
+    console.error('[LogService] Error limpiando logs antiguos:', err.message);
   }
+}
+
+function startCleanup() {
+  cleanupOld();
+  setInterval(cleanupOld, CLEANUP_INTERVAL_MS);
+}
+
+function log({ level = 'info', category = 'system', userId = '', message = '', meta = null } = {}) {
+  if (!sql) return Promise.resolve(null);
+  logQueue.push({ level, category, userId, message, meta });
+  scheduleFlush();
+  return Promise.resolve(null);
+}
+
+function track({ userId = '', action = '', entity = '', message = '', meta = null, ip = '' } = {}) {
+  if (!sql) return Promise.resolve(null);
+  eventQueue.push({ userId, action, entity, message, meta, ip });
+  scheduleFlush();
+  return Promise.resolve(null);
 }
 
 async function getLogs({ level = '', category = '', userId = '', search = '', limit = 200, offset = 0 } = {}) {
   if (!sql) return [];
   try {
     const conditions = [];
-    if (level) conditions.push(sql`level = ${level}`);
-    if (category) conditions.push(sql`category = ${category}`);
-    if (userId) conditions.push(sql`user_id = ${userId}`);
-    if (search) conditions.push(sql`(message ILIKE ${'%' + search + '%'} OR user_id ILIKE ${'%' + search + '%'} OR category ILIKE ${'%' + search + '%'})`);
+    const params = [];
+    if (level) { params.push(level); conditions.push(`level = $${params.length}`); }
+    if (category) { params.push(category); conditions.push(`category = $${params.length}`); }
+    if (userId) { params.push(userId); conditions.push(`user_id = $${params.length}`); }
+    if (search) {
+      params.push('%' + search + '%');
+      const p = params.length;
+      conditions.push(`(message ILIKE $${p} OR user_id ILIKE $${p} OR category ILIKE $${p})`);
+    }
+    const where = conditions.length > 0 ? 'WHERE ' + conditions.join(' AND ') : '';
 
-    const where = conditions.length > 0 ? sql`WHERE ${sql.join(conditions, ' AND ')}` : sql``;
-
-    const rows = await sql`
+    const rows = await sql.query(`
       SELECT id, level, category, user_id, message, meta, created_at
       FROM system_logs
       ${where}
       ORDER BY created_at DESC
       LIMIT ${Number(limit) || 200}
       OFFSET ${Number(offset) || 0}
-    `;
+    `, params);
     return rows;
   } catch (err) {
     console.error('[LogService] Error obteniendo logs:', err.message);
@@ -107,20 +184,24 @@ async function getEvents({ userId = '', action = '', search = '', limit = 200, o
   if (!sql) return [];
   try {
     const conditions = [];
-    if (userId) conditions.push(sql`user_id = ${userId}`);
-    if (action) conditions.push(sql`action = ${action}`);
-    if (search) conditions.push(sql`(message ILIKE ${'%' + search + '%'} OR entity ILIKE ${'%' + search + '%'} OR user_id ILIKE ${'%' + search + '%'})`);
+    const params = [];
+    if (userId) { params.push(userId); conditions.push(`user_id = $${params.length}`); }
+    if (action) { params.push(action); conditions.push(`action = $${params.length}`); }
+    if (search) {
+      params.push('%' + search + '%');
+      const p = params.length;
+      conditions.push(`(message ILIKE $${p} OR entity ILIKE $${p} OR user_id ILIKE $${p})`);
+    }
+    const where = conditions.length > 0 ? 'WHERE ' + conditions.join(' AND ') : '';
 
-    const where = conditions.length > 0 ? sql`WHERE ${sql.join(conditions, ' AND ')}` : sql``;
-
-    const rows = await sql`
+    const rows = await sql.query(`
       SELECT id, user_id, action, entity, message, meta, ip, created_at
       FROM user_events
       ${where}
       ORDER BY created_at DESC
       LIMIT ${Number(limit) || 200}
       OFFSET ${Number(offset) || 0}
-    `;
+    `, params);
     return rows;
   } catch (err) {
     console.error('[LogService] Error obteniendo eventos:', err.message);
@@ -134,6 +215,19 @@ async function getLogUsers() {
   try {
     const rows = await sql`
       SELECT DISTINCT user_id FROM system_logs WHERE user_id <> '' ORDER BY user_id
+    `;
+    return rows.map(r => r.user_id);
+  } catch (err) {
+    return [];
+  }
+}
+
+// Usuarios distintos que aparecen en los eventos (para el filtro)
+async function getEventUsers() {
+  if (!sql) return [];
+  try {
+    const rows = await sql`
+      SELECT DISTINCT user_id FROM user_events WHERE user_id <> '' ORDER BY user_id
     `;
     return rows.map(r => r.user_id);
   } catch (err) {
@@ -161,5 +255,8 @@ module.exports = {
   getLogs,
   getEvents,
   getLogUsers,
+  getEventUsers,
   getEventActions,
+  cleanupOld,
+  startCleanup,
 };
