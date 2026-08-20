@@ -1003,8 +1003,6 @@ async function main() {
     await configService.ensureTable();
     await configService.seed();
     await botConfigService.ensureTable();
-    await logService.ensureTable();
-    logService.startCleanup();
     logger.initConsoleCapture();
 
     // API: Check terms approval status

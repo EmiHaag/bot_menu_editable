@@ -510,8 +510,13 @@ class Dashboard {
                         document.getElementById('fLevel').addEventListener('change', loadLogs);
                         document.getElementById('fCategory').addEventListener('change', loadLogs);
                         document.getElementById('fUser').addEventListener('change', loadLogs);
+                        var visible = true;
+                        document.addEventListener('visibilitychange', function() {
+                            visible = !document.hidden;
+                            if (visible) { loadLogs(); clearInterval(autoTimer); autoTimer = setInterval(loadLogs, 10000); }
+                        });
                         loadLogs();
-                        autoTimer = setInterval(loadLogs, 15000);
+                        autoTimer = setInterval(loadLogs, 10000);
                     </script>
                     ${adminViewerJs}
                 </body>
@@ -630,8 +635,13 @@ class Dashboard {
                         document.getElementById('fSearch').addEventListener('keydown', function(e) { if (e.key === 'Enter') loadEvents(); });
                         document.getElementById('fUser').addEventListener('change', loadEvents);
                         document.getElementById('fAction').addEventListener('change', loadEvents);
+                        var visible = true;
+                        document.addEventListener('visibilitychange', function() {
+                            visible = !document.hidden;
+                            if (visible) { loadEvents(); clearInterval(autoTimer); autoTimer = setInterval(loadEvents, 10000); }
+                        });
                         loadEvents();
-                        autoTimer = setInterval(loadEvents, 15000);
+                        autoTimer = setInterval(loadEvents, 10000);
                     </script>
                     ${adminViewerJs}
                 </body>
