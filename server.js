@@ -784,8 +784,13 @@ app.post('/api/mercadopago/reconciliar', async (req, res) => {
 });
 
 // Página de suscripción exitosa
-app.get('/suscripcion_exitosa', (req, res) => {
+app.get('/suscripcion_exitosa', async (req, res) => {
     const { username, password, email } = req.query;
+    let precio = Number(process.env.PRECIO_ESTANDAR || 23000);
+    try {
+        const cfgPx = await readConfig();
+        if (cfgPx && cfgPx.precio_estandar != null) precio = Number(cfgPx.precio_estandar);
+    } catch {}
     res.send(`
         <!DOCTYPE html>
         <html lang="es">
@@ -876,6 +881,24 @@ app.get('/suscripcion_exitosa', (req, res) => {
                 .btn:hover { background: #0c5841; transform: translateY(-1px); }
                 .footer-text { margin-top: 24px; font-size: 0.8rem; color: #aaa; }
             </style>
+            <!-- Meta Pixel Code -->
+            <script>
+                !function(f,b,e,v,n,t,s)
+                {if(f.fbq)return;n=f.fbq=function(){n.callMethod?
+                n.callMethod.apply(n,arguments):n.queue.push(arguments)};
+                if(!f._fbq)f._fbq=n;n.push=n;n.loaded=!0;n.version='2.0';
+                n.queue=[];t=b.createElement(e);t.async=!0;
+                t.src=v;s=b.getElementsByTagName(e)[0];
+                s.parentNode.insertBefore(t,s)}(window, document,'script',
+                'https://connect.facebook.net/en_US/fbevents.js');
+                fbq('init', '1375902057408217');
+                fbq('track', 'PageView');
+                fbq('track', 'Purchase', {value: ${precio}, currency: 'ARS'});
+            </script>
+            <noscript><img height="1" width="1" style="display:none"
+            src="https://www.facebook.com/tr?id=1375902057408217&ev=Purchase&noscript=1"
+            /></noscript>
+            <!-- End Meta Pixel Code -->
         </head>
         <body>
             <div class="card">
