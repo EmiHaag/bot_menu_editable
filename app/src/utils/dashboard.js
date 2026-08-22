@@ -1735,6 +1735,7 @@ ${helpGuideHTML}
                             <div onclick="toggleCalendarSection()" style="font-weight: 700; color: #166534; margin-bottom: 12px; display: flex; align-items: center; gap: 6px; cursor: pointer; user-select: none;">${icon('calendar', 'w-4 h-4 inline')} Configuración de Google Calendar
                                 <span class="calendar-toggle-arrow" id="calendarToggleArrow" style="display:inline-flex;align-items:center;justify-content:center;font-size:12px;transition:transform 0.2s;transform:rotate(-90deg);">${icon('chevronDown', 'w-4 h-4 inline')}</span>
                                 <span onclick="event.stopPropagation(); openCalendarHelp()" style="display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;background:#e9ecef;color:#6c757d;border-radius:50%;font-size:12px;font-weight:bold;cursor:pointer;border:1px solid #ced4da;" title="Cómo conectar tu calendario">?</span>
+                                <a href="https://youtu.be/9qY2tMi8gQk" target="_blank" rel="noopener noreferrer" onclick="event.stopPropagation();" style="display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;background:#e9ecef;color:#6c757d;border-radius:50%;cursor:pointer;border:1px solid #ced4da;" title="Ver video tutorial">${icon('videoCamera', 'w-3 h-3 inline')}</a>
                             </div>
                             <div id="calendarBody" style="display: none;">
                             <div style="display: flex; flex-direction: column; gap: 12px;">
