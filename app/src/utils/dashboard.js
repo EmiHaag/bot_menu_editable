@@ -1298,11 +1298,7 @@ class Dashboard {
                         .modal-body-wrapper { display: flex; gap: 18px; align-items: flex-start; }
                         .form-column { flex: 0 0 65%; }
                         .chat-column { flex: 0 0 35%; position: sticky; top: 0; }
-                        #cartModuleAdd .tags-flex-row label,
-                        #cartModuleEdit .tags-flex-row label,
-                        #turnoModuleAdd .tags-flex-row label,
-                        #turnoModuleEdit .tags-flex-row label { display: none; }
-                        
+
                         .whatsapp-container {
                             background: #e5ddd5;
                             background-image: url('https://user-images.githubusercontent.com/15075759/28719144-86dc0f70-73b1-11e7-911d-60d70fcded21.png');
@@ -2002,7 +1998,7 @@ ${helpGuideHTML}
                                             <div id="addPreview" style="font-family: monospace; white-space: pre-wrap; font-size: 13px; max-height: 120px; overflow-y: auto; overflow-x: hidden;"></div>
                                         </div>
 
-                                        <form action="/app/add" method="POST">
+                                        <form action="/app/add" method="POST" onsubmit="applyTagsToMessage('add')">
                                             <input type="hidden" name="botId" value="${botId}">
                                             <input type="hidden" id="addParentId" name="parentId">
                                             <input type="hidden" id="addId" name="id">
@@ -2164,7 +2160,7 @@ ${helpGuideHTML}
                                         <div id="editPreview" style="font-family: monospace; white-space: pre-wrap; font-size: 12px; max-height: 100px; overflow-y: auto; overflow-x: hidden;"></div>
                                     </div>
 
-                                    <form action="/app/save" method="POST">
+                                    <form action="/app/save" method="POST" onsubmit="applyTagsToMessage('edit')">
                                         <input type="hidden" name="botId" value="${botId}">
                                         <input type="hidden" id="editIndex" name="index">
                                         <input type="hidden" id="editId" name="id">
@@ -3241,7 +3237,7 @@ ${helpGuideJS}
                             document.getElementById('editParentId').value = node.parentId;
                             document.getElementById('editTrigger').value = (node.id === 'root' && (node.trigger === '' || node.trigger === '0' || !node.trigger)) ? 'Hola' : node.trigger;
                             document.getElementById('editTitle').value = node.title;
-                            document.getElementById('editMessage').value = node.message || '';
+                            document.getElementById('editMessage').value = stripTagsFromMessage(node.message || '');
                             document.getElementById('editPrice').value = node.price || '';
                             document.getElementById('editIsOrder').checked = isOrder;
                             document.getElementById('editIsQty').checked = isQty;
@@ -3657,75 +3653,77 @@ ${helpGuideJS}
                         }
 
                         function toggleOrderTag(type, tag) {
-                            const messageEl = document.getElementById(type + 'Message');
                             const isOrderCheckbox = document.getElementById(type === 'edit' ? 'editIsOrder' : 'addIsOrder');
                             const isQtyCheckbox = document.getElementById(type === 'edit' ? 'editIsQty' : 'addIsQty');
                             const isFinalCheckbox = document.getElementById(type === 'edit' ? 'editIsFinal' : 'addIsFinal');
                             const isDataCheckbox = document.getElementById(type === 'edit' ? 'editIsData' : 'addIsData');
                             const isArchivoCheckbox = document.getElementById(type === 'edit' ? 'editIsArchivo' : 'addIsArchivo');
                             const isPagarCheckbox = document.getElementById(type === 'edit' ? 'editIsPagar' : 'addIsPagar');
-                            
-                            let currentVal = messageEl.value
-                                .replace('##PEDIDO##', '')
-                                .replace('##CANTIDAD##', '')
-                                .replace('##FINALIZAR##', '')
-                                .replace('##DATOS##', '')
-                                .replace('##ARCHIVO##', '')
-                                .replace('##PAGAR##', '')
-                                .replace('##TURNO##', '')
-                                .trim();
-                            
-                            if (tag === '##PAGAR##' || tag === '##FINALIZAR##') {
-                                let val = messageEl.value
-                                    .replace(tag, '')
-                                    .trim();
-                                const cb = tag === '##PAGAR##' ? isPagarCheckbox : isFinalCheckbox;
-                                if (cb.checked) {
-                                    messageEl.value = val + (val ? '\\n\\n' : '') + tag;
-                                } else {
-                                    messageEl.value = val;
-                                }
-                                updatePreview(type);
-                                return;
-                            }
-                            
                             const turnoCheckbox = document.getElementById(type === 'edit' ? 'editIsTurno' : 'addIsTurno');
-                            
+
+                            // Los checkboxes son la fuente de verdad del tag; el textarea solo guarda texto limpio.
+                            // Los tags activos se re-anexan al mensaje recién en applyTagsToMessage() (al enviar el form).
                             if (tag === '##PEDIDO##' && isOrderCheckbox.checked) {
                                 isQtyCheckbox.checked = false;
                                 isDataCheckbox.checked = false;
                                 isArchivoCheckbox.checked = false;
                                 if (turnoCheckbox) turnoCheckbox.checked = false;
-                                messageEl.value = currentVal + (currentVal ? '\\n\\n' : '') + '##PEDIDO##';
                             } else if (tag === '##CANTIDAD##' && isQtyCheckbox.checked) {
                                 isOrderCheckbox.checked = false;
                                 isDataCheckbox.checked = false;
                                 isArchivoCheckbox.checked = false;
                                 if (turnoCheckbox) turnoCheckbox.checked = false;
-                                messageEl.value = currentVal + (currentVal ? '\\n\\n' : '') + '##CANTIDAD##';
                             } else if (tag === '##DATOS##' && isDataCheckbox.checked) {
                                 isOrderCheckbox.checked = false;
                                 isQtyCheckbox.checked = false;
                                 isArchivoCheckbox.checked = false;
                                 if (turnoCheckbox) turnoCheckbox.checked = false;
-                                messageEl.value = currentVal + (currentVal ? '\\n\\n' : '') + '##DATOS##';
                             } else if (tag === '##ARCHIVO##' && isArchivoCheckbox.checked) {
                                 isOrderCheckbox.checked = false;
                                 isQtyCheckbox.checked = false;
                                 isDataCheckbox.checked = false;
                                 if (turnoCheckbox) turnoCheckbox.checked = false;
-                                messageEl.value = currentVal + (currentVal ? '\\n\\n' : '') + '##ARCHIVO##';
                             } else if (tag === '##TURNO##' && turnoCheckbox && turnoCheckbox.checked) {
                                 isOrderCheckbox.checked = false;
                                 isQtyCheckbox.checked = false;
                                 isDataCheckbox.checked = false;
                                 isArchivoCheckbox.checked = false;
-                                messageEl.value = currentVal + (currentVal ? '\\n\\n' : '') + '##TURNO##';
-                            } else {
-                                messageEl.value = currentVal;
                             }
-                            
+
                             updatePreview(type);
+                        }
+
+                        function stripTagsFromMessage(msg) {
+                            let out = msg || '';
+                            ['##PEDIDO##', '##CANTIDAD##', '##FINALIZAR##', '##DATOS##', '##ARCHIVO##', '##PAGAR##', '##TURNO##'].forEach(function(t) {
+                                while (out.indexOf(t) !== -1) { out = out.replace(t, ''); }
+                            });
+                            return out.trim();
+                        }
+
+                        // Re-anexa los tags activos (segun checkboxes) al mensaje limpio del textarea.
+                        // Se ejecuta al enviar los forms de agregar/editar para que el tag se guarde
+                        // sin que el usuario lo vea en el box de mensaje.
+                        function applyTagsToMessage(type) {
+                            const msgEl = document.getElementById(type + 'Message');
+                            if (!msgEl) return;
+                            const checks = [
+                                [type + 'IsOrder', '##PEDIDO##'],
+                                [type + 'IsQty', '##CANTIDAD##'],
+                                [type + 'IsData', '##DATOS##'],
+                                [type + 'IsTurno', '##TURNO##'],
+                                [type + 'IsArchivo', '##ARCHIVO##'],
+                                [type + 'IsFinal', '##FINALIZAR##'],
+                                [type + 'IsPagar', '##PAGAR##']
+                            ];
+                            const clean = stripTagsFromMessage(msgEl.value);
+                            const tags = [];
+                            checks.forEach(function(pair) {
+                                const cb = document.getElementById(pair[0]);
+                                if (cb && cb.checked) tags.push(pair[1]);
+                            });
+                            const suffix = tags.join('\\n\\n');
+                            msgEl.value = clean + (clean && suffix ? '\\n\\n' : '') + suffix;
                         }
 
                         (function () {
