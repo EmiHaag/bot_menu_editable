@@ -242,7 +242,7 @@ class Dashboard {
                                     headers: {'Content-Type': 'application/json'},
                                     body: JSON.stringify(payload)
                                 }).then(function(r){return r.json()}).then(function(){
-                                    document.getElementById('priceStatus').textContent = '${icon('checkCircle', 'w-4 h-4 inline text-green-400')} Guardado';
+                                    document.getElementById('priceStatus').innerHTML = '${icon('checkCircle', 'w-4 h-4 inline text-green-400')} Guardado';
                                     setTimeout(function(){document.getElementById('priceStatus').textContent = '';}, 3000);
                                 });
                             }
@@ -2438,14 +2438,14 @@ ${helpGuideHTML}
                                 if (d.success) {
                                     scheduleConfig.online24_7 = document.getElementById('online247').checked;
                                     scheduleConfig.horarios = horarios;
-                                    status.textContent = '${icon('checkCircle', 'w-4 h-4 inline text-green-400')} Horarios guardados';
+                                    status.innerHTML = '${icon('checkCircle', 'w-4 h-4 inline text-green-400')} Horarios guardados';
                                     track('horarios_guardados', 'horarios', 'Guardó los horarios de atención');
                                 } else {
-                                    status.textContent = '${icon('xCircle', 'w-4 h-4 inline text-red-400')} ' + (d.error || 'Error al guardar');
+                                    status.innerHTML = '${icon('xCircle', 'w-4 h-4 inline text-red-400')} ' + (d.error || 'Error al guardar');
                                 }
                                 setTimeout(function() { status.textContent = ''; }, 3000);
                             }).catch(function() {
-                                status.textContent = '${icon('xCircle', 'w-4 h-4 inline text-red-400')} Error de conexión';
+                                status.innerHTML = '${icon('xCircle', 'w-4 h-4 inline text-red-400')} Error de conexión';
                                 setTimeout(function() { status.textContent = ''; }, 3000);
                             });
                         }
@@ -2575,13 +2575,13 @@ ${helpGuideHTML}
                                 if (d.success) {
                                     botType = payload.bot_type;
                                     calendarConfig = payload.calendar_config;
-                                    status.textContent = '${icon('checkCircle', 'w-4 h-4 inline text-green-400')} Tipo de bot guardado';
+                                    status.innerHTML = '${icon('checkCircle', 'w-4 h-4 inline text-green-400')} Tipo de bot guardado';
                                 } else {
-                                    status.textContent = '${icon('xCircle', 'w-4 h-4 inline text-red-400')} ' + (d.error || 'Error al guardar');
+                                    status.innerHTML = '${icon('xCircle', 'w-4 h-4 inline text-red-400')} ' + (d.error || 'Error al guardar');
                                 }
                                 setTimeout(function() { status.textContent = ''; }, 3000);
                             }).catch(function() {
-                                status.textContent = '${icon('xCircle', 'w-4 h-4 inline text-red-400')} Error de conexión';
+                                status.innerHTML = '${icon('xCircle', 'w-4 h-4 inline text-red-400')} Error de conexión';
                                 setTimeout(function() { status.textContent = ''; }, 3000);
                             });
                         }
@@ -2594,16 +2594,16 @@ ${helpGuideHTML}
                                 .then(function(r) { return r.json(); })
                                 .then(function(d) {
                                     if (d.error) {
-                                        status.textContent = '${icon('xCircle', 'w-4 h-4 inline text-red-400')} ' + d.error;
+                                        status.innerHTML = '${icon('xCircle', 'w-4 h-4 inline text-red-400')} ' + d.error;
                                     } else if (!d.slots || d.slots.length === 0) {
-                                        status.textContent = '${icon('faceFrown', 'w-4 h-4 inline text-yellow-400')} Sin horarios disponibles para hoy (' + d.fecha + ')';
+                                        status.innerHTML = '${icon('faceFrown', 'w-4 h-4 inline text-yellow-400')} Sin horarios disponibles para hoy (' + d.fecha + ')';
                                     } else {
-                                        status.textContent = '${icon('checkCircle', 'w-4 h-4 inline text-green-400')} ' + d.slots.length + ' horarios disponibles hoy: ' + d.slots.map(function(s) { return s.label; }).join(', ');
+                                        status.innerHTML = '${icon('checkCircle', 'w-4 h-4 inline text-green-400')} ' + d.slots.length + ' horarios disponibles hoy: ' + d.slots.map(function(s) { return s.label; }).join(', ');
                                     }
                                     setTimeout(function() { status.textContent = ''; }, 8000);
                                 })
                                 .catch(function() {
-                                    status.textContent = '${icon('xCircle', 'w-4 h-4 inline text-red-400')} Error de conexión';
+                                    status.innerHTML = '${icon('xCircle', 'w-4 h-4 inline text-red-400')} Error de conexión';
                                     setTimeout(function() { status.textContent = ''; }, 3000);
                                 });
                         }
@@ -2759,13 +2759,14 @@ ${helpGuideJS}
                             parentTitle: 'Raíz',
                             items: [],
                             currentItemIdx: 0,
-                            step: 0, // 0=titulo, 1=precio, 2=cantidad, 3=another, 4=catName, 5=irAPagar, 6=pedirArchivo
+                            step: 0, // 0=titulo, 1=precio, 2=cantidad, 3=another, 4=catName, 5=irAPagar, 6=pedirArchivo, 7=respuestaFAQ
                             prefix: 'menu',
                             nextTrigger: 1,
                             categoryName: '',
                             addPagar: false,
                             addArchivo: false,
-                            isTurno: false
+                            isTurno: false,
+                            isFaq: false
                         };
 
                         function openAddModal(idx) {
@@ -2801,7 +2802,8 @@ ${helpGuideJS}
                                 categoryName: '',
                                 addPagar: false,
                                 addArchivo: false,
-                                isTurno: false
+                                isTurno: false,
+                                isFaq: false
                             };
 
                             // Show initial question
@@ -2821,11 +2823,16 @@ ${helpGuideJS}
                         }
 
                         function startItemWizard() {
-                            document.getElementById('addModalTitle').textContent = 'Crear Items de Compra';
                             const botTypeEl = document.getElementById('botTypeInput');
-                            wizardState.isTurno = botTypeEl ? botTypeEl.value === 'TURNOS' : false;
+                            const typeVal = botTypeEl ? botTypeEl.value : 'CARRITO';
+                            wizardState.isTurno = typeVal === 'TURNOS';
+                            wizardState.isFaq = typeVal === 'FAQ';
                             if (wizardState.isTurno) {
                                 document.getElementById('addModalTitle').textContent = 'Crear Servicios / Turnos';
+                            } else if (wizardState.isFaq) {
+                                document.getElementById('addModalTitle').textContent = 'Crear Preguntas / Respuestas (FAQ)';
+                            } else {
+                                document.getElementById('addModalTitle').textContent = 'Crear Items de Compra';
                             }
                             document.getElementById('wizardAsk').style.display = 'none';
                             document.getElementById('addFullForm').style.display = 'none';
@@ -2845,18 +2852,23 @@ ${helpGuideJS}
                             if (wizardState.step >= 4) {
                                 stepIndicator.textContent = 'Finalizar configuraci\u00f3n';
                             } else {
-                                stepIndicator.textContent = 'Item #' + (wizardState.currentItemIdx + 1);
+                                stepIndicator.textContent = (wizardState.isFaq ? 'Pregunta #' : 'Item #') + (wizardState.currentItemIdx + 1);
                             }
-                            itemsCount.textContent = wizardState.items.length + ' items agregados';
+                            itemsCount.textContent = wizardState.items.length + (wizardState.isFaq ? ' preguntas agregadas' : ' items agregados');
 
                             const qIdx = wizardState.currentItemIdx;
 
                             if (wizardState.step === 0) {
                                 // Ask for title
+                                const titleLabel = wizardState.isFaq ? '\u00bfPregunta?' : '\u00bfT\u00edtulo del item?';
+                                const titleHint = wizardState.isFaq
+                                    ? 'ej: \u00bfHacen env\u00edos?, \u00bfCu\u00e1les son los horarios?, etc.'
+                                    : 'ej: Pizza Pepperoni, Coca Cola, etc. o si son turnos: Pediatria, Cardiologia, etc.';
+                                const titlePlaceholder = wizardState.isFaq ? 'ej: \u00bfHacen env\u00edos?' : 'ej: Pepperoni';
                                 container.innerHTML = \`
-                                    <p style="font-size: 16px; font-weight: 600; margin-bottom: 15px; color: var(--text-main);">\u00bfT\u00edtulo del item?</p>
-                                    <p style="font-size: 13px; color: var(--text-muted); margin-bottom: 15px;">ej: Pizza Pepperoni, Coca Cola, etc. o si son turnos: Pediatria, Cardiologia, etc.</p>
-                                    <input type="text" id="wizTitleInput" placeholder="ej: Pepperoni" style="width: 100%; padding: 12px; border: 2px solid var(--border-color); border-radius: 8px; font-size: 15px; box-sizing: border-box;" onkeydown="if(event.key==='Enter') wizNextTitle()" autofocus>
+                                    <p style="font-size: 16px; font-weight: 600; margin-bottom: 15px; color: var(--text-main);">\${titleLabel}</p>
+                                    <p style="font-size: 13px; color: var(--text-muted); margin-bottom: 15px;">\${titleHint}</p>
+                                    <input type="text" id="wizTitleInput" placeholder="\${titlePlaceholder}" style="width: 100%; padding: 12px; border: 2px solid var(--border-color); border-radius: 8px; font-size: 15px; box-sizing: border-box;" onkeydown="if(event.key==='Enter') wizNextTitle()" autofocus>
                                     <div style="margin-top: 15px; display: flex; gap: 10px;">
                                         <button type="button" onclick="wizNextTitle()" style="flex: 1; padding: 12px; background: var(--primary-color); color: white; border: none; border-radius: 8px; font-size: 15px; font-weight: 600; cursor: pointer;">Siguiente \u2192</button>
                                     </div>
@@ -2889,22 +2901,29 @@ ${helpGuideJS}
                                 const currentItem = wizardState.items[wizardState.items.length - 1];
                                 const itemSummary = currentItem ? 
                                     '<span style="color: var(--primary-color); font-weight: 600;">\u2713 ' + currentItem.title + '</span>' : '';
+                                const addedLabel = wizardState.isFaq ? '\u00a1Respuesta guardada!' : '\u00a1Item agregado!';
+                                const anotherLabel = wizardState.isFaq ? '\u00bfAgregar otra pregunta?' : '\u00bfAgregar otro item?';
+                                const anotherYes = wizardState.isFaq ? 'S\u00ed, agregar otra' : 'S\u00ed, agregar otro';
                                 container.innerHTML = \`
-                                    <p style="font-size: 16px; font-weight: 600; margin-bottom: 5px; color: var(--text-main);">\u00a1Item agregado!</p>
+                                    <p style="font-size: 16px; font-weight: 600; margin-bottom: 5px; color: var(--text-main);">\${addedLabel}</p>
                                     <p style="font-size: 15px; margin-bottom: 15px;">\${itemSummary}</p>
-                                    <p style="font-size: 16px; font-weight: 600; margin-bottom: 15px; color: var(--text-main);">\u00bfAgregar otro item?</p>
+                                    <p style="font-size: 16px; font-weight: 600; margin-bottom: 15px; color: var(--text-main);">\${anotherLabel}</p>
                                     <div style="display: flex; gap: 15px;">
-                                        <button type="button" onclick="wizAddAnother()" style="flex: 1; padding: 15px; background: var(--primary-color); color: white; border: none; border-radius: 8px; font-size: 15px; font-weight: 600; cursor: pointer;">S\u00ed, agregar otro</button>
+                                        <button type="button" onclick="wizAddAnother()" style="flex: 1; padding: 15px; background: var(--primary-color); color: white; border: none; border-radius: 8px; font-size: 15px; font-weight: 600; cursor: pointer;">\${anotherYes}</button>
                                         <button type="button" onclick="wizGoFinalSteps()" style="flex: 1; padding: 15px; background: #6f42c1; color: white; border: none; border-radius: 8px; font-size: 15px; font-weight: 600; cursor: pointer;">No, finalizar</button>
                                     </div>
                                 \`;
                             } else if (wizardState.step === 4) {
                                 // Ask category name (only if parent is root)
                                 if (wizardState.parentId === 'root') {
+                                    const catHint = wizardState.isFaq
+                                        ? 'Ej: Preguntas frecuentes, Consultas, etc.'
+                                        : 'Ej: Realizar un pedido, Hacer pedido, Comprar, etc.';
+                                    const catPlaceholder = wizardState.isFaq ? 'ej: Preguntas frecuentes' : 'ej: Realizar un pedido';
                                     container.innerHTML = \`
                                         <p style="font-size: 16px; font-weight: 600; margin-bottom: 15px; color: var(--text-main);">\u00bfNombre de la categor\u00eda?</p>
-                                        <p style="font-size: 13px; color: var(--text-muted); margin-bottom: 15px;">Ej: Realizar un pedido, Hacer pedido, Comprar, etc.</p>
-                                        <input type="text" id="wizCategoryInput" placeholder="ej: Realizar un pedido" style="width: 100%; padding: 12px; border: 2px solid var(--border-color); border-radius: 8px; font-size: 15px; box-sizing: border-box;" onkeydown="if(event.key==='Enter') wizNextCatName()" autofocus>
+                                        <p style="font-size: 13px; color: var(--text-muted); margin-bottom: 15px;">\${catHint}</p>
+                                        <input type="text" id="wizCategoryInput" placeholder="\${catPlaceholder}" style="width: 100%; padding: 12px; border: 2px solid var(--border-color); border-radius: 8px; font-size: 15px; box-sizing: border-box;" onkeydown="if(event.key==='Enter') wizNextCatName()" autofocus>
                                         <div style="margin-top: 15px; display: flex; gap: 10px;">
                                             <button type="button" onclick="wizBack()" style="flex: 1; padding: 12px; background: var(--bg-box); color: var(--text-muted); border: 2px solid var(--border-color); border-radius: 8px; font-size: 15px; font-weight: 600; cursor: pointer;">\u2190 Atr\u00e1s</button>
                                             <button type="button" onclick="wizNextCatName()" style="flex: 1; padding: 12px; background: var(--primary-color); color: white; border: none; border-radius: 8px; font-size: 15px; font-weight: 600; cursor: pointer;">Siguiente \u2192</button>
@@ -2928,7 +2947,7 @@ ${helpGuideJS}
                                 \`;
                             } else if (wizardState.step === 6) {
                                 // Ask "Pedir archivo"
-                                if (wizardState.isTurno) {
+                                if (wizardState.isTurno || wizardState.isFaq) {
                                     wizFinish();
                                     return;
                                 }
@@ -2940,6 +2959,18 @@ ${helpGuideJS}
                                         <button type="button" onclick="wizSetArchivo(false)" style="flex: 1; padding: 15px; background: var(--bg-box); color: var(--text-muted); border: 2px solid var(--border-color); border-radius: 8px; font-size: 15px; font-weight: 600; cursor: pointer;">No</button>
                                     </div>
                                 \`;
+                            } else if (wizardState.step === 7) {
+                                // FAQ: ask for the answer
+                                container.innerHTML = \`
+                                    <p style="font-size: 16px; font-weight: 600; margin-bottom: 15px; color: var(--text-main);">\u00bfCu\u00e1l es la respuesta?</p>
+                                    <p style="font-size: 13px; color: var(--text-muted); margin-bottom: 15px;">Texto que el bot enviar\u00e1 cuando el usuario elija esta pregunta.</p>
+                                    <textarea id="wizAnswerInput" rows="4" placeholder="ej: S\u00ed, hacemos env\u00edos a todo el pa\u00eds..." style="width: 100%; padding: 12px; border: 2px solid var(--border-color); border-radius: 8px; font-size: 15px; box-sizing: border-box; resize: vertical;"></textarea>
+                                    <div style="margin-top: 15px; display: flex; gap: 10px;">
+                                        <button type="button" onclick="wizBack()" style="flex: 1; padding: 12px; background: var(--bg-box); color: var(--text-muted); border: 2px solid var(--border-color); border-radius: 8px; font-size: 15px; font-weight: 600; cursor: pointer;">\u2190 Atr\u00e1s</button>
+                                        <button type="button" onclick="wizNextAnswer()" style="flex: 1; padding: 12px; background: var(--primary-color); color: white; border: none; border-radius: 8px; font-size: 15px; font-weight: 600; cursor: pointer;">Siguiente \u2192</button>
+                                    </div>
+                                \`;
+                                setTimeout(() => document.getElementById('wizAnswerInput').focus(), 100);
                             }
 
                             updateWizardPreview();
@@ -2949,7 +2980,17 @@ ${helpGuideJS}
                             const title = document.getElementById('wizTitleInput').value.trim();
                             if (!title) { alert('Por favor ingresá un título.'); return; }
                             wizardState.items[wizardState.currentItemIdx] = { title: title, price: '', askQty: false };
-                            wizardState.step = wizardState.isTurno ? 3 : 1;
+                            wizardState.step = wizardState.isTurno ? 3 : (wizardState.isFaq ? 7 : 1);
+                            showWizardQuestion();
+                        }
+
+                        function wizNextAnswer() {
+                            const answer = document.getElementById('wizAnswerInput').value.trim();
+                            if (!answer) { alert('Por favor ingres\u00e1 la respuesta.'); return; }
+                            if (wizardState.items[wizardState.currentItemIdx]) {
+                                wizardState.items[wizardState.currentItemIdx].answer = answer;
+                            }
+                            wizardState.step = 3;
                             showWizardQuestion();
                         }
 
@@ -2965,6 +3006,10 @@ ${helpGuideJS}
                         function wizBack() {
                             if (wizardState.step === 6 && wizardState.parentId !== 'root') {
                                 wizardState.step = 3;
+                            } else if (wizardState.step === 7) {
+                                wizardState.step = 0;
+                            } else if (wizardState.step === 3 && wizardState.isFaq) {
+                                wizardState.step = 7;
                             } else {
                                 wizardState.step--;
                             }
@@ -2994,7 +3039,7 @@ ${helpGuideJS}
                             const name = document.getElementById('wizCategoryInput').value.trim();
                             if (!name) { alert('Por favor ingres\u00e1 un nombre para la categor\u00eda.'); return; }
                             wizardState.categoryName = name;
-                            wizardState.step = wizardState.isTurno ? 6 : 5;
+                            wizardState.step = (wizardState.isTurno || wizardState.isFaq) ? 6 : 5;
                             showWizardQuestion();
                         }
 
@@ -3052,9 +3097,12 @@ ${helpGuideJS}
                             for (let i = 0; i < items.length; i++) {
                                 const item = items[i];
                                 const nodeId = prefix + '_opcion' + (trigger);
-                                document.getElementById('wizProgress').textContent = '(' + (i+1) + '/' + (items.length + 1) + ')';
+                                document.getElementById('wizProgress').textContent = '(' + (i+1) + '/' + (items.length) + ')';
 
-                                let message = wizardState.isTurno ? '##TURNO##' : (item.askQty ? '##CANTIDAD##' : '##PEDIDO##');
+                                let message;
+                                if (wizardState.isTurno) message = '##TURNO##';
+                                else if (wizardState.isFaq) message = item.answer || '';
+                                else message = item.askQty ? '##CANTIDAD##' : '##PEDIDO##';
 
                                 try {
                                     await fetch('/app/api/add-node', {
@@ -3079,10 +3127,12 @@ ${helpGuideJS}
                             }
 
                             // Check if parent already has a FINALIZAR node (avoid duplicates)
-                            const existingFinal = wizardState.isTurno ? null : menuData.find(function(n) {
+                            // Solo aplica al flujo de carrito: TURNOS y FAQ no crean nodo Finalizar
+                            const isCartFlow = !wizardState.isTurno && !wizardState.isFaq;
+                            const existingFinal = isCartFlow ? menuData.find(function(n) {
                                 return n.parentId === parentId && n.message && n.message.indexOf('##FINALIZAR##') !== -1;
-                            });
-                            if (!wizardState.isTurno && !existingFinal) {
+                            }) : null;
+                            if (isCartFlow && !existingFinal) {
                                 document.getElementById('wizProgress').textContent = '(' + (items.length + 1) + '/' + (items.length + 1) + ') - Creando Finalizar...';
                                 const finalId = prefix + '_opcion' + (trigger);
                                 let finalMessage = '##FINALIZAR##';
@@ -3128,6 +3178,9 @@ ${helpGuideJS}
                                 let line = '*' + num + '*. ' + item.title;
                                 if (item.price) line += ' ($' + item.price + ')';
                                 content += '<div class="wa-bubble">' + line + '</div>\\n';
+                                if (wizardState.isFaq && item.answer) {
+                                    content += '<div class="wa-bubble" style="background: #f8f9fa;">' + item.answer + '</div>\\n';
+                                }
                             }
 
                             // Show preview if there are items
@@ -3135,7 +3188,7 @@ ${helpGuideJS}
                                 const nextNum = wizardState.nextTrigger + items.length;
                                 if (wizardState.isTurno) {
                                     content += '<div class="wa-bubble" style="background: #f0fdf4; border: 1px dashed #86efac;">${icon('calendar', 'w-4 h-4 inline')} Reservar turno (' + nextNum + ')</div>\\n';
-                                } else {
+                                } else if (!wizardState.isFaq) {
                                     content += '<div class="wa-bubble" style="background: #f3f0ff; border: 1px dashed #d1d1ff;">${icon('checkCircle', 'w-4 h-4 inline text-green-400')} Finalizar (' + nextNum + ')</div>\\n';
                                 }
                             }
@@ -3149,7 +3202,7 @@ ${helpGuideJS}
                                 listContainer.innerHTML = '<p style="color: var(--text-muted); font-size: 13px; text-align: center; padding: 20px;">No hay items todavía</p>';
                             } else {
                                 let listHtml = '<div style="background: var(--bg-box); border: 1px solid var(--border-color); border-radius: 8px; padding: 10px;">';
-                                listHtml += '<div style="font-size: 12px; font-weight: 600; color: var(--text-muted); margin-bottom: 8px;">Items agregados:</div>';
+                                listHtml += '<div style="font-size: 12px; font-weight: 600; color: var(--text-muted); margin-bottom: 8px;">' + (wizardState.isFaq ? 'Preguntas agregadas:' : 'Items agregados:') + '</div>';
                                 items.forEach((item, i) => {
                                     const num = wizardState.nextTrigger + i;
                                     const isCurrent = i === wizardState.currentItemIdx;
@@ -3161,10 +3214,12 @@ ${helpGuideJS}
                                         qtyBadge +
                                         '</div>';
                                 });
-                                listHtml += '<div style="border-top: 1px dashed var(--border-color); margin-top: 6px; padding-top: 6px; display: flex; align-items: center; gap: 8px;">' +
-                                    '<span style="background: #e9ecef; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 600; color: #666;">' + (wizardState.nextTrigger + items.length) + '</span>' +
-                                    '<span style="flex: 1; font-size: 13px; color: ' + (wizardState.isTurno ? '#166534' : '#6f42c1') + ';">' + (wizardState.isTurno ? '${icon('calendar', 'w-4 h-4 inline')} Reservar turno (auto)' : '${icon('checkCircle', 'w-4 h-4 inline text-green-400')} Finalizar (auto)') + '</span>' +
-                                    '</div>';
+                                if (!wizardState.isFaq) {
+                                    listHtml += '<div style="border-top: 1px dashed var(--border-color); margin-top: 6px; padding-top: 6px; display: flex; align-items: center; gap: 8px;">' +
+                                        '<span style="background: #e9ecef; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 600; color: #666;">' + (wizardState.nextTrigger + items.length) + '</span>' +
+                                        '<span style="flex: 1; font-size: 13px; color: ' + (wizardState.isTurno ? '#166534' : '#6f42c1') + ';">' + (wizardState.isTurno ? '${icon('calendar', 'w-4 h-4 inline')} Reservar turno (auto)' : '${icon('checkCircle', 'w-4 h-4 inline text-green-400')} Finalizar (auto)') + '</span>' +
+                                        '</div>';
+                                }
                                 listHtml += '</div>';
                                 listContainer.innerHTML = listHtml;
                             }

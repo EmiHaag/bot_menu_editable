@@ -319,6 +319,7 @@
             color: #888;
             margin: 0 0 14px;
             line-height: 1.4;
+            text-align: center;
         }
         .compare-mp-note {
             text-align: center;
@@ -414,7 +415,7 @@
     <header class="site-header">
         <a class="logo" href="/"><img src="/img/wamenu_logo_name.png" alt="WaMenu"></a>
         <nav class="nav-links">
-            <a href="/">← Volver al inicio</a>
+            <a href="/"><span style="vertical-align:middle">←</span> Volver al inicio</a>
             <button class="contact-btn" onclick="openContactModal()">Contacto</button>
         </nav>
     </header>
@@ -425,7 +426,7 @@
         <div class="plan-grid">
             <div class="plan-card standard">
                 <div class="plan-badge" id="badgePrimerMes">🥇 Primer mes gratis</div>
-                <h3>Plan Estándar</h3>
+                <h3>Plan Estándar (Cancelás cuando quieras)</h3>
                 <div class="plan-price"><span class="price-num">$<span id="precioDisplay"></span> ARS</span> <span class="price-period">/mes</span></div>
                 <div class="plan-sub">Bot editor autoadministrable · Sin límite de productos</div>
                 <ul class="plan-features">
@@ -436,7 +437,7 @@
                     <li><span class="ck">✓</span> Captura de datos del cliente</li>
                     <li><span class="ck">✓</span> Bot de reserva de turnos con tu propio calendario</li>
                 </ul>
-                <p class="plan-note">💳 Pagás cada mes mediante suscripción vía MercadoPago</p>
+                <p class="plan-note">💳 Pagás cada mes mediante suscripción vía MercadoPago y cancelás en cualquier momento</p>
                 <button class="plan-btn primary" id="btnSubscribeStandard" onclick="openSubscribeModal()">💳 Suscribirme ahora</button>
             </div>
             <div class="plan-card">
@@ -445,7 +446,7 @@
                 <div class="plan-price">A tu medida <span></span></div>
                 <div class="plan-sub">Cotización sin compromiso · Te asesoramos</div>
                 <ul class="plan-features">
-                    <li><span class="ck">✓</span> Todo lo del Plan Estándar</li>
+                    <li><span class="ck">✓</span> Todo lo del Plan Estándar (Cancelás cuando quieras)</li>
                     <li><span class="ck">✓</span> Inteligencia Artificial para respuestas naturales</li>
                     <li><span class="ck">✓</span> Integraciones (MercadoPago, Calendar, APIs)</li>
                     <li><span class="ck">✓</span> Flujos personalizados (turnos, encuestas, etc.)</li>
