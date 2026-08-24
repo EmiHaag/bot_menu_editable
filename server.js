@@ -151,7 +151,7 @@ app.post('/api/contact', async (req, res) => {
             </div>
         `;
         const from = process.env.CONTACT_EMAIL_FROM || 'no-reply@wamenu.com.ar';
-        const to = 'emilianohaag10@gmail.com';
+        const to = process.env.CONTACT_EMAIL_TO || process.env.ADMIN_EMAIL || 'wamenu.ar@gmail.com';
         const result = await resend.emails.send({
             from,
             to,

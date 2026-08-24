@@ -199,7 +199,7 @@ Compartir el calendario con el bot:
   3. Poné el puntero sobre tu calendario (el que vas a usar para tu negocio) y hacé clic en los tres puntos.
   4. Entrá en "Configuración y uso compartido".
   5. Bajá hasta la parte llamada "Integrar calendario" y copiá el texto en "ID del calendario".
-  6. En "Compartir con usuarios específicos", agregá la cuenta de Google del bot: emilianohaag10@gmail.com (el email admin que figura en el "?" del campo Calendar ID del dashboard).
+  6. En "Compartir con usuarios específicos", agregá la cuenta de Google del bot: wamenu.ar@gmail.com (el email admin que figura en el "?" del campo Calendar ID del dashboard).
   7. Elegí el rol "Realizar cambios en eventos".
   8. Aceptá la invitación al calendario desde la cuenta del bot.
 
