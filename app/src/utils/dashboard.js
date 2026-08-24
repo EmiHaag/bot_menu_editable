@@ -2436,7 +2436,6 @@ ${helpGuideHTML}
                                     scheduleConfig.online24_7 = document.getElementById('online247').checked;
                                     scheduleConfig.horarios = horarios;
                                     status.innerHTML = '${icon('checkCircle', 'w-4 h-4 inline text-green-400')} Horarios guardados';
-                                    track('horarios_guardados', 'horarios', 'Guardó los horarios de atención');
                                 } else {
                                     status.innerHTML = '${icon('xCircle', 'w-4 h-4 inline text-red-400')} ' + (d.error || 'Error al guardar');
                                 }
