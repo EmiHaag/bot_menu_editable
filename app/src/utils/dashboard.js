@@ -17,6 +17,7 @@ const logService = require('../services/logService');
 const { helpGuideCSS, helpGuideHTML, helpGuideJS } = require('./helpGuide');
 const { askGemini } = require('./geminiHelper');
 const { icon } = require('./icons');
+const billingService = require('../services/billingService');
 
 function parseHorariosJson(str) {
     try {
@@ -102,10 +103,10 @@ class Dashboard {
                         <td>${client.user}</td>
                         <td>${client.activo ? '<span style="color: green">Activo</span>' : '<span style="color: red">Inactivo</span>'}</td>
                         <td><small>${client.spreadsheetId}</small></td>
-                        <td>
-                            <button onclick="deleteClient('${client.idCliente}')" class="btn-action btn-red">Borrar</button>
-                            <a href="/app/?botId=${client.idCliente}" class="btn-action">Ver Menú</a>
-                            <a href="/app/pedidos/${client.idCliente}" target="_blank" class="btn-action btn-green" style="background: #00bc7d; color: white;">Pedidos</a>
+                        <td style="white-space:nowrap;">
+                            <a href="/app/?botId=${client.idCliente}" class="btn-action btn-action-blue" title="Ver Menú">${icon('eye', 'w-4 h-4 inline')} Menú</a>
+                            <a href="/app/pedidos/${client.idCliente}" target="_blank" class="btn-action btn-action-green" title="Ver Pedidos">${icon('documentText', 'w-4 h-4 inline')} Pedidos</a>
+                            <button onclick="deleteClient('${client.idCliente}')" class="btn-action btn-action-red" title="Borrar cliente">${icon('xCircle', 'w-4 h-4 inline')} Borrar</button>
                         </td>
                     </tr>
                 `).join('');
@@ -125,14 +126,20 @@ class Dashboard {
                                 --error-color: #dc3545;
                             }
                             body { font-family: 'Segoe UI', sans-serif; margin: 40px; background: var(--bg-white); }
-                            .header { display: flex; flex-wrap: wrap;  margin-right: -15px;  margin-left: -15px; }
+                            .header { display: flex; flex-wrap: wrap; margin-right: -15px; margin-left: -15px; }
                             table { width: 100%; border-collapse: collapse; margin-top: 20px; }
                             th, td { padding: 12px; border: 1px solid var(--border-color); text-align: left; }
                             th { background: var(--bg-box); }
-                            .btn { padding: 10px 20px; text-decoration: none; border-radius: 6px; cursor: pointer; font-weight: bold; }
+                            .btn { padding: 10px 18px; text-decoration: none; border-radius: 6px; cursor: pointer; font-weight: 600; font-size: 13px; transition: all .15s ease; display: inline-flex; align-items: center; gap: 6px; }
+                            .btn:hover { opacity: .85; }
                             .btn-green { background: var(--primary-color); color: white; border: none; }
-                            .btn-red { background: var(--error-color); color: white; border: none; }
-                            .btn-action { padding: 5px 10px; border-radius: 4px; text-decoration: none; border: 1px solid #ccc; font-size: 12px; color: #333; }
+                            .btn-outline { background: white; color: #555; border: 1px solid var(--border-color); }
+                            .btn-outline:hover { background: #f5f5f5; }
+                            .btn-action { padding: 5px 10px; border-radius: 5px; text-decoration: none; border: 1px solid; font-size: 12px; font-weight: 500; cursor: pointer; transition: all .15s ease; display: inline-flex; align-items: center; gap: 4px; }
+                            .btn-action:hover { opacity: .8; }
+                            .btn-action-blue { background: #eff6ff; color: #2563eb; border-color: #bfdbfe; }
+                            .btn-action-green { background: #ecfdf5; color: #059669; border-color: #a7f3d0; }
+                            .btn-action-red { background: #fef2f2; color: #dc2626; border-color: #fecaca; }
                             .modal { display: none; position: fixed; z-index: 100; left: 0; top: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.4); }
                             .modal-content { background: white; margin: 10% auto; padding: 30px; width: 400px; border-radius: 12px; }
                             .form-group { margin-bottom: 15px; }
@@ -150,19 +157,18 @@ class Dashboard {
                             .form-group input { font-size: 16px; }
                         }
                         </style>
-                        <script src="/js/robot-logo.js"></script>
                     </head>
                     <body>
                         <div class="header">
                             <div style="display: flex; align-items: center; gap: 15px; flex-wrap: wrap;">
-                                <canvas id="botLogoAdmin" width="200" height="200" style="width: 50px; height: 50px;"></canvas>
+                                <a href="/" style="display:block;"><img src="/img/wamenu_logo_name.png" alt="WaMenu" style="width:100%;max-width:8em;height:auto;object-fit:contain;"></a>
                                 <h2>Administración de Clientes</h2>
                             </div>
                             <div style="display: flex; gap: 8px; flex-wrap: wrap;">
-                                <button onclick="document.getElementById('addClientModal').style.display='block'" class="btn btn-green">+ Nuevo Cliente</button>
-                                <a href="/app/admin/logs" class="btn" style="border: 1px solid #ccc">${icon('clipboardDocumentList', 'w-4 h-4 inline')} Ver Logs</a>
-                                <a href="/app/admin/events" class="btn" style="border: 1px solid #ccc">${icon('user', 'w-4 h-4 inline')} Eventos de Usuarios</a>
-                                <a href="/app/" class="btn" style="border: 1px solid #ccc">Volver al Editor</a>
+                                <button onclick="document.getElementById('addClientModal').style.display='block'" class="btn btn-green">${icon('plus', 'w-4 h-4 inline')} Nuevo Cliente</button>
+                                <a href="/app/admin/logs" class="btn btn-outline">${icon('clipboardDocumentList', 'w-4 h-4 inline')} Logs</a>
+                                <a href="/app/admin/events" class="btn btn-outline">${icon('user', 'w-4 h-4 inline')} Eventos</a>
+                                <a href="/app/" class="btn btn-outline">${icon('arrowLeft', 'w-4 h-4 inline')} Editor</a>
                             </div>
                         </div>
 
@@ -189,10 +195,6 @@ class Dashboard {
                             <div style="display: flex; align-items: center; gap: 12px; margin-top: 12px; flex-wrap: wrap;">
                                 <label style="font-weight: 600;">Precio Plan Estándar ($):</label>
                                 <input type="number" id="precioInput" style="padding: 8px 12px; border: 1px solid #ccc; border-radius: 6px; width: 120px; font-size: 1rem;">
-                            </div>
-                            <div style="display: flex; align-items: center; gap: 12px; margin-top: 12px; flex-wrap: wrap;">
-                                <label style="font-weight: 600;">Primer mes gratis (30 días de prueba):</label>
-                                <input type="checkbox" id="trialGratisInput" style="width: 18px; height: 18px; cursor: pointer;">
                                 <button onclick="savePrice()" class="btn btn-green">Guardar</button>
                                 <span id="priceStatus" style="font-size: 0.85rem; color: #888;"></span>
                             </div>
@@ -227,15 +229,12 @@ class Dashboard {
                         </div>
 
                         <script>
-                            drawRobot('botLogoAdmin');
                             fetch('/api/config').then(function(r){return r.json()}).then(function(d){
                                 document.getElementById('precioInput').value = d.precioEstandar;
-                                document.getElementById('trialGratisInput').checked = !!d.trialGratis;
                             });
                             function savePrice() {
                                 var val = document.getElementById('precioInput').value;
-                                var trial = document.getElementById('trialGratisInput').checked;
-                                var payload = {trial_gratis: trial};
+                                var payload = {};
                                 if (val) payload.precio_estandar = Number(val);
                                 fetch('/api/config', {
                                     method: 'POST',
@@ -308,7 +307,10 @@ class Dashboard {
                 // 1. Borrar de la lista de usuarios maestra
                 await userService.deleteUser(id);
 
-                // 2. Si tenía un spreadsheet propio, mandarlo a la papelera
+                // 2. Borrar suscripción y facturas
+                await billingService.deleteSuscripcionByIdCliente(id);
+
+                // 3. Si tenía un spreadsheet propio, mandarlo a la papelera
                 if (client && client.spreadsheetId && client.spreadsheetId !== process.env.SPREADSHEET_ID) {
                     await GoogleDriveService.deleteFile(client.spreadsheetId);
                 }
@@ -1064,7 +1066,7 @@ class Dashboard {
                             box-shadow: 0 4px 16px rgba(0,0,0,0.12);
                             padding: 8px 16px;
                         }
-                        .toolbar .btn { min-width: 0; padding: 6px 12px; font-size: 12px; }
+                        .toolbar .btn { min-width: 0; padding: 4px 8px; font-size: 11px; border-radius: 3px; gap: 4px; }
                         .toolbar select, .toolbar label { font-size: 14px; white-space: nowrap; }
                         .tooltip-hover { position: relative; display: inline-flex; }
                         .tooltip-hover .tooltip-bubble {
@@ -1206,27 +1208,30 @@ class Dashboard {
                             border-color: var(--primary-color);
                         }
 
-                        /* Legacy color classes mapped to unified style */
-                        .btn-green, .btn-blue, .btn-orange, .btn-purple { 
-                            background: var(--bg-box); 
-                            color: var(--text-muted);
-                            border: 1px solid var(--border-color);
-                        }
-                        .btn-green:hover, .btn-blue:hover, .btn-orange:hover, .btn-purple:hover {
-                            background: var(--primary-color);
-                            color: white;
-                            border-color: var(--primary-color);
-                        }
-
-                        /* Red button (Logout/Delete) always red */
+                        /* Toolbar button colors */
+                        .btn-admin { background: #eff6ff; color: #2563eb; border-color: #bfdbfe; }
+                        .btn-admin:hover { background: #2563eb; color: white; border-color: #2563eb; }
+                        .btn-pagos { background: #ecfdf5; color: #059669; border-color: #a7f3d0; }
+                        .btn-pagos:hover { background: #059669; color: white; border-color: #059669; }
+                        .btn-visual { background: #f5f3ff; color: #7c3aed; border-color: #ddd6fe; }
+                        .btn-visual:hover { background: #7c3aed; color: white; border-color: #7c3aed; }
+                        .btn-qr { background: #ecfdf5; color: #00bc7d; border-color: #a7f3d0; }
+                        .btn-qr:hover { background: #00bc7d; color: white; border-color: #00bc7d; }
+                        .btn-refresh { background: #fff7ed; color: #ea580c; border-color: #fed7aa; }
+                        .btn-refresh:hover { background: #ea580c; color: white; border-color: #ea580c; }
+                        .btn-sheet { background: #eff6ff; color: #2563eb; border-color: #bfdbfe; }
+                        .btn-sheet:hover { background: #2563eb; color: white; border-color: #2563eb; }
+                        .btn-calendar { background: #eff6ff; color: #2563eb; border-color: #bfdbfe; }
+                        .btn-calendar:hover { background: #2563eb; color: white; border-color: #2563eb; }
                         .btn-red {
-                            background: var(--error-color) !important;
-                            color: white !important;
-                            border: 1px solid var(--error-color) !important;
+                            background: #fef2f2 !important;
+                            color: #dc2626 !important;
+                            border: 1px solid #fecaca !important;
                         }
                         .btn-red:hover {
-                            opacity: 0.9;
-                            transform: translateY(-1px);
+                            background: #dc2626 !important;
+                            color: white !important;
+                            border-color: #dc2626 !important;
                         }
                         
                         select { 
@@ -1690,24 +1695,49 @@ ${helpGuideCSS}
                             <a href="/" style="display:block;"><img src="/img/wamenu_logo_name.png" alt="WaMenu Banner" style="width:100%;max-width:10em;height:auto;margin-bottom:10px;display:block;margin-left:auto;margin-right:auto;object-fit:contain;"></a>
                             <div>
                                 <h3 style="margin:0;">(Modo: Editor)</h3>
-                                <div class="status-box" id="statusBox"><span class="status-dot off" id="statusDot"></span> <span id="statusLabel">Verificando...</span></div>
+                                <div class="status-box" id="statusBox"><span class="status-dot off" id="statusDot"></span> <span id="statusLabel">Verificando...</span><span class="status-help" id="statusHelp" style="display:none;position:relative;cursor:pointer;margin-left:6px;font-size:13px;color:#888;border:1px solid #ccc;border-radius:50%;width:18px;height:18px;line-height:18px;text-align:center;font-weight:700;">?<span class="status-help-tip" style="display:none;position:absolute;top:calc(100% + 8px);left:50%;transform:translateX(-50%);background:#333;color:#fff;padding:10px 14px;border-radius:8px;font-size:12px;font-weight:400;line-height:1.5;white-space:normal;width:240px;text-align:left;z-index:9999;box-shadow:0 2px 8px rgba(0,0,0,.15);"></span></span></div>
                             </div>
                         </div>
+
+                        <script>
+                        (function(){
+                            var help=document.getElementById('statusHelp');
+                            if(!help)return;
+                            var tip=help.querySelector('.status-help-tip');
+                            help.addEventListener('mouseenter',function(){tip.style.display='block';});
+                            help.addEventListener('mouseleave',function(){tip.style.display='none';});
+                        })();
+                        </script>
                     </div>
+                    ${!req.user.emailVerified ? '<div style="width:100%;max-width:1000px;padding:12px 20px;margin:0 auto 16px;background:#fff4e5;border:1px solid #ff980040;border-radius:8px;font-size:14px;color:#b45309;text-align:center;">Tu email no está verificado. Revisá tu casilla o <a href="/app/verify-email-sent" style="color:#b45309;text-decoration:underline;font-weight:600;">reenviá el email de verificación</a>.</div>' : ''}
+                    ${(() => {
+                        if (!targetUser || !targetUser.trialEndDate) return '';
+                        const estado = billingService.estadoSuscripcion(targetUser.fechaVencimiento, targetUser.trialEndDate);
+                        if (estado !== 'trial') return '';
+                        const diasR = billingService.diasRestantesTrial(targetUser.trialEndDate);
+                        if (diasR === null || diasR === undefined || diasR < 0) return '';
+                        const bannerColor = diasR <= 2 ? '#dc2626' : (diasR <= 5 ? '#b45309' : '#00bc7d');
+                        const bannerText = diasR === 0
+                            ? 'Tu prueba termina hoy'
+                            : 'Te quedan ' + diasR + ' día' + (diasR !== 1 ? 's' : '') + ' de prueba gratuita';
+                        return '<div style="width:100%;max-width:1000px;padding:10px 16px;margin:0 auto 16px;background:' + bannerColor + '15;border:1px solid ' + bannerColor + '40;border-radius:8px;font-size:13px;color:' + bannerColor + ';text-align:center;font-weight:600;">' +
+                            bannerText + (diasR <= 5 ? ' — <a href="/suscripcion" style="color:' + bannerColor + ';text-decoration:underline;">Activar plan</a>' : '') +
+                            '</div>';
+                    })()}
                     <div class="toolbar">
                             ${botSelector}
-                            ${isAdmin ? '<a href="/app/admin" class="btn btn-blue" style="background: #007bff; color: white;">Panel Admin</a>' : ''}
-                            ${isAdmin ? '' : '<button onclick="showMisPagos()" class="btn btn-blue" style="background:#0f6b4f; color:white;">Mis Pagos</button>'}
-                            <button onclick="showVisual()" class="btn btn-purple">Visualizar</button>
-                            <a href="/app/qr" class="btn btn-green">WhatsApp QR</a>
-                            <a href="/app/refresh?botId=${botId}" class="btn btn-orange">Refrescar</a>
+                            ${isAdmin ? `<a href="/app/admin" class="btn btn-admin">${icon('cog6Tooth', 'w-4 h-4 inline')} Admin</a>` : ''}
+                            ${isAdmin ? '' : `<button onclick="showMisPagos()" class="btn btn-pagos">${icon('creditCard', 'w-4 h-4 inline')} Mis Pagos</button>`}
+                            <button onclick="showVisual()" class="btn btn-visual">${icon('eye', 'w-4 h-4 inline')} Visualizar</button>
+                            <a href="/app/qr" class="btn btn-qr">${icon('qrCode', 'w-4 h-4 inline')} WhatsApp QR</a>
+                            <a href="/app/refresh?botId=${botId}" class="btn btn-refresh">${icon('arrowPath', 'w-4 h-4 inline')} Refrescar</a>
                             <span class="tooltip-hover tooltip-below">
-                                <a href="/app/pedidos/${botId}" target="_blank" class="btn btn-green">Ver Pedidos</a>
+                                <a href="/app/pedidos/${botId}" target="_blank" class="btn btn-pagos">${icon('documentText', 'w-4 h-4 inline')} Pedidos</a>
                                 <span class="tooltip-bubble">Si configurás tu bot como "Bot de catálogo" podrás ver los pedidos en esta base de datos.</span>
                             </span>
-                            <a href="https://calendar.google.com/calendar/r" target="_blank" class="btn btn-blue" id="calendarBtn">Ver Calendario</a>
-                            ${isAdmin ? `<a href="https://docs.google.com/spreadsheets/d/${service.spreadsheetId}" target="_blank" class="btn btn-blue">Abrir Sheet</a>` : ''}
-                            <a href="/app/logout" class="btn btn-red">Salir</a>
+                            <a href="https://calendar.google.com/calendar/r" target="_blank" class="btn btn-calendar">${icon('calendar', 'w-4 h-4 inline')} Calendario</a>
+                            ${isAdmin ? `<a href="https://docs.google.com/spreadsheets/d/${service.spreadsheetId}" target="_blank" class="btn btn-sheet">${icon('document', 'w-4 h-4 inline')} Sheet</a>` : ''}
+                            <a href="/app/logout" class="btn btn-red">${icon('arrowLeft', 'w-4 h-4 inline')} Salir</a>
                     </div>
 
 ${helpGuideHTML}
@@ -2613,6 +2643,7 @@ ${helpGuideJS}
                         function checkBotStatus() {
                             const dot = document.getElementById('statusDot');
                             const label = document.getElementById('statusLabel');
+                            const help = document.getElementById('statusHelp');
                             if (!dot || !label) return;
                             fetch('/app/api/bot/status/${botId}')
                                 .then(r => r.json())
@@ -2630,10 +2661,28 @@ ${helpGuideJS}
                                         suspended_subscription: 'Detenido (suscripción)',
                                         error: 'Error'
                                     };
+                                    const tips = {
+                                        waiting_start: 'El bot está configurado pero aún no se inició. Hacé clic en "Iniciar Bot" para conectarlo a WhatsApp.',
+                                        disconnected: 'La conexión con WhatsApp se perdió. Iniciá el bot nuevamente para restablecerla.',
+                                        logged_out: 'La sesión de WhatsApp fue cerrada. Escaneá el código QR nuevamente para reconectar.',
+                                        stopped_inactivity: 'El bot se detuvo automáticamente por inactividad. Iniciarlo cuando lo necesites.',
+                                        timeout_qr: 'El código QR expiró sin ser escaneado. Mostrá uno nuevo y escanealo con tu teléfono.',
+                                        suspended_subscription: 'El bot está pausado porque la suscripción está vencida. Regularizá el pago para reactivarlo.',
+                                        error: 'Ocurrió un error en la conexión. Intentá iniciar el bot nuevamente.'
+                                    };
                                     const cls = data.status === 'connected' ? 'on' :
                                         data.status === 'error' || data.status === 'logged_out' || data.status === 'timeout_qr' ? 'error' : 'off';
                                     dot.className = 'status-dot ' + cls;
                                     label.textContent = labels[data.status] || data.status;
+                                    if (help) {
+                                        const tip = tips[data.status];
+                                        if (tip) {
+                                            help.style.display = 'inline-block';
+                                            help.querySelector('.status-help-tip').textContent = tip;
+                                        } else {
+                                            help.style.display = 'none';
+                                        }
+                                    }
                                     const step4 = document.getElementById('step4Status');
                                     if (step4) {
                                         const sub = data.suscripcion;

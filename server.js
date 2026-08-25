@@ -83,17 +83,13 @@ app.get('/api/config', async (req, res) => {
     var cfg = await readConfig();
     res.json({
         phone: process.env.BOT_PHONE || '5492494249236',
-        precioEstandar: cfg.precio_estandar != null ? cfg.precio_estandar : (process.env.PRECIO_ESTANDAR || '22000'),
-        trialGratis: cfg.trial_gratis !== false
+        precioEstandar: cfg.precio_estandar != null ? cfg.precio_estandar : (process.env.PRECIO_ESTANDAR || '22000')
     });
 });
 
 app.post('/api/config', async (req, res) => {
     if (req.body.precio_estandar != null) {
         await writeConfig({ precio_estandar: Number(req.body.precio_estandar) });
-    }
-    if (req.body.trial_gratis != null) {
-        await writeConfig({ trial_gratis: Boolean(req.body.trial_gratis) });
     }
     res.json({ ok: true });
 });
@@ -189,6 +185,157 @@ function generateClientId() {
     return 'cli_' + crypto.randomBytes(4).toString('hex');
 }
 
+// ─────────────────────────────────────────────────────────────
+// Registro de prueba gratuita (sin tarjeta)
+// ─────────────────────────────────────────────────────────────
+
+const EMAIL_REGEX = /^[a-zA-Z0-9.!#$%&'*+\/=?^_`{|}~-]+@[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$/;
+
+function isValidPassword(pw) {
+    if (!pw || pw.length < 8) return false;
+    if (!/[a-zA-Z]/.test(pw)) return false;
+    if (!/[0-9]/.test(pw)) return false;
+    return true;
+}
+
+function generateVerificationToken() {
+    return crypto.randomBytes(32).toString('hex');
+}
+
+app.post('/api/register', async (req, res) => {
+    try {
+        const { name, email, password, dni } = req.body;
+        if (!name || !email || !password) {
+            return res.status(400).json({ error: 'Faltan campos obligatorios (nombre, email, contraseña)' });
+        }
+        if (!EMAIL_REGEX.test(email)) {
+            return res.status(400).json({ error: 'Ingresá un email válido (ej: tu@email.com)' });
+        }
+        if (!isValidPassword(password)) {
+            return res.status(400).json({ error: 'La contraseña debe tener al menos 8 caracteres, incluir una letra y un número' });
+        }
+
+        // Verificar si ya existe un usuario con ese email
+        const existing = await userService.getUserByEmail(email);
+        if (existing) {
+            return res.status(409).json({ error: 'Ya existe una cuenta con ese email. Iniciá sesión o usá otro email.' });
+        }
+
+        const idCliente = generateClientId();
+        const username = generateUsername(email);
+        const verificationToken = generateVerificationToken();
+
+        // Fechas de trial: ahora + 30 días (en UTC)
+        const trialStart = new Date();
+        const trialEnd = new Date();
+        trialEnd.setDate(trialEnd.getDate() + 30);
+
+        await userService.addUser({
+            idCliente,
+            nombreCliente: name,
+            user: username,
+            password,
+            spreadsheetId: process.env.SPREADSHEET_ID,
+            email,
+            trialStartDate: trialStart.toISOString(),
+            trialEndDate: trialEnd.toISOString(),
+            verificationToken
+        });
+
+        // Registrar en tabla suscripciones (estado trial)
+        await billingService.registrarSuscripcion({
+            preapprovalId: `trial_${idCliente}`,
+            idCliente,
+            nombre: name,
+            email,
+            docTipo: 96,
+            docNro: 0
+        });
+
+        // Email de bienvenida
+        try {
+            await emailService.sendWelcomeEmail({ to: email, username, password, name });
+        } catch (emailErr) {
+            console.error('[Register] Error enviando email de bienvenida:', emailErr.message);
+        }
+
+        // Email de verificación
+        try {
+            await emailService.sendVerificationEmail({ to: email, name, token: verificationToken });
+        } catch (emailErr) {
+            console.error('[Register] Error enviando email de verificación:', emailErr.message);
+        }
+
+        console.log(`[Register] Usuario registrado con trial: ${username} (${email}), trial vence: ${trialEnd.toISOString()}`);
+        res.json({ success: true, username, password, email, trialEndDate: trialEnd.toISOString() });
+    } catch (error) {
+        console.error('[Register] Error:', error);
+        res.status(500).json({ error: 'Error al registrar usuario' });
+    }
+});
+
+// Verificar email
+app.get('/api/verify-email', async (req, res) => {
+    const { token } = req.query;
+    if (!token) {
+        return res.status(400).send('<html><body style="font-family:sans-serif;text-align:center;padding:60px;"><h2>Token inválido</h2><p>No se proporcionó un token de verificación.</p></body></html>');
+    }
+    try {
+        const user = await userService.verifyEmail(token);
+        if (!user) {
+            return res.status(400).send('<html><body style="font-family:sans-serif;text-align:center;padding:60px;"><h2>Token inválido o expirado</h2><p>El enlace de verificación no es válido o ya fue utilizado.</p><a href="/app/login">Ir al login</a></body></html>');
+        }
+        if (req.session && req.session.user && req.session.user.idCliente === user.idCliente) {
+            req.session.user.emailVerified = true;
+        }
+        res.send(`<html><body style="font-family:sans-serif;text-align:center;padding:60px;"><h2>✅ Email verificado</h2><p>Tu email <strong>${user.email}</strong> fue verificado correctamente.</p><p style="color:#888;">Podés cerrar esta ventana e iniciar sesión.</p><a href="/app/" style="display:inline-block;margin-top:16px;background:#0f6b4f;color:white;padding:10px 24px;border-radius:6px;text-decoration:none;">Ir al panel</a></body></html>`);
+    } catch (error) {
+        console.error('[VerifyEmail] Error:', error);
+        res.status(500).send('<html><body style="font-family:sans-serif;text-align:center;padding:60px;"><h2>Error</h2><p>Ocurrió un error al verificar tu email.</p></body></html>');
+    }
+});
+
+// Reenviar email de verificación
+app.post('/api/resend-verification', async (req, res) => {
+    try {
+        const { email } = req.body;
+        if (!email) return res.status(400).json({ error: 'Email requerido' });
+        const user = await userService.getUserByEmail(email);
+        if (!user) return res.status(404).json({ error: 'Usuario no encontrado' });
+        if (user.emailVerified) return res.json({ success: true, message: 'Email ya verificado' });
+
+        const newToken = generateVerificationToken();
+        await userService.setVerificationToken(user.idCliente, newToken);
+        await emailService.sendVerificationEmail({ to: email, name: user.nombreCliente, token: newToken });
+        res.json({ success: true });
+    } catch (error) {
+        console.error('[ResendVerification] Error:', error);
+        res.status(500).json({ error: 'Error al reenviar verificación' });
+    }
+});
+
+// API Login: crear sesión (para auto-login desde landing page)
+app.post('/api/login', async (req, res) => {
+    try {
+        const { username, password } = req.body;
+        if (!username || !password) {
+            return res.status(400).json({ error: 'Faltan campos' });
+        }
+        const user = await userService.getUserByUsername(username);
+        if (!user || user.password !== password) {
+            return res.status(401).json({ error: 'Credenciales inválidas' });
+        }
+        if (!user.activo) {
+            return res.status(403).json({ error: 'Cuenta inactiva' });
+        }
+        req.session.user = user;
+        res.json({ success: true });
+    } catch (error) {
+        console.error('[Login API] Error:', error);
+        res.status(500).json({ error: 'Error al iniciar sesión' });
+    }
+});
+
 // MercadoPago: Crear suscripción
 app.post('/api/mercadopago/create-subscription', async (req, res) => {
     try {
@@ -203,8 +350,15 @@ app.post('/api/mercadopago/create-subscription', async (req, res) => {
 
         const cfg = await readConfig();
         const precio = cfg.precio_estandar != null ? cfg.precio_estandar : (process.env.PRECIO_ESTANDAR || '23000');
-        const trialPeriodDays = cfg.trial_gratis !== false ? 30 : 0;
+        const trialPeriodDays = 0; // Trial lo manejamos nosotros, no MP
         const siteUrl = process.env.SITE_URL || `http://localhost:${port}`;
+
+        // Resolver external_reference: si el email corresponde a un usuario existente, usar su idCliente
+        let externalReference = null;
+        const existingUser = await userService.getUserByEmail(email);
+        if (existingUser) {
+            externalReference = existingUser.idCliente;
+        }
 
         // MP requiere una URL pública válida en back_url
         // Si estamos en localhost, usamos un placeholder y advertimos
@@ -219,13 +373,14 @@ app.post('/api/mercadopago/create-subscription', async (req, res) => {
         let payerEmail = email;
         try {
             preapproval = await mercadoPagoService.createPreapproval({
-                reason: 'Suscripción Bot Menu - Plan Estándar',
-                amount: Number(precio),
-                payerEmail,
-                backUrl: mpBackUrl,
-                notificationUrl: `${siteUrl}/api/mercadopago/webhook`,
-                trialPeriodDays
-            });
+                    reason: 'Suscripción Bot Menu - Plan Estándar',
+                    amount: Number(precio),
+                    payerEmail,
+                    backUrl: mpBackUrl,
+                    notificationUrl: `${siteUrl}/api/mercadopago/webhook`,
+                    trialPeriodDays,
+                    externalReference
+                });
         } catch (mpErr) {
             const testBuyer = process.env.TEST_BUYER_EMAIL || 'test_user_123@testuser.com';
             if (process.env.MERCADOPAGO_ACCESS_TOKEN?.startsWith('TEST-')) {
@@ -236,7 +391,8 @@ app.post('/api/mercadopago/create-subscription', async (req, res) => {
                     payerEmail: testBuyer,
                     backUrl: mpBackUrl,
                     notificationUrl: `${siteUrl}/api/mercadopago/webhook`,
-                    trialPeriodDays
+                    trialPeriodDays,
+                    externalReference
                 });
             } else {
                 throw mpErr;
@@ -484,7 +640,7 @@ const processingPreapprovals = new Map();
 // Asegura que exista el usuario + suscripción asociados a una preaprobación.
 // Es idempotente y tolerante al orden de eventos: el webhook de pago (`payment`)
 // puede llegar antes o después que el de `subscription_preapproval`.
-async function asegurarSuscripcion({ preapprovalId, payerEmail, payerName }) {
+async function asegurarSuscripcion({ preapprovalId, payerEmail, payerName, externalReference }) {
     const key = String(preapprovalId || 'sin-preapproval');
     if (processingPreapprovals.has(key)) {
         return processingPreapprovals.get(key);
@@ -503,8 +659,19 @@ async function asegurarSuscripcion({ preapprovalId, payerEmail, payerName }) {
         const email = ref.email || payerEmail;
         if (!email) return null;
 
-        // 3) Usuario existente por email (evitar duplicar)
-        let user = await userService.getUserByEmail(email);
+        // 3) Buscar usuario por external_reference (idCliente) primero — previene duplicados
+        let user = null;
+        if (externalReference) {
+            user = await userService.getUserByIdCliente(externalReference);
+            if (user) {
+                console.log(`[Webhook] Usuario encontrado por external_reference: ${user.user} (${user.email || email})`);
+            }
+        }
+
+        // 4) Si no se encontró por external_reference, buscar por email
+        if (!user) {
+            user = await userService.getUserByEmail(email);
+        }
         if (!user) {
             const username = generateUsername(email);
             const password = generatePassword();
@@ -546,6 +713,13 @@ async function asegurarSuscripcion({ preapprovalId, payerEmail, payerName }) {
             docNro: ref.docNro || 0
         });
 
+        // Si el usuario venía de un trial, activarlo (pasar de trial a activo)
+        if (user.trialEndDate && !user.fechaPago) {
+            const fechaVencimiento = billingService.addMonths(new Date(), 1).toISOString();
+            await userService.activarDesdeTrial(user.idCliente, fechaVencimiento);
+            console.log(`[Webhook] Usuario ${user.idCliente} activado desde trial`);
+        }
+
         if (refs[preapprovalId]) {
             delete refs[preapprovalId];
             await writeConfig({ preapproval_refs: refs });
@@ -570,7 +744,9 @@ async function manejarPreapproval(preapprovalId) {
 
     const refs = (await readConfig()).preapproval_refs || {};
     const ref = refs[preapprovalId] || {};
-    await asegurarSuscripcion({ preapprovalId, payerEmail: ref.email, payerName: ref.name });
+    // external_reference viene de MP y contiene el idCliente del usuario trial
+    const externalRef = preapproval.external_reference || null;
+    await asegurarSuscripcion({ preapprovalId, payerEmail: ref.email, payerName: ref.name, externalReference: externalRef });
     await reconciliarCobros(preapprovalId);
     console.log(`[Webhook] Preapproval ${preapprovalId} procesada OK`);
 }
@@ -976,6 +1152,8 @@ async function enviarAvisoSuspension(user, estado) {
 }
 
 // Revisa todos los clientes y aplica la política de vencimiento:
+//  - trial: acceso completo (no hace nada)
+//  - trial_vencido: detener bot, enviar aviso
 //  - gracia: puede loguear pero el bot se detiene y no puede iniciarse.
 //  - suspendida: además de detener el bot, marca el usuario como inactivo (bloquea login).
 // Además, por cada suscripción vencida intenta reconciliar cobros con MercadoPago,
@@ -986,15 +1164,32 @@ async function verificarVencimientos() {
         const users = await userService.getUsers();
         const nonAdmin = users.filter(u => u.idCliente !== 'admin');
         for (const user of nonAdmin) {
-            const estado = billingService.estadoSuscripcion(user.fechaVencimiento);
-            if (estado === 'activa' || estado === 'sin_suscripcion') {
+            const estado = billingService.estadoSuscripcion(user.fechaVencimiento, user.trialEndDate);
+            if (estado === 'activa' || estado === 'sin_suscripcion' || estado === 'trial') {
                 continue;
             }
 
             // Detener el bot si está corriendo
             stopBotConnection(user.idCliente, 'suspended_subscription');
 
-            if (estado === 'suspendida') {
+            if (estado === 'trial_vencido') {
+                // Trial vencido: detener bot y enviar email si no se avisó hoy
+                const hoy = new Date().toISOString().slice(0, 10);
+                const ultimoAviso = (user.avisoSuspension || '').slice(0, 10);
+                if (ultimoAviso !== hoy) {
+                    try {
+                        await emailService.sendTrialExpiredEmail({
+                            to: user.email,
+                            name: user.nombreCliente || 'Cliente'
+                        });
+                        await userService.guardarAvisoSuspension(user.idCliente, hoy);
+                        console.log(`[Trial] Aviso de trial vencido enviado a ${user.email}`);
+                    } catch (err) {
+                        console.error(`[Trial] Error enviando aviso a ${user.email}:`, err.message);
+                    }
+                }
+                logger.warn('trial', user.idCliente, 'Trial vencido, bot detenido');
+            } else if (estado === 'suspendida') {
                 if (user.activo) {
                     await userService.setActivo(user.idCliente, false);
                     console.log(`[Suscripción] ${user.idCliente} suspendido (${billingService.diasVencido(user.fechaVencimiento)} días vencido).`);
@@ -1005,17 +1200,47 @@ async function verificarVencimientos() {
             }
 
             // Aviso por email (gracia o suspendida)
-            await enviarAvisoSuspension(user, estado);
+            if (estado === 'gracia' || estado === 'suspendida') {
+                await enviarAvisoSuspension(user, estado);
+            }
 
             // Reintento de cobro: consultar a MP los cobros aprobados de la preaprobación.
             // Si hubo un cobro aprobado que no llegó por webhook, se factura y se reactiva.
             try {
                 const sub = await billingService.getSuscripcionByIdCliente(user.idCliente);
-                if (sub && sub.preapproval_id) {
+                if (sub && sub.preapproval_id && !sub.preapproval_id.startsWith('trial_')) {
                     await reconciliarCobros(sub.preapproval_id);
                 }
             } catch (err) {
                 console.error(`[Suscripción] Error reconciliando cobros de ${user.idCliente}:`, err.message);
+            }
+        }
+
+        // Recordatorios de trial (días 25, 28, 30)
+        for (const user of nonAdmin) {
+            if (!user.trialEndDate || user.fechaPago) continue; // Solo usuarios en trial sin pago
+            const diasRestantes = billingService.diasRestantesTrial(user.trialEndDate);
+            if (diasRestantes < 0) continue; // Ya venció (manejado arriba)
+            if (diasRestantes > 30) continue; // Trial recién empezado
+
+            const hoy = new Date().toISOString().slice(0, 10);
+            const ultimoAviso = (user.avisoSuspension || '').slice(0, 10);
+            if (ultimoAviso === hoy) continue; // Ya se avisó hoy
+
+            // Enviar recordatorio en días específicos: 5, 2, 1, 0 días restantes
+            if (diasRestantes === 5 || diasRestantes === 2 || diasRestantes === 1 || diasRestantes === 0) {
+                try {
+                    await emailService.sendTrialReminderEmail({
+                        to: user.email,
+                        name: user.nombreCliente || 'Cliente',
+                        diasRestantes,
+                        trialEndDate: user.trialEndDate
+                    });
+                    await userService.guardarAvisoSuspension(user.idCliente, hoy);
+                    console.log(`[Trial] Recordatorio enviado a ${user.email} (${diasRestantes} días restantes)`);
+                } catch (err) {
+                    console.error(`[Trial] Error enviando recordatorio a ${user.email}:`, err.message);
+                }
             }
         }
     } catch (err) {

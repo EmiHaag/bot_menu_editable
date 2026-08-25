@@ -20,7 +20,11 @@ function mapRow(row) {
         fechaVencimiento: row.fecha_vencimiento || '',
         online24_7: row.online_24_7 !== false,
         horarios: row.horarios || '',
-        avisoSuspension: row.aviso_suspension || ''
+        avisoSuspension: row.aviso_suspension || '',
+        trialStartDate: row.trial_start_date || '',
+        trialEndDate: row.trial_end_date || '',
+        emailVerified: row.email_verified === true,
+        verificationToken: row.verification_token || ''
     };
 }
 
@@ -60,6 +64,18 @@ class UserService {
             `;
             await sql`
                 ALTER TABLE users ADD COLUMN IF NOT EXISTS aviso_suspension TEXT DEFAULT ''
+            `;
+            await sql`
+                ALTER TABLE users ADD COLUMN IF NOT EXISTS trial_start_date TIMESTAMPTZ
+            `;
+            await sql`
+                ALTER TABLE users ADD COLUMN IF NOT EXISTS trial_end_date TIMESTAMPTZ
+            `;
+            await sql`
+                ALTER TABLE users ADD COLUMN IF NOT EXISTS email_verified BOOLEAN DEFAULT false
+            `;
+            await sql`
+                ALTER TABLE users ADD COLUMN IF NOT EXISTS verification_token TEXT DEFAULT ''
             `;
             await sql`
                 CREATE UNIQUE INDEX IF NOT EXISTS users_email_uq ON users (LOWER(email)) WHERE email <> ''
@@ -232,12 +248,12 @@ class UserService {
         if (!sql) throw new Error('Neon database not configured');
 
         try {
-            const { idCliente, nombreCliente, user, password, spreadsheetId, email } = userData;
+            const { idCliente, nombreCliente, user, password, spreadsheetId, email, trialStartDate, trialEndDate, verificationToken } = userData;
             const fecha = new Date().toLocaleDateString();
 
             await sql`
-                INSERT INTO users (id_cliente, nombre_cliente, activo, username, password, fecha_suscripcion, spreadsheet_id, email, fecha_terminos, fecha_pago, fecha_vencimiento, online_24_7, horarios)
-                VALUES (${idCliente}, ${nombreCliente || ''}, ${true}, ${user}, ${password}, ${fecha}, ${spreadsheetId || ''}, ${email || ''}, ${''}, ${''}, ${''}, ${true}, ${''})
+                INSERT INTO users (id_cliente, nombre_cliente, activo, username, password, fecha_suscripcion, spreadsheet_id, email, fecha_terminos, fecha_pago, fecha_vencimiento, online_24_7, horarios, trial_start_date, trial_end_date, email_verified, verification_token)
+                VALUES (${idCliente}, ${nombreCliente || ''}, ${true}, ${user}, ${password}, ${fecha}, ${spreadsheetId || ''}, ${email || ''}, ${''}, ${''}, ${''}, ${true}, ${''}, ${trialStartDate || null}, ${trialEndDate || null}, ${false}, ${verificationToken || ''})
                 ON CONFLICT (id_cliente) DO UPDATE SET
                     nombre_cliente = EXCLUDED.nombre_cliente,
                     activo = EXCLUDED.activo,
@@ -245,7 +261,9 @@ class UserService {
                     password = EXCLUDED.password,
                     fecha_suscripcion = EXCLUDED.fecha_suscripcion,
                     spreadsheet_id = EXCLUDED.spreadsheet_id,
-                    email = EXCLUDED.email
+                    email = EXCLUDED.email,
+                    trial_start_date = COALESCE(EXCLUDED.trial_start_date, users.trial_start_date),
+                    trial_end_date = COALESCE(EXCLUDED.trial_end_date, users.trial_end_date)
             `;
             this.clearCache();
             return true;
@@ -331,6 +349,39 @@ class UserService {
         }
     }
 
+    async activarDesdeTrial(idCliente, fechaVencimiento) {
+        if (!sql || !idCliente) return false;
+        try {
+            const pago = new Date().toISOString();
+            await sql`
+                UPDATE users
+                SET fecha_pago = ${pago}, fecha_vencimiento = ${fechaVencimiento || ''}, activo = true, aviso_suspension = ''
+                WHERE id_cliente = ${idCliente}
+            `;
+            this.clearCache();
+            return true;
+        } catch (error) {
+            console.error('[UserService] Error activando desde trial:', error.message);
+            return false;
+        }
+    }
+
+    async guardarAvisoTrial(idCliente, fecha) {
+        if (!sql || !idCliente) return false;
+        try {
+            await sql`
+                UPDATE users
+                SET aviso_suspension = ${fecha || ''}
+                WHERE id_cliente = ${idCliente}
+            `;
+            this.clearCache();
+            return true;
+        } catch (error) {
+            console.error('[UserService] Error guardando aviso de trial:', error.message);
+            return false;
+        }
+    }
+
     async updateHorarios(idCliente, online24_7, horarios) {
         if (!sql || !idCliente) return false;
 
@@ -345,6 +396,32 @@ class UserService {
         } catch (error) {
             console.error('[UserService] Error updating horarios:', error.message);
             return false;
+        }
+    }
+
+    async setVerificationToken(idCliente, token) {
+        if (!sql) return false;
+        try {
+            await sql`UPDATE users SET verification_token = ${token} WHERE id_cliente = ${idCliente}`;
+            this.clearCache();
+            return true;
+        } catch (error) {
+            console.error('[UserService] Error setting verification token:', error.message);
+            return false;
+        }
+    }
+
+    async verifyEmail(token) {
+        if (!sql) return null;
+        try {
+            const rows = await sql`SELECT * FROM users WHERE verification_token = ${token}`;
+            if (rows.length === 0) return null;
+            await sql`UPDATE users SET email_verified = true, verification_token = '' WHERE verification_token = ${token}`;
+            this.clearCache();
+            return mapRow(rows[0]);
+        } catch (error) {
+            console.error('[UserService] Error verifying email:', error.message);
+            return null;
         }
     }
 

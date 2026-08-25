@@ -329,7 +329,7 @@ appRouter.get('/login', (req, res) => {
                     <a onclick="openResetModal()" style="color:#00bc7d;cursor:pointer;font-weight:600;text-decoration:none;">¿Olvidaste tu contraseña?</a>
                 </div>
                 <div class="register-link">
-                    Aún no tenés usuario? <a onclick="openSubscribeModal()">Hacé click acá</a>
+                    ¿No tenés usuario? <a href="/app/register">Registrate gratis 30 días</a>
                 </div>
             </div>
 
@@ -417,7 +417,7 @@ appRouter.get('/login', (req, res) => {
                     errorEl.style.display = 'none';
                     successEl.style.display = 'none';
 
-                    if (!email || !email.includes('@')) { errorEl.textContent = 'Ingresá un email válido'; errorEl.style.display = 'block'; return; }
+                    if (!email || !/^[a-zA-Z0-9.!#$%&'*+\/=?^_{|}~-]+@[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$/.test(email)) { errorEl.textContent = 'Ingresá un email válido (ej: tu@email.com)'; errorEl.style.display = 'block'; return; }
 
                     btn.disabled = true;
                     btn.textContent = 'Enviando...';
@@ -451,7 +451,7 @@ appRouter.get('/login', (req, res) => {
                     var btn = document.getElementById('btnSubscribeSubmit');
 
                     if (!name) { errorEl.textContent = 'Ingresá tu nombre'; errorEl.style.display = 'block'; return; }
-                    if (!email || !email.includes('@')) { errorEl.textContent = 'Ingresá un email válido'; errorEl.style.display = 'block'; return; }
+                    if (!email || !/^[a-zA-Z0-9.!#$%&'*+\/=?^_{|}~-]+@[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$/.test(email)) { errorEl.textContent = 'Ingresá un email válido (ej: tu@email.com)'; errorEl.style.display = 'block'; return; }
                     if (!dni || !/^\d{7,11}$/.test(dni.replace(/\D/g, ''))) { errorEl.textContent = 'Ingresá un DNI (7-8 dígitos) o CUIT (11 dígitos) válido'; errorEl.style.display = 'block'; return; }
 
                     errorEl.style.display = 'none';
@@ -495,6 +495,94 @@ appRouter.get('/login', (req, res) => {
         </body>
         </html>
     `);
+});
+
+// ─────────────────────────────────────────────────────────────
+// Registro de prueba gratuita
+// ─────────────────────────────────────────────────────────────
+
+appRouter.get('/register', (req, res) => {
+    let errorMsg = '';
+    if (req.query.error === '1') errorMsg = '<div class="error-msg">El email ya está registrado. Intentá con otro o iniciá sesión.</div>';
+    if (req.query.error === '2') errorMsg = '<div class="error-msg">Faltan campos obligatorios.</div>';
+    if (req.query.error === '3') errorMsg = '<div class="error-msg">Demasiados intentos. Esperá un minuto.</div>';
+
+    res.send(`
+        <!DOCTYPE html>
+        <html lang="es">
+        <head>
+            <meta charset="UTF-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            <title>Registro — Bot Menu</title>
+            <style>
+                body { font-family: 'Segoe UI', sans-serif; background: white; display: flex; justify-content: center; align-items: center; min-height: 100vh; margin: 0; }
+                .login-box { background: #fbfbfb; border: 1px solid #e7e3e4; padding: 40px; border-radius: 8px; width: 100%; max-width: 400px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); }
+                .login-box h2 { margin-top: 0; color: #333; text-align: center; margin-bottom: 10px; }
+                .subtitle { text-align: center; color: #666; font-size: 0.9rem; margin-bottom: 30px; }
+                .trial-badge { display: inline-block; background: #00bc7d; color: white; padding: 4px 12px; border-radius: 20px; font-size: 0.8rem; font-weight: 700; margin-bottom: 16px; }
+                .form-group { margin-bottom: 16px; }
+                .form-group label { display: block; margin-bottom: 5px; color: #666; font-size: 0.9rem; }
+                .form-group input { width: 100%; padding: 12px; border: 1px solid #e7e3e4; border-radius: 4px; box-sizing: border-box; font-size: 16px; }
+                .btn-login { background-color: #00bc7d; color: white; border: none; padding: 12px; width: 100%; border-radius: 4px; font-size: 16px; font-weight: bold; cursor: pointer; transition: background-color 0.3s; }
+                .btn-login:hover { background-color: #00a56d; }
+                .error-msg { color: #d32f2f; background: #ffcdd2; padding: 10px; border-radius: 4px; margin-bottom: 20px; text-align: center; font-size: 14px; }
+                .login-link { text-align: center; margin-top: 20px; font-size: 14px; color: #666; }
+                .login-link a { color: #00bc7d; cursor: pointer; font-weight: 600; text-decoration: none; }
+            </style>
+        </head>
+        <body>
+            <div class="login-box">
+                <div style="text-align:center;"><img src="/img/wamenu_logo_name.png" alt="WaMenu" width="1408" height="768" style="width:100%;max-width:200px;height:auto;margin-bottom:10px;object-fit:contain;"></div>
+                <h2>Creá tu cuenta gratis</h2>
+                <div style="text-align:center;"><span class="trial-badge">30 días gratis sin tarjeta</span></div>
+                <p class="subtitle">Probá Bot Menu sin compromiso. Configurá tu menú de WhatsApp en minutos.</p>
+                ${errorMsg}
+                <form action="/app/register" method="POST">
+                    <div class="form-group">
+                        <label for="name">Nombre de tu negocio</label>
+                        <input type="text" id="name" name="name" placeholder="Ej: La Esquina" required autofocus>
+                    </div>
+                    <div class="form-group">
+                        <label for="email">Email</label>
+                        <input type="email" id="email" name="email" placeholder="tu@email.com" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="password">Contraseña</label>
+                        <input type="password" id="password" name="password" placeholder="Mínimo 8 caracteres, 1 letra y 1 número" required minlength="8">
+                    </div>
+                    <button type="submit" class="btn-login">Crear cuenta y empezar prueba</button>
+                </form>
+                <div class="login-link">
+                    ¿Ya tenés cuenta? <a href="/app/login">Iniciá sesión</a>
+                </div>
+            </div>
+        </body>
+        </html>
+    `);
+});
+
+appRouter.post('/register', async (req, res) => {
+    const { name, email, password } = req.body;
+    try {
+        const resp = await fetch(`${req.protocol}://${req.get('host')}/api/register`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name, email, password })
+        });
+        const data = await resp.json();
+        if (data.success) {
+            const userService = require('./services/userService');
+            const user = await userService.getUserByUsername(data.username);
+            if (user) {
+                req.session.user = user;
+                return res.redirect('/app/verify-email-sent');
+            }
+        }
+        res.redirect('/app/register?error=1');
+    } catch (error) {
+        console.error('[Register] Error:', error);
+        res.redirect('/app/register?error=1');
+    }
 });
 
 // Ruta de Login (POST)
@@ -560,6 +648,11 @@ appRouter.get('/logout', (req, res) => {
         res.clearCookie('connect.sid'); // Nombre por defecto de la cookie de session
         res.redirect('/app/login');
     });
+});
+
+// --- Unsubscribe (link in email footers) ---
+appRouter.get('/unsubscribe', async (req, res) => {
+    res.send(`<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Baja de emails — Bot Menu</title><style>body{font-family:Arial,sans-serif;display:flex;justify-content:center;align-items:center;min-height:100vh;margin:0;background:#f5f5f5;}.card{background:white;border-radius:12px;padding:32px;max-width:420px;text-align:center;box-shadow:0 2px 12px rgba(0,0,0,.08);}.card h2{margin:0 0 12px;color:#333;}.card p{color:#666;font-size:.95rem;line-height:1.5;}.btn{display:inline-block;margin-top:20px;padding:12px 28px;background:#0f6b4f;color:white;border-radius:8px;text-decoration:none;font-weight:700;}</style></head><body><div class="card"><h2>✅ Baja confirmada</h2><p>No recibirás más correos promocionales de Bot Menu. Seguirás recibiendo notificaciones importantes relacionadas con tu cuenta.</p><a href="/" class="btn">Volver al inicio</a></div></body></html>`);
 });
 
 // --- Password Reset ---
@@ -644,11 +737,11 @@ appRouter.get('/reset-password', (req, res) => {
                 <form onsubmit="return resetPassword(event)">
                     <div class="form-group">
                         <label for="newPassword">Nueva contraseña</label>
-                        <input type="password" id="newPassword" required minlength="6">
+                        <input type="password" id="newPassword" required minlength="8">
                     </div>
                     <div class="form-group">
                         <label for="confirmPassword">Confirmar contraseña</label>
-                        <input type="password" id="confirmPassword" required minlength="6">
+                        <input type="password" id="confirmPassword" required minlength="8">
                     </div>
                     <button type="submit" class="btn-login" id="btnReset">Guardar contraseña</button>
                 </form>
@@ -697,7 +790,7 @@ appRouter.get('/reset-password', (req, res) => {
 appRouter.post('/reset-password', async (req, res) => {
     const { token, password } = req.body;
     if (!token || !password) return res.status(400).json({ error: 'Datos incompletos' });
-    if (password.length < 6) return res.status(400).json({ error: 'La contraseña debe tener al menos 6 caracteres' });
+    if (password.length < 8 || !/[a-zA-Z]/.test(password) || !/[0-9]/.test(password)) return res.status(400).json({ error: 'La contraseña debe tener al menos 8 caracteres, incluir una letra y un número' });
 
     const data = passwordResetTokens.get(token);
     if (!data || Date.now() > data.expiresAt) {
@@ -716,13 +809,66 @@ appRouter.post('/reset-password', async (req, res) => {
     }
 });
 
+// Página: email de verificación enviado
+appRouter.get('/verify-email-sent', (req, res) => {
+    const email = req.session?.user?.email || '';
+    res.send(`<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Verificá tu email — Bot Menu</title>
+    <style>
+        body{font-family:'Segoe UI',sans-serif;background:#fff;display:flex;justify-content:center;align-items:center;min-height:100vh;margin:0;}
+        .box{background:#fbfbfb;border:1px solid #e7e3e4;padding:40px;border-radius:8px;width:100%;max-width:420px;text-align:center;box-shadow:0 4px 6px rgba(0,0,0,0.05);}
+        .box h2{color:#333;margin-top:10px;} .box p{color:#666;font-size:0.95rem;line-height:1.5;}
+        .btn{display:inline-block;margin-top:20px;padding:12px 24px;background:#00bc7d;color:#fff;border:none;border-radius:6px;font-size:15px;font-weight:600;cursor:pointer;}
+        .btn:hover{background:#00a56d;} .btn:disabled{background:#ccc;cursor:default;}
+        .link{display:block;margin-top:14px;color:#00bc7d;cursor:pointer;font-size:14px;text-decoration:none;}
+        .link:hover{text-decoration:underline;}
+    </style>
+</head>
+<body>
+<div class="box">
+    <div style="font-size:48px;margin-bottom:10px;">&#9993;</div>
+    <h2>Verificá tu email</h2>
+    <p>Te enviamos un email de verificación a <strong>${email}</strong>. Hacé clic en el enlace del email para activar tu cuenta.</p>
+    <p style="font-size:0.85rem;color:#999;margin-top:12px;">No te olvides de revisar la carpeta de spam.</p>
+    <button class="btn" id="btnResend" onclick="resendVerification()">Reenviar email de verificación</button>
+    <a class="link" href="/app/qr">Ir al panel &#8594;</a>
+</div>
+<script>
+var userEmail=${JSON.stringify(email)};
+async function resendVerification(){
+    var btn=document.getElementById('btnResend');btn.disabled=true;btn.textContent='Enviando...';
+    try{var r=await fetch('/api/resend-verification',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email:userEmail})});
+    var d=await r.json();if(d.success){btn.textContent='Email reenviado';}else{btn.textContent=d.error||'Intentá de nuevo';btn.disabled=false;}}
+    catch(e){btn.textContent='Error de conexión';btn.disabled=false;}
+}
+</script>
+</body></html>`);
+});
+
 // Middleware de Autenticación para rutas de /app
-appRouter.use((req, res, next) => {
-    if (req.path === '/login' || req.path === '/health' || req.path.startsWith('/reset-password') || req.path === '/api/password-reset/request') {
+appRouter.use(async (req, res, next) => {
+    if (req.path === '/login' || req.path === '/health' || req.path.startsWith('/reset-password') || req.path === '/api/password-reset/request' || req.path === '/verify-email-sent') {
         return next();
     }
     if (req.session && req.session.user) {
         req.user = req.session.user;
+        if (!req.user.emailVerified) {
+            const freshUser = await userService.getUserByIdCliente(req.user.idCliente);
+            if (freshUser && freshUser.emailVerified) {
+                req.user.emailVerified = true;
+                req.session.user.emailVerified = true;
+            }
+        }
+        if (!req.user.emailVerified && req.path !== '/logout' && req.user.idCliente !== 'admin') {
+            if (req.path.startsWith('/api/')) {
+                return res.status(403).json({ error: 'Email not verified' });
+            }
+            return res.redirect('/app/verify-email-sent');
+        }
         return next();
     }
     if (req.path.startsWith('/api/')) {
@@ -1037,9 +1183,10 @@ async function main() {
         const user = await userService.getUserByIdCliente(loggedUser.idCliente);
         if (!user) return res.status(404).json({ error: 'Usuario no encontrado' });
 
-        const estado = billingService.estadoSuscripcion(user.fechaVencimiento);
+        const estado = billingService.estadoSuscripcion(user.fechaVencimiento, user.trialEndDate);
         const fechaSusp = billingService.fechaSuspension(user.fechaVencimiento);
         const sub = await billingService.getSuscripcionByIdCliente(loggedUser.idCliente);
+        const diasRestantesTrial = billingService.diasRestantesTrial(user.trialEndDate);
 
         res.json({
             email: user.email,
@@ -1047,11 +1194,14 @@ async function main() {
             activo: user.activo,
             estado,
             fechaSuscripcion: user.fecha_suscripcion,
-            fechaPago: user.fecha_pago,
-            fechaVencimiento: user.fecha_vencimiento,
+            fechaPago: user.fechaPago,
+            fechaVencimiento: user.fechaVencimiento,
             fechaSuspension: fechaSusp ? fechaSusp.toISOString() : null,
             diasVencido: billingService.diasVencido(user.fechaVencimiento),
-            tienePreaprobacion: !!(sub && sub.preapproval_id)
+            tienePreaprobacion: !!(sub && sub.preapproval_id),
+            trialStartDate: user.trialStartDate,
+            trialEndDate: user.trialEndDate,
+            diasRestantesTrial: diasRestantesTrial >= 0 ? diasRestantesTrial : null
         });
     });
 
@@ -1134,12 +1284,15 @@ async function main() {
         if (loggedUser.idCliente !== 'admin') {
             const user = await userService.getUserByIdCliente(loggedUser.idCliente);
             if (user) {
-                const estado = billingService.estadoSuscripcion(user.fechaVencimiento);
+                const estado = billingService.estadoSuscripcion(user.fechaVencimiento, user.trialEndDate);
                 const fechaSusp = billingService.fechaSuspension(user.fechaVencimiento);
+                const diasRestantesTrial = billingService.diasRestantesTrial(user.trialEndDate);
                 suscripcion = {
                     estado,
                     fechaVencimiento: user.fechaVencimiento,
-                    fechaSuspension: fechaSusp ? fechaSusp.toISOString() : null
+                    fechaSuspension: fechaSusp ? fechaSusp.toISOString() : null,
+                    trialEndDate: user.trialEndDate,
+                    diasRestantesTrial: diasRestantesTrial >= 0 ? diasRestantesTrial : null
                 };
             }
         }
@@ -1171,11 +1324,19 @@ async function main() {
         // Bloquear inicio si la suscripción está vencida o en período de gracia
         if (loggedUser.idCliente !== 'admin') {
             const user = await userService.getUserByIdCliente(loggedUser.idCliente);
-            const estado = user ? billingService.estadoSuscripcion(user.fechaVencimiento) : 'sin_suscripcion';
-            if (estado === 'gracia' || estado === 'suspendida') {
+            const estado = user ? billingService.estadoSuscripcion(user.fechaVencimiento, user.trialEndDate) : 'sin_suscripcion';
+            if (estado === 'gracia' || estado === 'suspendida' || estado === 'trial_vencido') {
                 return res.status(403).json({
                     success: false,
-                    error: 'Suscripción vencida. Regularizá el pago para volver a activar tu bot.'
+                    error: estado === 'trial_vencido'
+                        ? 'Tu prueba gratuita terminó. Activá tu plan para volver a usar el bot.'
+                        : 'Suscripción vencida. Regularizá el pago para volver a activar tu bot.'
+                });
+            }
+            if (user && !user.emailVerified) {
+                return res.status(403).json({
+                    success: false,
+                    error: 'Verificá tu email para poder iniciar el bot.'
                 });
             }
         }
@@ -1357,16 +1518,17 @@ async function main() {
                 </style>
             </head>
             <body>
-                <div class="header-nav">
+                    <div class="header-nav">
                     <div style="display: flex; align-items: center; gap: 15px;">
-                        <canvas id="botLogoQR" width="200" height="200" style="width: 60px; height: 60px;"></canvas>
-                        <h1>WhatsApp Status</h1>
+                        <a href="/" style="display:block;"><img src="/img/wamenu_logo_name.png" alt="WaMenu" style="width:100%;max-width:8em;height:auto;object-fit:contain;"></a>
+                        <h1 style="font-size:1.2rem;margin:0;">WhatsApp Status</h1>
                     </div>
                     <div style="display: flex; gap: 10px;">
                         <a href="/app/" class="btn-back">Volver al Editor de Menú</a>
                         <a href="/app/logout" class="btn-back btn-danger" style="color: white; background: var(--error-color); border: none;">Salir</a>
                     </div>
                 </div>
+                ${!loggedUser.emailVerified ? '<div style="width:100%;max-width:1000px;padding:12px 20px;margin-bottom:16px;background:#fff4e5;border:1px solid #ff980040;border-radius:8px;font-size:14px;color:#b45309;text-align:center;">Tu email no está verificado. Revisá tu casilla o <a href="/app/verify-email-sent" style="color:#b45309;text-decoration:underline;font-weight:600;">reenviá el email de verificación</a>.</div>' : ''}
                 <div class="container">
                     ${bots.length === 0 ? '<p>No hay bots configurados para tu cuenta.</p>' : ''}
                     ${bots.map(([id, data]) => `
@@ -1437,8 +1599,6 @@ async function main() {
                 </div>
 
                 <script>
-                    drawRobot('botLogoQR');
-
                     const botIds = ${JSON.stringify(bots.map(([id]) => id))};
                     const currentUserId = '${String(loggedUser.idCliente || loggedUser.username)}';
                     let termsApproved = false;
@@ -1525,18 +1685,40 @@ async function main() {
                             
                             updateTime.textContent = 'Ultima actualización: ' + data.lastUpdate;
 
-                            // Bloqueo por suscripción vencida (período de gracia o suspendido)
-                            const sub = data.suscripcion;
-                            const subBlocked = sub && (sub.estado === 'gracia' || sub.estado === 'suspendida');
-                            if (subBlocked) {
-                                const fechaSusp = sub.fechaSuspension ? new Date(sub.fechaSuspension).toLocaleDateString('es-AR') : '';
-                                qrContainer.innerHTML = '<p style="color: #b45309; font-weight: bold;">Suscripción vencida</p>';
-                                instruction.textContent = sub.estado === 'gracia'
-                                    ? 'Tu suscripción venció. Podés seguir entrando a tu perfil, pero el bot no puede activarse hasta regularizar el pago. El servicio se suspenderá el ' + fechaSusp + '.'
-                                    : 'Tu suscripción está suspendida. Regularizá el pago para volver a usar tu bot.';
-                                actions.innerHTML = '<button class="btn-action" disabled style="background:#ccc;">Suscripción vencida</button>';
-                                return;
-                            }
+                    // Bloqueo por suscripción vencida (período de gracia o suspendido)
+                    const sub = data.suscripcion;
+                    const subBlocked = sub && (sub.estado === 'gracia' || sub.estado === 'suspendida' || sub.estado === 'trial_vencido');
+                    if (subBlocked) {
+                        const fechaSusp = sub.fechaSuspension ? new Date(sub.fechaSuspension).toLocaleDateString('es-AR') : '';
+                        if (sub.estado === 'trial_vencido') {
+                            qrContainer.innerHTML = '<p style="color: #dc2626; font-weight: bold;">Prueba gratuita terminada</p>';
+                            instruction.textContent = 'Tu prueba de 30 días terminó. Activá tu plan para volver a usar el bot.';
+                            actions.innerHTML = '<a href="/suscripcion" class="btn-action" style="text-decoration:none;display:inline-block;">Activar mi plan</a>';
+                        } else {
+                            qrContainer.innerHTML = '<p style="color: #b45309; font-weight: bold;">Suscripción vencida</p>';
+                            instruction.textContent = sub.estado === 'gracia'
+                                ? 'Tu suscripción venció. Podés seguir entrando a tu perfil, pero el bot no puede activarse hasta regularizar el pago. El servicio se suspenderá el ' + fechaSusp + '.'
+                                : 'Tu suscripción está suspendida. Regularizá el pago para volver a usar tu bot.';
+                            actions.innerHTML = '<button class="btn-action" disabled style="background:#ccc;">Suscripción vencida</button>';
+                        }
+                        return;
+                    }
+
+                    // Banner informativo para trial activo
+                    const existingBanner = document.getElementById('trial-banner-' + id);
+                    if (existingBanner) existingBanner.remove();
+                    if (sub && sub.estado === 'trial' && sub.diasRestantesTrial !== null && sub.diasRestantesTrial !== undefined) {
+                        const diasR = sub.diasRestantesTrial;
+                        const bannerColor = diasR <= 2 ? '#dc2626' : (diasR <= 5 ? '#b45309' : '#00bc7d');
+                        const bannerText = diasR === 0
+                            ? 'Tu prueba termina hoy'
+                            : 'Te quedan ' + diasR + ' día' + (diasR !== 1 ? 's' : '') + ' de prueba gratuita';
+                        qrContainer.insertAdjacentHTML('beforebegin',
+                            '<div id="trial-banner-' + id + '" style="box-sizing:border-box;width:100%;padding:10px 16px;margin-bottom:10px;background:' + bannerColor + '15;border:1px solid ' + bannerColor + '40;border-radius:8px;font-size:13px;color:' + bannerColor + ';text-align:center;font-weight:600;">' +
+                            bannerText + (diasR <= 5 ? ' — <a href="/suscripcion" style="color:' + bannerColor + ';text-decoration:underline;">Activar plan</a>' : '') +
+                            '</div>'
+                        );
+                    }
 
                             if (data.status === 'connected') {
                                 qrContainer.innerHTML = '<p style="color: #00bc7d; font-weight: bold;">Sesión Activa ${icon('checkCircle', 'w-4 h-4 inline text-green-400')}</p>';
@@ -1695,8 +1877,8 @@ async function main() {
 
         // Solo iniciar automáticamente si tiene sesión activa, el cliente está marcado como activo
         // y la suscripción está al día (no vencida ni en período de gracia).
-        const estado = billingService.estadoSuscripcion(client.fechaVencimiento);
-        const suscOk = client.idCliente === 'admin' || estado === 'activa' || estado === 'sin_suscripcion';
+        const estado = billingService.estadoSuscripcion(client.fechaVencimiento, client.trialEndDate);
+        const suscOk = client.idCliente === 'admin' || estado === 'activa' || estado === 'sin_suscripcion' || estado === 'trial';
 
         if (fs.existsSync(credsFile) && client.activo && suscOk) {
             console.log(`${ts()} [System] Auto-starting active session for ${client.idCliente}`);

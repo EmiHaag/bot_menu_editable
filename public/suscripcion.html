@@ -425,11 +425,15 @@
         <p>Elegí el plan que mejor se adapte a tu negocio. Sin contratos largos, sin sorpresas.</p>
         <div class="plan-grid">
             <div class="plan-card standard">
-                <div class="plan-badge" id="badgePrimerMes">🥇 Primer mes gratis</div>
-                <h3>Plan Estándar (Cancelás cuando quieras)</h3>
-                <div class="plan-price"><span class="price-num">$<span id="precioDisplay"></span> ARS</span> <span class="price-period">/mes</span></div>
+                <div class="plan-badge" style="background:#2e7d32; color:#fff;" id="badgePrimerMes">🎉 PRUEBA GRATIS 30 DÍAS</div>
+                <h3>Plan Estándar</h3>
+                <div class="plan-price">
+                    <span class="price-num">$0 <span class="price-period" style="font-size:0.7em; color:#888;">primer mes</span></span>
+                </div>
+                <div style="font-size:0.85rem; color:#666; margin-top:-8px; margin-bottom:14px;">luego <strong>$<span id="precioDisplay"></span> ARS</strong>/mes · Cancelás cuando quieras</div>
                 <div class="plan-sub">Bot editor autoadministrable · Sin límite de productos</div>
                 <ul class="plan-features">
+                    <li><span class="ck">✓</span> 30 días de prueba sin compromiso</li>
                     <li><span class="ck">✓</span> Bot de WhatsApp con menú interactivo</li>
                     <li><span class="ck">✓</span> Panel editor desde el navegador</li>
                     <li><span class="ck">✓</span> Google Sheets con pedidos en tiempo real</li>
@@ -437,8 +441,7 @@
                     <li><span class="ck">✓</span> Captura de datos del cliente</li>
                     <li><span class="ck">✓</span> Bot de reserva de turnos con tu propio calendario</li>
                 </ul>
-                <p class="plan-note">💳 Pagás cada mes mediante suscripción vía MercadoPago y cancelás en cualquier momento</p>
-                <button class="plan-btn primary" id="btnSubscribeStandard" onclick="openSubscribeModal()">💳 Suscribirme ahora</button>
+                <button class="plan-btn primary" id="btnSubscribeStandard" onclick="openSubscribeModal()">🚀 Empezar prueba gratis</button>
             </div>
             <div class="plan-card">
                 <div class="plan-badge" style="background:#e3f2fd; color:#1565c0;">⚡ A medida</div>
@@ -464,7 +467,7 @@
                     <thead>
                         <tr>
                             <th class="feature-col">Característica</th>
-                            <th class="estandar-col">Plan Estándar ($<span id="comparePriceDisplay"></span> ARS)</th>
+                            <th class="estandar-col">Plan Estándar ($0 primer mes)</th>
                             <th>Plan Personalizado</th>
                         </tr>
                     </thead>
@@ -573,23 +576,18 @@
     <div class="modal-overlay" id="modalSubscribe">
         <div class="modal">
             <button class="modal-close" onclick="closeSubscribeModal()">✕</button>
-            <h3>💳 Suscribite al Plan Estándar</h3>
-            <p>Completá tus datos para iniciar la suscripción mensual por <strong>$<span id="modalSubscribePrice"></span> ARS/mes</strong>.</p>
-            <p style="font-size:0.78rem;color:#999;margin-top:-12px;margin-bottom:16px;" id="primerMesNote">El primer mes es gratis 🎁</p>
+            <h3>Activá el registro por 30 días gratis</h3>
             <div class="modal-form">
                 <label for="subscribeName">Nombre</label>
                 <input type="text" id="subscribeName" placeholder="Tu nombre" autocomplete="off" required>
-                <label for="subscribeEmail">Email <span style="color:#d32f2f;font-size:0.72rem;font-weight:600;">(Tu email de MercadoPago lo usamos para habilitar la suscripción)</span></label>
+                <label for="subscribeEmail">Email</label>
                 <input type="email" id="subscribeEmail" placeholder="tu@email.com" autocomplete="off" required>
-                <label for="subscribeDni">DNI o CUIT</label>
-                <input type="text" id="subscribeDni" placeholder="Ej: 30123456 o 20123456789" autocomplete="off" inputmode="numeric" required>
-                <p style="font-size:0.72rem;color:#999;margin-top:-10px;margin-bottom:14px;">Necesario para emitir tu Factura C.</p>
+                <label for="subscribePassword">Contraseña</label>
+                <input type="password" id="subscribePassword" placeholder="Mínimo 8 caracteres, 1 letra y 1 número" autocomplete="off" required>
                 <div id="subscribeError" style="color:#d32f2f;font-size:0.82rem;margin-bottom:10px;display:none;"></div>
-                <button class="plan-btn primary" id="btnSubscribeSubmit" onclick="startSubscription()">
-                    🔄 Ir a MercadoPago
+                <button class="plan-btn primary" id="btnSubscribeSubmit" onclick="startTrialRegister()">
+                    🚀 Activar 30 días gratis
                 </button>
-                <p style="font-size:0.72rem;color:#aaa;margin-top:12px;">Serás redirigido a MercadoPago para completar el pago de forma segura.</p>
-                <p style="font-size:0.72rem;color:#999;margin-top:4px;">Asegurate de tener dinero en cuenta (al menos el equivalente a 1 USD). Si la tarjeta es de débito y tiene saldo $0, el banco emisor rechaza automáticamente esa validación por "fondos insuficientes", por más que el comercio te ofrezca un mes gratis. El sistema necesita ver que la cuenta no está vacía o inactiva.</p>
             </div>
         </div>
     </div>
@@ -644,19 +642,11 @@
                 if (d.phone) BOT_PHONE = d.phone;
                 if (d.precioEstandar) PRECIO_ESTANDAR = d.precioEstandar;
                 document.getElementById('precioDisplay').textContent = PRECIO_ESTANDAR;
-                document.getElementById('comparePriceDisplay').textContent = PRECIO_ESTANDAR;
-                if (d.trialGratis === false) {
-                    var badge = document.getElementById('badgePrimerMes');
-                    if (badge) badge.style.display = 'none';
-                    var note = document.getElementById('primerMesNote');
-                    if (note) note.style.display = 'none';
-                }
             });
         })();
 
         // Modal de suscripción MercadoPago
         function openSubscribeModal() {
-            document.getElementById('modalSubscribePrice').textContent = PRECIO_ESTANDAR;
             document.getElementById('subscribeError').style.display = 'none';
             document.getElementById('modalSubscribe').classList.add('open');
         }
@@ -664,59 +654,47 @@
             document.getElementById('modalSubscribe').classList.remove('open');
         }
 
-        var pollTimer = null;
-        var currentPreapprovalId = null;
-        var pagoOk = false;
-
-        async function startSubscription() {
+        async function startTrialRegister() {
             var name = document.getElementById('subscribeName').value.trim();
             var email = document.getElementById('subscribeEmail').value.trim();
-            var dni = document.getElementById('subscribeDni').value.trim();
+            var password = document.getElementById('subscribePassword').value;
             var errorEl = document.getElementById('subscribeError');
             var btn = document.getElementById('btnSubscribeSubmit');
 
             if (!name) { errorEl.textContent = 'Ingresá tu nombre'; errorEl.style.display = 'block'; return; }
-            if (!email || !email.includes('@')) { errorEl.textContent = 'Ingresá un email válido'; errorEl.style.display = 'block'; return; }
-            if (!dni || !/^\d{7,11}$/.test(dni.replace(/\D/g, ''))) { errorEl.textContent = 'Ingresá un DNI (7-8 dígitos) o CUIT (11 dígitos) válido'; errorEl.style.display = 'block'; return; }
+            if (!email || !/^[a-zA-Z0-9.!#$%&'*+\/=?^_`{|}~-]+@[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$/.test(email)) { errorEl.textContent = 'Ingresá un email válido (ej: tu@email.com)'; errorEl.style.display = 'block'; return; }
+            if (!password || password.length < 8 || !/[a-zA-Z]/.test(password) || !/[0-9]/.test(password)) { errorEl.textContent = 'La contraseña debe tener al menos 8 caracteres, incluir una letra y un número'; errorEl.style.display = 'block'; return; }
 
             errorEl.style.display = 'none';
             btn.disabled = true;
-            btn.textContent = '⏳ Creando suscripción...';
+            btn.textContent = '⏳ Creando cuenta...';
 
             try {
-                var res = await fetch('/api/mercadopago/create-subscription', {
+                var res = await fetch('/api/register', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ name: name, email: email, dni: dni })
+                    body: JSON.stringify({ name: name, email: email, password: password })
                 });
                 var data = await res.json();
                 if (!res.ok) throw new Error(data.error || 'Error del servidor');
 
-                currentPreapprovalId = data.preapproval_id;
-                btn.textContent = '⏳ Esperando pago...';
+                btn.textContent = '⏳ Iniciando sesión...';
 
-                // Abrir MP en popup
-                var mpWindow = window.open(data.init_point, '_blank', 'width=800,height=700');
+                var loginRes = await fetch('/api/login', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ username: data.username, password: password })
+                });
+                var loginData = await loginRes.json();
+                if (!loginRes.ok) throw new Error(loginData.error || 'Error al iniciar sesión');
 
-                // Polling cada 2s para detectar el pago (via servidor que consulta MP API)
-                pollTimer = setInterval(async function() {
-                    try {
-                        var r = await fetch('/api/mercadopago/check-status?preapproval_id=' + currentPreapprovalId);
-                        var st = await r.json();
-                        if (st.status === 'authorized' || st.status === 'approved') {
-                            pagoOk = true;
-                            clearInterval(pollTimer);
-                            btn.textContent = '✅ Pago confirmado';
-                            if (mpWindow && !mpWindow.closed) mpWindow.close();
-                            window.location.href = '/pago_exitoso?preapproval_id=' + currentPreapprovalId;
-                        }
-                    } catch(e) {}
-                }, 2000);
+                btn.textContent = '✅ Redirigiendo...';
+                window.location.href = '/app/verify-email-sent';
             } catch (err) {
-                errorEl.textContent = 'Error: ' + err.message;
+                errorEl.textContent = err.message;
                 errorEl.style.display = 'block';
                 btn.disabled = false;
-                btn.textContent = '🔄 Ir a MercadoPago';
+                btn.textContent = '🚀 Activar 30 días gratis';
             }
         }
 

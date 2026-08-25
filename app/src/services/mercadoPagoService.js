@@ -5,7 +5,7 @@ class MercadoPagoService {
     return process.env.MERCADOPAGO_ACCESS_TOKEN;
   }
 
-  async createPreapproval({ reason, amount, payerEmail, backUrl, notificationUrl, trialPeriodDays }) {
+  async createPreapproval({ reason, amount, payerEmail, backUrl, notificationUrl, trialPeriodDays, externalReference }) {
     const autoRecurring = {
       frequency: 1,
       frequency_type: 'months',
@@ -24,6 +24,9 @@ class MercadoPagoService {
       auto_return: 'approved',
       status: 'pending'
     };
+    if (externalReference) {
+      body.external_reference = String(externalReference);
+    }
 
     const res = await fetch(`${API_BASE}/preapproval`, {
       method: 'POST',

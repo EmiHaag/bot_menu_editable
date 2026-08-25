@@ -22,9 +22,23 @@ function addDays(date, days) {
 // Período de gracia (días) antes de suspender el servicio tras el vencimiento
 const GRACE_DAYS = 10;
 
-// Clasifica el estado de una suscripción según su fecha de vencimiento.
-// Devuelve: 'activa' | 'gracia' | 'suspendida' | 'sin_suscripcion'
-function estadoSuscripcion(fechaVencimiento) {
+// Clasifica el estado de una suscripción según su fecha de vencimiento y trial.
+// Devuelve: 'trial' | 'trial_vencido' | 'activa' | 'gracia' | 'suspendida' | 'sin_suscripcion'
+function estadoSuscripcion(fechaVencimiento, trialEndDate) {
+  // Si tiene trial activo (sin pago aún)
+  if (trialEndDate) {
+    const tEnd = new Date(trialEndDate);
+    if (!isNaN(tEnd.getTime())) {
+      const hoy = new Date();
+      const tienePago = fechaVencimiento && !isNaN(new Date(fechaVencimiento).getTime());
+      if (!tienePago) {
+        // Sin pago: evaluar trial
+        if (hoy < tEnd) return 'trial';
+        return 'trial_vencido';
+      }
+    }
+  }
+  // Lógica original para usuarios con pago
   if (!fechaVencimiento) return 'sin_suscripcion';
   const vto = new Date(fechaVencimiento);
   if (isNaN(vto.getTime())) return 'sin_suscripcion';
@@ -49,6 +63,15 @@ function diasVencido(fechaVencimiento) {
   const vto = new Date(fechaVencimiento);
   if (isNaN(vto.getTime())) return -1;
   return Math.floor((new Date() - vto) / (1000 * 60 * 60 * 24));
+}
+
+// Días restantes de trial (positivo = aún tiene trial, 0 o negativo = venció)
+function diasRestantesTrial(trialEndDate) {
+  if (!trialEndDate) return -1;
+  const tEnd = new Date(trialEndDate);
+  if (isNaN(tEnd.getTime())) return -1;
+  const hoy = new Date();
+  return Math.ceil((tEnd - hoy) / (1000 * 60 * 60 * 24));
 }
 
 function fmtDate(d) {
@@ -78,6 +101,12 @@ async function ensureTable() {
     `;
     await sql`
       ALTER TABLE users ADD COLUMN IF NOT EXISTS fecha_vencimiento TEXT DEFAULT ''
+    `;
+    await sql`
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS trial_start_date TIMESTAMPTZ
+    `;
+    await sql`
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS trial_end_date TIMESTAMPTZ
     `;
 
     await sql`
@@ -265,6 +294,19 @@ async function getFacturasByIdCliente(idCliente) {
   }
 }
 
+async function deleteSuscripcionByIdCliente(idCliente) {
+  if (!sql || !idCliente) return false;
+  try {
+    await sql`DELETE FROM suscripciones WHERE id_cliente = ${idCliente}`;
+    await sql`DELETE FROM facturas WHERE id_cliente = ${idCliente}`;
+    console.log(`[BillingService] Suscripciones y facturas eliminadas para ${idCliente}`);
+    return true;
+  } catch (err) {
+    console.error('[BillingService] Error eliminando suscripciones:', err.message);
+    return false;
+  }
+}
+
 module.exports = {
   addMonths,
   addDays,
@@ -272,6 +314,7 @@ module.exports = {
   estadoSuscripcion,
   fechaSuspension,
   diasVencido,
+  diasRestantesTrial,
   fmtDate,
   detectarDocumento,
   ensureTable,
@@ -282,4 +325,5 @@ module.exports = {
   registrarFactura,
   getFacturaByPaymentId,
   getFacturasByIdCliente,
+  deleteSuscripcionByIdCliente,
 };

@@ -11,8 +11,7 @@ let cache = null;
 let cacheTime = 0;
 
 const ENV_MAP = {
-    precio_estandar: 'PRECIO_ESTANDAR',
-    trial_gratis: 'TRIAL_GRATIS'
+    precio_estandar: 'PRECIO_ESTANDAR'
 };
 
 function parseValue(s) {
