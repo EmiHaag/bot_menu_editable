@@ -130,8 +130,8 @@ class StateService {
 
     // ─── Flujo de turnos (Gestor de Turnos / Google Calendar) ───
 
-    setWaitingTurnoDate(jid, nodeId) {
-        this.cache.set(this._getKey(jid) + ':turno_date', nodeId, 600);
+    setWaitingTurnoDate(jid, nodeData) {
+        this.cache.set(this._getKey(jid) + ':turno_date', nodeData, 600);
     }
 
     getWaitingTurnoDate(jid) {

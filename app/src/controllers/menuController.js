@@ -644,7 +644,7 @@ class MenuController {
         msg += `\n\n_Escribe *v* para volver atrás._`;
         await this.sendPresenceTyping(sock, jid);
         await sock.sendMessage(jid, { text: msg });
-        this.stateService.setWaitingTurnoDate(jid, node.id);
+        this.stateService.setWaitingTurnoDate(jid, { id: node.id, title: node.title || '' });
         this.stateService.setUserState(jid, node.id);
     }
 
@@ -652,7 +652,8 @@ class MenuController {
      * Procesa la fecha ingresada: valida y muestra los horarios disponibles
      */
     async _handleTurnoDate(sock, jid, text) {
-        const nodeId = this.stateService.getWaitingTurnoDate(jid);
+        const nodeData = this.stateService.getWaitingTurnoDate(jid);
+        const nodeId = (nodeData && nodeData.id) || nodeData;
 
         if (text === 'v' || text === 'atras' || text === 'atrás') {
             this.stateService.clearBookingFlow(jid);
@@ -704,12 +705,13 @@ class MenuController {
             await sock.sendMessage(jid, {
                 text: `😕 No hay horarios disponibles para el *${this._fmtFecha(fecha)}*.\n\nProbá con otro día.`
             });
-            this.stateService.setWaitingTurnoDate(jid, nodeId);
+            this.stateService.setWaitingTurnoDate(jid, { id: nodeId, title: (nodeData && nodeData.title) || '' });
             return;
         }
 
         const session = {
             nodeId,
+            nodeTitle: (nodeData && nodeData.title) || '',
             fecha,
             calendarId: cc.calendar_id,
             duracionMin: cc.slot_duration_minutes || 30,
@@ -744,7 +746,7 @@ class MenuController {
 
         if (text === 'v' || text === 'atras' || text === 'atrás') {
             this.stateService.clearWaitingTurnoSlot(jid);
-            this.stateService.setWaitingTurnoDate(jid, session.nodeId);
+            this.stateService.setWaitingTurnoDate(jid, { id: session.nodeId, title: session.nodeTitle || '' });
             await this.sendPresenceTyping(sock, jid);
             await sock.sendMessage(jid, { text: '📅 ¿Para qué día querés tu turno?' });
             return;
@@ -817,23 +819,24 @@ class MenuController {
             this.stateService.setWaitingTurnoConfirm(jid, session);
 
             await this.sendPresenceTyping(sock, jid);
-            await sock.sendMessage(jid, {
-                text: `📋 *Resumen de tu turno:*\n\n` +
-                    `📅 Fecha: *${this._fmtFecha(session.fecha)}*\n` +
-                    `⏰ Hora: *${session.slot.label}*\n` +
-                    `👤 Nombre: *${session.nombre}*\n\n` +
-                    `¿Confirmás la reserva?\n\n*1*. Sí, confirmar\n*2*. No, cancelar`
-            });
+            const resumen = `📋 *Resumen de tu turno:*\n\n` +
+                (session.nodeTitle ? `🏷️ Servicio: *${session.nodeTitle}*\n` : '') +
+                `📅 Fecha: *${this._fmtFecha(session.fecha)}*\n` +
+                `⏰ Hora: *${session.slot.label}*\n` +
+                `👤 Nombre: *${session.nombre}*\n\n` +
+                `¿Confirmás la reserva?\n\n*1*. Sí, confirmar\n*2*. No, cancelar`;
+            await sock.sendMessage(jid, { text: resumen });
             return;
         }
 
         if (text === '1') {
             this.stateService.clearBookingFlow(jid);
             try {
+                const category = session.nodeTitle ? `${session.nodeTitle}: ` : '';
                 const event = await calendarService.agendarTurno({
                     calendarId: session.calendarId,
-                    summary: `Turno ${session.nombre}`,
-                    description: `Turno reservado vía Bot Menu.\nTeléfono: ${jid}\nNombre: ${session.nombre}`,
+                    summary: `${category}${session.nombre}`,
+                    description: `Turno reservado vía Bot Menu.\nServicio: ${session.nodeTitle || '-'}\nTeléfono: ${jid}\nNombre: ${session.nombre}`,
                     fechaInicioISO: session.slot.startISO,
                     fechaFinISO: session.slot.endISO
                 });
@@ -944,7 +947,7 @@ class MenuController {
 
         if (text === 'v' || text === 'atras' || text === 'atrás') {
             this.stateService.clearWaitingTurnoWaitlistName(jid);
-            this.stateService.setWaitingTurnoDate(jid, session.nodeId);
+            this.stateService.setWaitingTurnoDate(jid, { id: session.nodeId, title: session.nodeTitle || '' });
             await this.sendPresenceTyping(sock, jid);
             await sock.sendMessage(jid, { text: '📅 ¿Para qué día querés tu turno?' });
             return;
@@ -1032,10 +1035,11 @@ class MenuController {
             }
 
             try {
+                const category = data.nodeTitle ? `${data.nodeTitle}: ` : '';
                 const event = await calendarService.agendarTurno({
                     calendarId: data.calendarId,
-                    summary: `Turno ${data.nombre}`,
-                    description: `Turno reservado vía Bot Menu (lista de espera).\nTeléfono: ${jid}\nNombre: ${data.nombre}`,
+                    summary: `${category}${data.nombre}`,
+                    description: `Turno reservado vía Bot Menu (lista de espera).\nServicio: ${data.nodeTitle || '-'}\nTeléfono: ${jid}\nNombre: ${data.nombre}`,
                     fechaInicioISO: data.startISO,
                     fechaFinISO: data.endISO
                 });
@@ -1068,7 +1072,7 @@ class MenuController {
             await this.sendPresenceTyping(sock, jid);
             await sock.sendMessage(jid, { text: '👍 Perfecto, pasamos al siguiente de la lista.' });
             // Continuar la cascada con el siguiente de la cola
-            await this._ofrecerCascada(sock, data.eventId, data.calendarId, data.startISO, data.endISO);
+            await this._ofrecerCascada(sock, data.eventId, data.calendarId, data.startISO, data.endISO, data.nodeTitle);
             return;
         }
 
@@ -1235,7 +1239,7 @@ class MenuController {
             await sock.sendMessage(jid, { text: `🗓️ *Tu turno del ${fecha} a las ${hora} fue cancelado.*` });
 
             if (cc.waitlist_enabled === true || cc.waitlist_enabled === 'true') {
-                await this._ofrecerCascada(sock, eventId, cc.calendar_id, turno.fecha_inicio, turno.fecha_fin);
+                await this._ofrecerCascada(sock, eventId, cc.calendar_id, turno.fecha_inicio, turno.fecha_fin, '');
             }
 
             await this._preguntarReprogramar(sock, jid, 'root');
@@ -1250,7 +1254,7 @@ class MenuController {
      * Ofrece un slot liberado al primero de la lista de espera y continúa en cascada.
      * Los parámetros fechaInicio/fechaFin son TIMESTAMPTZ (Date) o ISO strings.
      */
-    async _ofrecerCascada(sock, eventIdLibre, calendarId, fechaInicio, fechaFin) {
+    async _ofrecerCascada(sock, eventIdLibre, calendarId, fechaInicio, fechaFin, nodeTitle) {
         const startISO = fechaInicio instanceof Date ? fechaInicio.toISOString() : new Date(fechaInicio).toISOString();
         const endISO = fechaFin instanceof Date ? fechaFin.toISOString() : new Date(fechaFin).toISOString();
 
@@ -1271,7 +1275,8 @@ class MenuController {
             endISO,
             fecha,
             hora,
-            nombre: proximo.cliente_nombre
+            nombre: proximo.cliente_nombre,
+            nodeTitle: nodeTitle || ''
         });
 
         try {
@@ -1282,7 +1287,7 @@ class MenuController {
             console.error('[Turnos] Error ofreciendo turno de lista de espera:', err.message);
             await botConfigService.marcarEstadoListaEspera(proximo.id, 'descartado');
             this.stateService.clearWaitingTurnoCascada(jidDestino);
-            await this._ofrecerCascada(sock, eventIdLibre, calendarId, fechaInicio, fechaFin);
+            await this._ofrecerCascada(sock, eventIdLibre, calendarId, fechaInicio, fechaFin, nodeTitle);
         }
     }
 
