@@ -49,17 +49,22 @@ class GoogleCalendarService extends GoogleAuthBase {
     }
 
     /**
-     * Filtra los bloques ocupados (freebusy.query) dentro de business_hours
-     * y retorna los slots libres para la fecha dada.
-     * @param {Object} params
-     * @param {string} params.calendarId - ID del calendario
-     * @param {string} params.fecha - 'YYYY-MM-DD' (día en Argentina)
-     * @param {number} params.duracionMin - duración del turno en minutos
-     * @param {Object} params.businessHours - { '0'..'6': [{desde,hasta}] }
-     * @param {number} params.minNoticeHours - salto mínimo de reserva (horas)
-     * @returns {Promise<Array>} slots libres [{ startISO, endISO, label }]
+     * Consulta disponibilidad y devuelve los slots libres (mantiene compatibilidad).
      */
-    async consultarDisponibilidad({ calendarId, fecha, duracionMin = 30, businessHours = {}, minNoticeHours = 0 }) {
+    async consultarDisponibilidad(params) {
+        const result = await this._consultarCompleto(params);
+        return result.slots;
+    }
+
+    /**
+     * Consulta disponibilidad y devuelve tanto los libres como los ocupados.
+     * @returns {Promise<{slots:Array, ocupados:Array}>}
+     */
+    async consultarDisponibilidadConOcupados(params) {
+        return this._consultarCompleto(params);
+    }
+
+    async _consultarCompleto({ calendarId, fecha, duracionMin = 30, businessHours = {}, minNoticeHours = 0 }) {
         if (!calendarId) throw new Error('calendar_id no configurado');
 
         const dayStart = this._toDate(fecha, 0, 0);
@@ -90,6 +95,7 @@ class GoogleCalendarService extends GoogleAuthBase {
         const ranges = businessHours[String(dow)] || [];
         const now = Date.now();
         const slots = [];
+        const ocupados = [];
 
         for (const range of ranges) {
             if (!range || !range.desde || !range.hasta) continue;
@@ -99,27 +105,36 @@ class GoogleCalendarService extends GoogleAuthBase {
 
             let startMin = h1 * 60 + m1;
             let endMin = h2 * 60 + m2;
-            if (endMin <= startMin) continue; // rangos nocturnos no se agendan dentro del día
+            if (endMin <= startMin) continue;
 
             for (let s = startMin; s + duracionMin <= endMin; s += duracionMin) {
                 const e = s + duracionMin;
-                const overlap = busyRanges.some(([bs, be]) => s < be && bs < e);
-                if (overlap) continue;
-
                 const startISO = this._toISO(this._toDate(fecha, Math.floor(s / 60), s % 60));
                 const endISO = this._toISO(this._toDate(fecha, Math.floor(e / 60), e % 60));
 
-                if (minNoticeHours > 0 && new Date(startISO).getTime() < now + minNoticeHours * 3600 * 1000) continue;
+                const startTime = new Date(startISO).getTime();
+                // Horarios que ya comenzaron hoy no se ofrecen
+                if (startTime < now) continue;
+                // Salto mínimo de reserva configurado
+                if (minNoticeHours > 0 && startTime < now + minNoticeHours * 3600 * 1000) continue;
 
-                slots.push({
+                const slotEntry = {
                     startISO,
                     endISO,
                     label: `${this._pad(Math.floor(s / 60))}:${this._pad(s % 60)}`
-                });
+                };
+
+                const overlap = busyRanges.some(([bs, be]) => s < be && bs < e);
+                if (overlap) {
+                    ocupados.push(slotEntry);
+                    continue;
+                }
+
+                slots.push(slotEntry);
             }
         }
 
-        return slots;
+        return { slots, ocupados };
     }
 
     /**

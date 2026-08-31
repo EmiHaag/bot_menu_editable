@@ -171,6 +171,83 @@ class StateService {
         this.cache.del(this._getKey(jid) + ':turno_slot');
         this.cache.del(this._getKey(jid) + ':turno_confirm');
     }
+
+    // Recordatorio: esperando respuesta 1=confirmar / 2=cancelar
+    setWaitingTurnoReminder(jid, data) {
+        this.cache.set(this._getKey(jid) + ':turno_reminder', data, 86400);
+    }
+
+    getWaitingTurnoReminder(jid) {
+        return this.cache.get(this._getKey(jid) + ':turno_reminder');
+    }
+
+    clearWaitingTurnoReminder(jid) {
+        this.cache.del(this._getKey(jid) + ':turno_reminder');
+    }
+
+    // Lista de espera: esperando respuesta del slot liberado
+    setWaitingTurnoCascada(jid, data) {
+        this.cache.set(this._getKey(jid) + ':turno_cascada', data, 86400);
+    }
+
+    getWaitingTurnoCascada(jid) {
+        return this.cache.get(this._getKey(jid) + ':turno_cascada');
+    }
+
+    clearWaitingTurnoCascada(jid) {
+        this.cache.del(this._getKey(jid) + ':turno_cascada');
+    }
+
+    // Lista de espera: esperando el nombre para anotarse en la cola
+    setWaitingTurnoWaitlistName(jid, data) {
+        this.cache.set(this._getKey(jid) + ':turno_waitlist_name', data, 86400);
+    }
+
+    getWaitingTurnoWaitlistName(jid) {
+        return this.cache.get(this._getKey(jid) + ':turno_waitlist_name');
+    }
+
+    clearWaitingTurnoWaitlistName(jid) {
+        this.cache.del(this._getKey(jid) + ':turno_waitlist_name');
+    }
+
+    // Mis turnos: lista de turnos del usuario y el turno seleccionado
+    setMisTurnos(jid, turnos) {
+        this.cache.set(this._getKey(jid) + ':mis_turnos', turnos, 600);
+    }
+
+    getMisTurnos(jid) {
+        return this.cache.get(this._getKey(jid) + ':mis_turnos');
+    }
+
+    clearMisTurnos(jid) {
+        this.cache.del(this._getKey(jid) + ':mis_turnos');
+    }
+
+    setMisTurnoSeleccionado(jid, data) {
+        this.cache.set(this._getKey(jid) + ':mis_turno_sel', data, 600);
+    }
+
+    getMisTurnoSeleccionado(jid) {
+        return this.cache.get(this._getKey(jid) + ':mis_turno_sel');
+    }
+
+    clearMisTurnoSeleccionado(jid) {
+        this.cache.del(this._getKey(jid) + ':mis_turno_sel');
+    }
+
+    // Reprogramación: esperando respuesta a "¿Te gustaría reprogramar el turno?"
+    setWaitingTurnoReprogram(jid, data) {
+        this.cache.set(this._getKey(jid) + ':turno_reprogram', data, 600);
+    }
+
+    getWaitingTurnoReprogram(jid) {
+        return this.cache.get(this._getKey(jid) + ':turno_reprogram');
+    }
+
+    clearWaitingTurnoReprogram(jid) {
+        this.cache.del(this._getKey(jid) + ':turno_reprogram');
+    }
 }
 
 module.exports = StateService;

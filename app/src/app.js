@@ -37,6 +37,7 @@ const logService = require('./services/logService');
 const logger = require('./utils/logger');
 const crypto = require('crypto');
 const { icon } = require('./utils/icons');
+const reminderService = require('./services/reminderService');
 
 const appRouter = express.Router();
 const AUTH_SESSIONS_DIR = path.resolve(
@@ -1030,6 +1031,7 @@ async function startBot(botConfig, forceStart = false) {
 
                 const shouldReconnect = statusCode !== DisconnectReason.loggedOut && statusCode !== DisconnectReason.connectionReplaced;
 
+                reminderService.stopBot(id);
                 console.log(`${ts()} [${id}] Connection closed. Status: ${statusCode}. Reconnecting: ${shouldReconnect}`);
                 logger.warn('bot', id, `Bot desconectado (código ${statusCode})`, { statusCode, reconnecting: shouldReconnect });
 
@@ -1068,6 +1070,7 @@ async function startBot(botConfig, forceStart = false) {
                 botQRs[id].qr = null;
                 botQRs[id].rawQr = null;
                 botQRs[id].qrReadyTimestamp = null;
+                reminderService.startBot(id, { sock, menuController });
             } else if (connection) {
                 botQRs[id].status = connection;
                 console.log(`${ts()} [${id}] Connection state: ${connection}`);

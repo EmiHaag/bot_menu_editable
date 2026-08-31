@@ -412,6 +412,42 @@ const helpGuideHTML = `
                                 <div class="example">
                                     ${icon('arrowPath', 'w-4 h-4 inline')} <strong>Comandos del flujo:</strong> <code>v</code> vuelve al paso anterior y <code>0</code> vuelve al menú principal.
                                 </div>
+                                <div class="step">
+                                    <div class="step-num">6</div>
+                                    <div class="step-text">
+                                        <strong>Activá los recordatorios</strong>
+                                        En la configuración de turnos marcá <strong>"Activar recordatorios"</strong> y elegí si querés avisar con <strong>2 o 24 horas</strong> de anticipación.<br>
+                                        <small>${icon('informationCircle', 'w-4 h-4 inline')} El bot envía al cliente un recordatorio antes del turno (con opciones para <strong>confirmar</strong> o <strong>cancelar</strong>). Además, <strong>2 horas antes</strong> envía un aviso de proximidad (sin opción de cancelar) aunque el cliente ya haya confirmado.</small>
+                                    </div>
+                                </div>
+                                <div class="step">
+                                    <div class="step-num">7</div>
+                                    <div class="step-text">
+                                        <strong>Activá la lista de espera (opcional)</strong>
+                                        Marcá <strong>"Activar lista de espera"</strong> para que los horarios ocupados se muestren tachados <strong>"(solicitar si cancela)"</strong>. Si un turno se libera, el bot ofrece el horario al primero de la cola.
+                                    </div>
+                                </div>
+                                <div class="step">
+                                    <div class="step-num">8</div>
+                                    <div class="step-text">
+                                        <strong>Activá "Mis turnos" (opcional)</strong>
+                                        Con <strong>"Mostrar Mis turnos en el menú"</strong> activado, el bot agrega automáticamente la opción <strong>"Mis turnos"</strong> al menú principal. El cliente puede ver sus turnos reservados, confirmarlos y (si lo permitís) cancelarlos.
+                                    </div>
+                                </div>
+                                <div class="step">
+                                    <div class="step-num">9</div>
+                                    <div class="step-text">
+                                        <strong>Configurá la cancelación (opcional)</strong>
+                                        Si querés que el cliente <strong>no pueda cancelar</strong> desde "Mis turnos", desmarcá <strong>"Permitir cancelar turno desde Mis turnos"</strong>.
+                                    </div>
+                                </div>
+                                <div class="step">
+                                    <div class="step-num">10</div>
+                                    <div class="step-text">
+                                        <strong>Reprogramación (opcional)</strong>
+                                        Con <strong>"Ofrecer reprogramar el turno al cancelar"</strong> activado, al cancelar un turno el bot pregunta si quiere reprogramar para otro momento (<code>1</code> Sí / <code>2</code> No). Si responde Sí, arranca de nuevo el flujo de reserva.
+                                    </div>
+                                </div>
                             </div>
                         </details>
 

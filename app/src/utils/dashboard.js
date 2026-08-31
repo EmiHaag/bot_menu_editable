@@ -1795,6 +1795,42 @@ ${helpGuideHTML}
                                     <input type="number" id="minNoticeInput" value="2" min="0" style="width: 100px; padding: 8px 12px; border: 1px solid var(--border-color); border-radius: 6px; font-size: 14px;">
                                     <small style="color:#777;">No permitir turnos con menos de estas horas de anticipación.</small>
                                 </div>
+                                <div style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap;">
+                                    <label style="font-weight: 600; min-width: 200px;">Recordatorio de turno:</label>
+                                    <label style="display:flex;align-items:center;gap:6px;cursor:pointer;"><input type="checkbox" id="reminderEnabledInput" style="width:17px;height:17px;cursor:pointer;"> Activar recordatorios</label>
+                                </div>
+                                <div style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap;">
+                                    <label style="font-weight: 600; min-width: 200px;">Recordar (antes del turno):</label>
+                                    <select id="reminderHoursInput" style="width: 120px; padding: 8px 12px; border: 1px solid var(--border-color); border-radius: 6px; font-size: 14px;">
+                                        <option value="2">2 horas</option>
+                                        <option value="24">24 horas</option>
+                                    </select>
+                                    <small style="color:#777;">Envía un recordatorio al cliente con opciones confirmar/cancelar (solo 8:00 a 22:00 hs).</small>
+                                </div>
+                                <div style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap;">
+                                    <label style="font-weight: 600; min-width: 200px;">Lista de espera:</label>
+                                    <label style="display:flex;align-items:center;gap:6px;cursor:pointer;"><input type="checkbox" id="waitlistEnabledInput" style="width:17px;height:17px;cursor:pointer;"> Activar lista de espera</label>
+                                </div>
+                                <div style="font-size: 12px; color: #777;">Con la lista de espera activa, los horarios ocupados se muestran tachados "(solicitar si cancela)" y se avisa al primero de la cola si se libera un turno.</div>
+                                <div style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap;">
+                                    <label style="font-weight: 600; min-width: 200px;">Mis turnos:</label>
+                                    <label style="display:flex;align-items:center;gap:6px;cursor:pointer;"><input type="checkbox" id="misTurnosEnabledInput" style="width:17px;height:17px;cursor:pointer;"> Mostrar "Mis turnos" en el menú</label>
+                                </div>
+                                <div style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-left: 8px;">
+                                    <label style="font-weight: 600; min-width: 200px;">Cancelación:</label>
+                                    <label style="display:flex;align-items:center;gap:6px;cursor:pointer;"><input type="checkbox" id="misTurnosCancelarInput" style="width:17px;height:17px;cursor:pointer;"> Permitir cancelar turno desde "Mis turnos"</label>
+                                </div>
+                                <div style="font-size: 12px; color: #777;">"Mis turnos" le muestra al cliente sus turnos reservados con opciones de confirmar/cancelar. Se agrega automáticamente al menú principal.</div>
+                                <div style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-left: 8px;">
+                                    <label style="font-weight: 600; min-width: 200px;">Cancelación en recordatorio:</label>
+                                    <label style="display:flex;align-items:center;gap:6px;cursor:pointer;"><input type="checkbox" id="recordatorioCancelarInput" style="width:17px;height:17px;cursor:pointer;"> Permitir cancelar turno desde el recordatorio</label>
+                                </div>
+                                <div style="font-size: 12px; color: #777;">Si está desactivado, el recordatorio solo mostrará la opción de confirmar asistencia, sin poder cancelar el turno.</div>
+                                <div style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap;">
+                                    <label style="font-weight: 600; min-width: 200px;">Reprogramar:</label>
+                                    <label style="display:flex;align-items:center;gap:6px;cursor:pointer;"><input type="checkbox" id="reprogramarEnabledInput" style="width:17px;height:17px;cursor:pointer;"> Ofrecer reprogramar el turno al cancelar</label>
+                                </div>
+                                <div style="font-size: 12px; color: #777;">Al cancelar un turno, el bot le pregunta al cliente si quiere reprogramar su turno para otro momento (1: Sí / 2: No).</div>
                             </div>
 
                             <div style="margin-top: 16px;">
@@ -2100,7 +2136,6 @@ ${helpGuideHTML}
                                                             <input type="checkbox" id="addIsTurno" onchange="toggleOrderTag('add', '##TURNO##')" style="width:16px;height:16px;cursor:pointer;">
                                                             <label for="addIsTurno" style="margin-bottom:0;cursor:pointer;font-size:13px;">Reserva de turno<span class="info-icon" style="margin-left:4px;">i<span class="tooltip">Inicia el flujo de reserva: fecha ${icon('arrowRight', 'w-4 h-4 inline')} horario ${icon('arrowRight', 'w-4 h-4 inline')} confirmación (requiere Gestor de Turnos).</span></span></label>
                                                         </div>
-                                                        <div style="flex:1;"></div>
                                                     </div>
                                                 </div>
                                             </div>
@@ -2274,7 +2309,6 @@ ${helpGuideHTML}
                                                         <input type="checkbox" id="editIsTurno" onchange="toggleOrderTag('edit', '##TURNO##')" style="width:16px;height:16px;cursor:pointer;">
                                                         <label for="editIsTurno" style="margin-bottom:0;cursor:pointer;color:#166534;font-size:13px;">Reserva de turno<span class="info-icon" style="margin-left:4px;">i<span class="tooltip">Inicia el flujo de reserva: fecha ${icon('arrowRight', 'w-4 h-4 inline')} horario ${icon('arrowRight', 'w-4 h-4 inline')} confirmación (requiere Gestor de Turnos).</span></span></label>
                                                     </div>
-                                                    <div style="flex:1;"></div>
                                                 </div>
                                             </div>
                                         </div>
@@ -2483,7 +2517,7 @@ ${helpGuideHTML}
                         const BOT_TYPE_LABELS = { '1': 'Lunes', '2': 'Martes', '3': 'Miércoles', '4': 'Jueves', '5': 'Viernes', '6': 'Sábado', '0': 'Domingo' };
                         const BOT_TYPE_ORDER = ['1', '2', '3', '4', '5', '6', '0'];
                         let botType = 'CARRITO';
-                        let calendarConfig = { calendar_id: '', time_zone: 'America/Argentina/Buenos_Aires', slot_duration_minutes: 30, business_hours: {}, min_notice_hours: 2 };
+                        let calendarConfig = { calendar_id: '', time_zone: 'America/Argentina/Buenos_Aires', slot_duration_minutes: 30, business_hours: {}, min_notice_hours: 2, reminder_enabled: false, reminder_hours_before: 24, waitlist_enabled: false, mis_turnos_enabled: true, mis_turnos_cancelar: true, recordatorio_cancelar: true, reprogramar_enabled: true };
 
                         function renderBusinessHours() {
                             const body = document.getElementById('businessHoursBody');
@@ -2513,9 +2547,20 @@ ${helpGuideHTML}
                             return bh;
                         }
 
+                        let prevBotType = null;
+
                         function onBotTypeChange() {
                             const type = document.getElementById('botTypeInput').value;
                             document.getElementById('calendarSection').style.display = type === 'TURNOS' ? 'block' : 'none';
+                            // Aviso al usuario si pasa de TURNOS a otro tipo (afecta recordatorios)
+                            if (prevBotType === 'TURNOS' && type !== 'TURNOS') {
+                                const st = document.getElementById('botTypeStatus');
+                                if (st) st.innerHTML = '<span style="color:#d32f2f;">${icon('exclamationTriangle', 'w-4 h-4 inline')} Tu bot es de turnos. Si cambiás el tipo, los recordatorios y la lista de espera dejarán de funcionar.</span>';
+                            } else if (type === 'TURNOS') {
+                                const st = document.getElementById('botTypeStatus');
+                                if (st) st.textContent = '';
+                            }
+                            prevBotType = type;
                             toggleCartModules();
                             updateWizardAsk();
                         }
@@ -2566,6 +2611,13 @@ ${helpGuideHTML}
                                     document.getElementById('calendarIdInput').value = calendarConfig.calendar_id || '';
                                     document.getElementById('slotDurationInput').value = calendarConfig.slot_duration_minutes || 30;
                                     document.getElementById('minNoticeInput').value = calendarConfig.min_notice_hours || 0;
+                                    document.getElementById('reminderEnabledInput').checked = calendarConfig.reminder_enabled === true || calendarConfig.reminder_enabled === 'true';
+                                    document.getElementById('reminderHoursInput').value = calendarConfig.reminder_hours_before || 24;
+                                    document.getElementById('waitlistEnabledInput').checked = calendarConfig.waitlist_enabled === true || calendarConfig.waitlist_enabled === 'true';
+                                    document.getElementById('misTurnosEnabledInput').checked = calendarConfig.mis_turnos_enabled !== false;
+                                    document.getElementById('misTurnosCancelarInput').checked = calendarConfig.mis_turnos_cancelar !== false;
+                                    document.getElementById('recordatorioCancelarInput').checked = calendarConfig.recordatorio_cancelar !== false;
+                                    document.getElementById('reprogramarEnabledInput').checked = calendarConfig.reprogramar_enabled !== false;
                                     if (calendarConfig.calendar_id) {
                                         const btn = document.getElementById('calendarBtn');
                                         if (btn) btn.href = 'https://calendar.google.com/calendar/r?cid=' + encodeURIComponent(calendarConfig.calendar_id);
@@ -2590,6 +2642,13 @@ ${helpGuideHTML}
                                     time_zone: 'America/Argentina/Buenos_Aires',
                                     slot_duration_minutes: parseInt(document.getElementById('slotDurationInput').value, 10) || 30,
                                     min_notice_hours: parseInt(document.getElementById('minNoticeInput').value, 10) || 0,
+                                    reminder_enabled: document.getElementById('reminderEnabledInput').checked,
+                                    reminder_hours_before: parseInt(document.getElementById('reminderHoursInput').value, 10) || 24,
+                                    waitlist_enabled: document.getElementById('waitlistEnabledInput').checked,
+                                    mis_turnos_enabled: document.getElementById('misTurnosEnabledInput').checked,
+                                    mis_turnos_cancelar: document.getElementById('misTurnosCancelarInput').checked,
+                                    recordatorio_cancelar: document.getElementById('recordatorioCancelarInput').checked,
+                                    reprogramar_enabled: document.getElementById('reprogramarEnabledInput').checked,
                                     business_hours: collectBusinessHours()
                                 }
                             };
@@ -2897,19 +2956,21 @@ ${helpGuideJS}
                             if (wizardState.step >= 4) {
                                 stepIndicator.textContent = 'Finalizar configuraci\u00f3n';
                             } else {
-                                stepIndicator.textContent = (wizardState.isFaq ? 'Pregunta #' : 'Item #') + (wizardState.currentItemIdx + 1);
+                                stepIndicator.textContent = (wizardState.isFaq ? 'Pregunta #' : (wizardState.isTurno ? 'Turno/Servicio #' : 'Item #')) + (wizardState.currentItemIdx + 1);
                             }
-                            itemsCount.textContent = wizardState.items.length + (wizardState.isFaq ? ' preguntas agregadas' : ' items agregados');
+                            itemsCount.textContent = wizardState.items.length + (wizardState.isFaq ? ' preguntas agregadas' : (wizardState.isTurno ? ' turnos/servicios agregados' : ' items agregados'));
 
                             const qIdx = wizardState.currentItemIdx;
 
                             if (wizardState.step === 0) {
                                 // Ask for title
-                                const titleLabel = wizardState.isFaq ? '\u00bfPregunta?' : '\u00bfT\u00edtulo del item?';
+                                const titleLabel = wizardState.isFaq ? '\u00bfPregunta?' : (wizardState.isTurno ? '\u00bfNombre del turno/servicio?' : '\u00bfT\u00edtulo del item?');
                                 const titleHint = wizardState.isFaq
                                     ? 'ej: \u00bfHacen env\u00edos?, \u00bfCu\u00e1les son los horarios?, etc.'
-                                    : 'ej: Pizza Pepperoni, Coca Cola, etc. o si son turnos: Pediatria, Cardiologia, etc.';
-                                const titlePlaceholder = wizardState.isFaq ? 'ej: \u00bfHacen env\u00edos?' : 'ej: Pepperoni';
+                                    : (wizardState.isTurno
+                                        ? 'ej: Pediatria, Cardiologia, Consulta general, etc.'
+                                        : 'ej: Pizza Pepperoni, Coca Cola, etc.');
+                                const titlePlaceholder = wizardState.isFaq ? 'ej: \u00bfHacen env\u00edos?' : (wizardState.isTurno ? 'ej: Pediatria' : 'ej: Pepperoni');
                                 container.innerHTML = \`
                                     <p style="font-size: 16px; font-weight: 600; margin-bottom: 15px; color: var(--text-main);">\${titleLabel}</p>
                                     <p style="font-size: 13px; color: var(--text-muted); margin-bottom: 15px;">\${titleHint}</p>
@@ -2946,9 +3007,9 @@ ${helpGuideJS}
                                 const currentItem = wizardState.items[wizardState.items.length - 1];
                                 const itemSummary = currentItem ? 
                                     '<span style="color: var(--primary-color); font-weight: 600;">\u2713 ' + currentItem.title + '</span>' : '';
-                                const addedLabel = wizardState.isFaq ? '\u00a1Respuesta guardada!' : '\u00a1Item agregado!';
-                                const anotherLabel = wizardState.isFaq ? '\u00bfAgregar otra pregunta?' : '\u00bfAgregar otro item?';
-                                const anotherYes = wizardState.isFaq ? 'S\u00ed, agregar otra' : 'S\u00ed, agregar otro';
+                                const addedLabel = wizardState.isFaq ? '\u00a1Respuesta guardada!' : (wizardState.isTurno ? '\u00a1Turno/Servicio agregado!' : '\u00a1Item agregado!');
+                                const anotherLabel = wizardState.isFaq ? '\u00bfAgregar otra pregunta?' : (wizardState.isTurno ? '\u00bfAgregar otro turno/servicio?' : '\u00bfAgregar otro item?');
+                                const anotherYes = wizardState.isFaq ? 'S\u00ed, agregar otra' : (wizardState.isTurno ? 'S\u00ed, agregar otro' : 'S\u00ed, agregar otro');
                                 container.innerHTML = \`
                                     <p style="font-size: 16px; font-weight: 600; margin-bottom: 5px; color: var(--text-main);">\${addedLabel}</p>
                                     <p style="font-size: 15px; margin-bottom: 15px;">\${itemSummary}</p>
@@ -2963,8 +3024,10 @@ ${helpGuideJS}
                                 if (wizardState.parentId === 'root') {
                                     const catHint = wizardState.isFaq
                                         ? 'Ej: Preguntas frecuentes, Consultas, etc.'
-                                        : 'Ej: Realizar un pedido, Hacer pedido, Comprar, etc.';
-                                    const catPlaceholder = wizardState.isFaq ? 'ej: Preguntas frecuentes' : 'ej: Realizar un pedido';
+                                        : (wizardState.isTurno
+                                            ? 'Ej: Reservar turno, Pediatria, Cardiologia, etc.'
+                                            : 'Ej: Realizar un pedido, Hacer pedido, Comprar, etc.');
+                                    const catPlaceholder = wizardState.isFaq ? 'ej: Preguntas frecuentes' : (wizardState.isTurno ? 'ej: Reservar turno' : 'ej: Realizar un pedido');
                                     container.innerHTML = \`
                                         <p style="font-size: 16px; font-weight: 600; margin-bottom: 15px; color: var(--text-main);">\u00bfNombre de la categor\u00eda?</p>
                                         <p style="font-size: 13px; color: var(--text-muted); margin-bottom: 15px;">\${catHint}</p>
@@ -3738,13 +3801,12 @@ ${helpGuideJS}
                                 isDataCheckbox.checked = false;
                                 isArchivoCheckbox.checked = false;
                             }
-
                             updatePreview(type);
                         }
 
                         function stripTagsFromMessage(msg) {
                             let out = msg || '';
-                            ['##PEDIDO##', '##CANTIDAD##', '##FINALIZAR##', '##DATOS##', '##ARCHIVO##', '##PAGAR##', '##TURNO##'].forEach(function(t) {
+                            ['##PEDIDO##', '##CANTIDAD##', '##FINALIZAR##', '##DATOS##', '##ARCHIVO##', '##PAGAR##', '##TURNO##', '##MISTURNOS##'].forEach(function(t) {
                                 while (out.indexOf(t) !== -1) { out = out.replace(t, ''); }
                             });
                             return out.trim();
