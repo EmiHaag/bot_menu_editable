@@ -102,10 +102,12 @@ class Dashboard {
                         <td>${client.nombreCliente}</td>
                         <td>${client.user}</td>
                         <td>${client.activo ? '<span style="color: green">Activo</span>' : '<span style="color: red">Inactivo</span>'}</td>
+                        <td>${client.plan === 'premium' ? '<span style="display:inline-block;padding:2px 10px;border-radius:12px;background:#ecfdf5;color:#059669;font-weight:700;font-size:11px;">Premium</span>' : '<span style="display:inline-block;padding:2px 10px;border-radius:12px;background:#f1f5f9;color:#64748b;font-weight:600;font-size:11px;">Estándar</span>'}</td>
                         <td><small>${client.spreadsheetId}</small></td>
                         <td style="white-space:nowrap;">
                             <a href="/app/?botId=${client.idCliente}" class="btn-action btn-action-blue" title="Ver Menú">${icon('eye', 'w-4 h-4 inline')} Menú</a>
                             <a href="/app/pedidos/${client.idCliente}" target="_blank" class="btn-action btn-action-green" title="Ver Pedidos">${icon('documentText', 'w-4 h-4 inline')} Pedidos</a>
+                            <button onclick="openPlanModal('${client.idCliente}', '${client.plan === 'premium' ? 'premium' : 'estandar'}')" class="btn-action btn-action-blue" title="Cambiar plan">${icon('cog6Tooth', 'w-4 h-4 inline')} Plan</button>
                             <button onclick="deleteClient('${client.idCliente}')" class="btn-action btn-action-red" title="Borrar cliente">${icon('xCircle', 'w-4 h-4 inline')} Borrar</button>
                         </td>
                     </tr>
@@ -180,6 +182,7 @@ class Dashboard {
                                     <th>Nombre</th>
                                     <th>Usuario</th>
                                     <th>Estado</th>
+                                    <th>Plan</th>
                                     <th>Spreadsheet ID</th>
                                     <th>Acciones</th>
                                 </tr>
@@ -228,6 +231,29 @@ class Dashboard {
                             </div>
                         </div>
 
+                        <div id="planModal" class="modal">
+                            <div class="modal-content">
+                                <h3>Cambiar Plan del Cliente</h3>
+                                <form action="/app/admin/update-plan" method="POST">
+                                    <div class="form-group">
+                                        <label>ID Cliente:</label>
+                                        <input type="text" id="planClientId" name="idCliente" readonly>
+                                    </div>
+                                    <div class="form-group">
+                                        <label>Plan:</label>
+                                        <select id="planSelect" name="plan" style="width:100%;padding:10px;border:1px solid var(--border-color);border-radius:6px;">
+                                            <option value="estandar">Estándar</option>
+                                            <option value="premium">Premium</option>
+                                        </select>
+                                    </div>
+                                    <div style="display: flex; gap: 10px;">
+                                        <button type="submit" class="btn btn-green" style="flex: 1">Guardar</button>
+                                        <button type="button" onclick="document.getElementById('planModal').style.display='none'" class="btn" style="flex: 1; border: 1px solid #ccc">Cancelar</button>
+                                    </div>
+                                </form>
+                            </div>
+                        </div>
+
                         <script>
                             fetch('/api/config').then(function(r){return r.json()}).then(function(d){
                                 document.getElementById('precioInput').value = d.precioEstandar;
@@ -244,6 +270,11 @@ class Dashboard {
                                     document.getElementById('priceStatus').innerHTML = '${icon('checkCircle', 'w-4 h-4 inline text-green-400')} Guardado';
                                     setTimeout(function(){document.getElementById('priceStatus').textContent = '';}, 3000);
                                 });
+                            }
+                            function openPlanModal(id, plan) {
+                                document.getElementById('planClientId').value = id;
+                                document.getElementById('planSelect').value = plan;
+                                document.getElementById('planModal').style.display = 'block';
                             }
                             function deleteClient(id) {
                                 if (confirm('¿Seguro que deseas borrar al cliente ' + id + '? Se eliminará su acceso.')) {
@@ -322,6 +353,20 @@ class Dashboard {
             } catch (error) {
                 console.error('Error deleting client:', error);
                 res.status(500).send('Error al borrar el cliente');
+            }
+        });
+
+        router.post('/admin/update-plan', async (req, res) => {
+            if (req.user.idCliente !== 'admin') return res.status(403).send('Acceso denegado');
+            const { idCliente, plan } = req.body;
+            if (!idCliente) return res.status(400).send('Falta idCliente');
+
+            try {
+                await userService.updatePlan(idCliente, plan);
+                res.redirect('/app/admin?planUpdated=1');
+            } catch (error) {
+                console.error('Error updating plan:', error);
+                res.status(500).send('Error al actualizar el plan');
             }
         });
 
@@ -2364,7 +2409,7 @@ ${helpGuideHTML}
                     </div>
 
                     <!-- Support Bot -->
-                    <div class="support-toggle" id="supportToggle" onclick="toggleSupport()">
+                    <div class="support-toggle minimized" id="supportToggle" onclick="toggleSupport()">
                         <span class="support-toggle-min" id="supportToggleMin" onclick="event.stopPropagation(); minimizeSupport()" title="Minimizar">−</span>
                         <img id="botLogoSupport" src="/img/wamenu_square.png" alt="Asistente" style="width: 40px; height: 40px; object-fit: contain; display: block;">
                         <span class="label">te ayudo?</span>

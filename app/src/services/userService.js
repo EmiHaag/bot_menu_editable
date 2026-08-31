@@ -24,7 +24,8 @@ function mapRow(row) {
         trialStartDate: row.trial_start_date || '',
         trialEndDate: row.trial_end_date || '',
         emailVerified: row.email_verified === true,
-        verificationToken: row.verification_token || ''
+        verificationToken: row.verification_token || '',
+        plan: row.plan === 'premium' ? 'premium' : 'estandar'
     };
 }
 
@@ -76,6 +77,9 @@ class UserService {
             `;
             await sql`
                 ALTER TABLE users ADD COLUMN IF NOT EXISTS verification_token TEXT DEFAULT ''
+            `;
+            await sql`
+                ALTER TABLE users ADD COLUMN IF NOT EXISTS plan TEXT DEFAULT 'estandar'
             `;
             await sql`
                 CREATE UNIQUE INDEX IF NOT EXISTS users_email_uq ON users (LOWER(email)) WHERE email <> ''
@@ -228,6 +232,20 @@ class UserService {
             return true;
         } catch (error) {
             console.error('[UserService] Error updating password:', error.message);
+            return false;
+        }
+    }
+
+    async updatePlan(idCliente, plan) {
+        if (!sql) return false;
+        const normalized = plan === 'premium' ? 'premium' : 'estandar';
+
+        try {
+            await sql`UPDATE users SET plan = ${normalized} WHERE id_cliente = ${idCliente}`;
+            this.clearCache();
+            return true;
+        } catch (error) {
+            console.error('[UserService] Error updating plan:', error.message);
             return false;
         }
     }
