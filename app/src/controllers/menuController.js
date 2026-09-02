@@ -67,25 +67,59 @@ class MenuController {
         ////console.log(`//[Estado] Usuario ${jid} envió mensaje: "${text}". Estado actual: ${currentStateId} #50`);
         const input = text.trim().toLowerCase();
 
+        // Silencio post-pedido: si el bot finalizó un pedido con comprobante y el dueño
+        // configuró un tiempo de silencio en el editor de menú, el bot no responde a
+        // mensajes del cliente hasta que ese tiempo expire. Permite que dueño y
+        // cliente conversen sin que el bot vuelva a intervenir.
+        if (this.stateService.getPedidoFinalizado(jid)) {
+            return;
+        }
+
         // PRIORIDAD 0: ¿EL BOT ESTÁ ESPERANDO UN ARCHIVO?
         const waitingFileNodeId = this.stateService.getWaitingForFile(jid);
         ////console.log(`//[ARCHIVO] waitingFileNodeId=${waitingFileNodeId}, media=${!!media}, text="${text}"`);
-        if (waitingFileNodeId && media) {
-            const waitingNode = await this.googleSheetsService.getNodeById(waitingFileNodeId);
-            const children = await this.googleSheetsService.getNodesByParent(waitingFileNodeId);
-            this.stateService.clearWaitingForFile(jid);
+        if (waitingFileNodeId) {
+            // Si llega un archivo/imagen, procesamos el comprobante.
+            if (media) {
+                const waitingNode = await this.googleSheetsService.getNodeById(waitingFileNodeId);
+                const children = await this.googleSheetsService.getNodesByParent(waitingFileNodeId);
+                this.stateService.clearWaitingForFile(jid);
 
-            if (children.length > 0) {
-                await this.processNode(sock, jid, children[0]);
-            } else {
-                if (waitingNode && waitingNode.message && waitingNode.message.includes('##FINALIZAR##')) {
-                    await this._finalizeOrder(jid);
+                if (children.length > 0) {
+                    await this.processNode(sock, jid, children[0]);
+                } else {
+                    if (waitingNode && waitingNode.message && waitingNode.message.includes('##FINALIZAR##')) {
+                        await this._finalizeOrder(jid);
+                    }
+                    const fileTarget = waitingNode?.redirigirA || 'root';
+                    await sock.sendMessage(jid, { text: '✅ Archivo recibido correctamente.' });
+                    this.stateService.setUserState(jid, fileTarget);
                 }
-                const fileTarget = waitingNode?.redirigirA || 'root';
-                await sock.sendMessage(jid, { text: '✅ Archivo recibido correctamente.' });
-                this.stateService.setUserState(jid, fileTarget);
+                return;
             }
-            return;
+
+            // Si en cambio llega TEXTO (no un archivo), el usuario no está mandando el
+            // comprobante esperado: limpiamos la espera para no quedar "enganchados"
+            // de una sesión anterior y seguimos con el flujo normal de texto.
+            this.stateService.clearWaitingForFile(jid);
+        }
+
+        // PRIORIDAD 0b: llega MEDIA sin estar esperando un archivo pero hay PEDIDO EN
+        // CURSO. Puede ser el comprobante que el asistente IA pidió pero quedó sin
+        // setear waitingFile (el LLM lo pide en texto sin la action `pedir_comprobante`),
+        // o que un texto intermedio del cliente limpiara la espera. Lo tratamos como
+        // comprobante y finalizamos el pedido.
+        if (media && !waitingFileNodeId) {
+            const pedidoPendiente = this.stateService.getUserOrder(jid);
+            if (pedidoPendiente.length > 0) {
+                const nodoComp = await this._buscarNodoArchivo(this.stateService.getUserState(jid));
+                await this._finalizeOrder(jid);
+                const redirige = (nodoComp && nodoComp.redirigirA) ? nodoComp.redirigirA : 'root';
+                this.stateService.setUserState(jid, redirige);
+                await this.sendPresenceTyping(sock, jid);
+                await sock.sendMessage(jid, { text: '✅ Archivo recibido correctamente.' });
+                return;
+            }
         }
 
         // PRIORIDAD 0.5: FLUJO DE TURNOS (Gestor de Turnos / Google Calendar)
@@ -386,6 +420,57 @@ class MenuController {
     }
 
     /**
+     * Añade un producto al pedido DIRECTO y en SILENCIO, sin pasar por el prompt
+     * "¿Cuántos querés?" ni re-mostrar el menú. Lo usa el traductor IA cuando ya
+     * detectó la cantidad en el lenguaje natural ("una muzzarella y una coca").
+     * Solo aplica a productos HOJA (sin hijos). Devuelve true si se agregó.
+     * NO cambia el nivel actual del usuario (queda en la categoría de productos).
+     */
+    async addItemDirect(sock, jid, trigger, cantidad) {
+        const currentStateId = this.stateService.getUserState(jid);
+        const options = await this.googleSheetsService.getNodesByParent(currentStateId);
+        const node = options.find(o => String(o.trigger).toLowerCase() === String(trigger).toLowerCase());
+        if (!node) return false;
+        if (node.disponible === 'false') return false;
+        if (node.message && node.message.includes('##FINALIZAR##')) return false;
+
+        // Solo hojas: si tiene hijos (talles/sub-opciones) el menú debe guiar.
+        const children = await this.googleSheetsService.getNodesByParent(node.id);
+        if (children.length > 0) return false;
+
+        const quantity = parseInt(String(cantidad), 10) > 0 ? parseInt(String(cantidad), 10) : 1;
+        this.stateService.clearPendingQuantityItem(jid);
+        this.stateService.addItemToOrder(jid, {
+            text: `${quantity} x ${node.title}`,
+            price: parseFloat(String(node.price).replace(',', '.')) || 0,
+            quantity: quantity
+        });
+        await this.sendPresenceTyping(sock, jid);
+        await sock.sendMessage(jid, { text: `✅ Añadido: ${quantity} x ${node.title}` });
+        return true;
+    }
+
+    /**
+     * Quita un producto del pedido DIRECTO y en SILENCIO (análogo a addItemDirect).
+     * Busca el nodo por trigger entre las hojas del nivel actual y quita del carrito
+     * el/sus unidades. Devuelve true si se quitó algo. No cambia el nivel actual.
+     */
+    async removeItemDirect(sock, jid, trigger, cantidad) {
+        const currentStateId = this.stateService.getUserState(jid);
+        const options = await this.googleSheetsService.getNodesByParent(currentStateId);
+        const node = options.find(o => String(o.trigger).toLowerCase() === String(trigger).toLowerCase());
+        if (!node || !node.title) return false;
+        const cant = parseInt(String(cantidad), 10) > 0 ? parseInt(String(cantidad), 10) : 0;
+        const removed = this.stateService.removeItemFromOrder(jid, node.title, cant);
+        if (!removed) return false;
+
+        await this.sendPresenceTyping(sock, jid);
+        const label = cant > 0 ? `❌ Quitado: ${cant} x ${node.title}` : `❌ Quitado: ${node.title}`;
+        await sock.sendMessage(jid, { text: label });
+        return true;
+    }
+
+    /**
      * Procesa un nodo de forma integral: tags, submenús o mensajes finales.
      * Esta función unifica la lógica para evitar errores de navegación.
      */
@@ -623,7 +708,70 @@ class MenuController {
             this.stateService.clearPendingOrderItem(jid);
             this.stateService.clearWaitingForData(jid);
             this.stateService.clearWaitingForFile(jid);
+
+            // Tras completar el pedido/comprobante, terminamos la conversación del
+            // asistente IA para que el control vuelva al menú clásico (que maneja
+            // bien la respuesta de confirmación y la navegación). Si no, el agente
+            // seguiría reclamando los mensajes del cliente después del pago.
+            try {
+                const sesion = this.stateService.getChatSession(jid);
+                if (sesion) this.stateService.setChatSession(jid, { ...sesion, derivado: true });
+            } catch (err) {
+                // no bloqueamos la finalización si falla la sesión
+            }
+
+            // Silencio post-pedido configurable: si el dueño definió un tiempo en el
+            // editor de menú, el bot no responde texto libre durante esos minutos.
+            try {
+                const cfg = await botConfigService.getBotConfig(this.stateService.clientId);
+                const min = Number((cfg && cfg.menu_config && cfg.menu_config.silence_after_order_minutes) || 0);
+                if (min > 0) {
+                    this.stateService.setPedidoFinalizado(jid, min * 60);
+                }
+            } catch (err) {
+                // no bloqueamos la finalización si falla la config
+            }
         }
+    }
+
+    /**
+     * Busca en el árbol del menú el nodo de comprobante en imagen (##ARCHIVO##),
+     * descendiendo desde el nodo dado y, si no lo encuentra, desde root.
+     * Devuelve el nodo encontrado o null.
+     */
+    async _buscarNodoArchivo(nodeId) {
+        let menu = [];
+        try {
+            menu = await this.googleSheetsService.getMenuData();
+        } catch (err) {
+            return null;
+        }
+        if (!Array.isArray(menu) || menu.length === 0) return null;
+
+        const mapHijos = new Map();
+        for (const n of menu) {
+            if (!mapHijos.has(n.parentId)) mapHijos.set(n.parentId, []);
+            mapHijos.get(n.parentId).push(n);
+        }
+
+        const buscar = (desde) => {
+            const visitados = new Set();
+            const cola = [desde];
+            while (cola.length > 0) {
+                const cur = cola.shift();
+                if (visitados.has(cur)) continue;
+                visitados.add(cur);
+                const children = mapHijos.get(cur) || [];
+                for (const child of children) {
+                    const msg = String(child.message || '');
+                    if (msg.includes('##ARCHIVO##')) return child;
+                    cola.push(child.id);
+                }
+            }
+            return null;
+        };
+
+        return buscar(nodeId) || buscar('root');
     }
 
     /**

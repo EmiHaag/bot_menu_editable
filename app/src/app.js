@@ -25,6 +25,8 @@ const express = require('express');
 const GoogleSheetsService = require('./services/googleSheetsService');
 const StateService = require('./services/stateService');
 const MenuController = require('./controllers/menuController');
+const AITranslatorController = require('./controllers/aiTranslatorController');
+const aiUsageService = require('./services/aiUsageService');
 const orderService = require('./services/orderService');
 const dashboard = require('./utils/dashboard');
 const userService = require('./services/userService');
@@ -966,6 +968,13 @@ async function startBot(botConfig, forceStart = false) {
 
         const stateService = new StateService(id);
         const menuController = new MenuController(googleSheetsService, stateService, orderService);
+        const aiTranslatorController = new AITranslatorController({
+            idCliente: id,
+            googleSheetsService,
+            stateService,
+            orderService,
+            menuController
+        });
 
         const {
             state,
@@ -995,6 +1004,29 @@ async function startBot(botConfig, forceStart = false) {
         });
 
         botQRs[id].sock = sock;
+
+        // WRAPPER DE TRADUCCIÓN: interceptamos todas las salidas del menú hacia el
+        // cliente. Si el mensaje es un menú con opciones numeradas, el traductor lo
+        // reformula en tono amable y sin números (solo para plan premium).
+        // El flag _translated evita re-traducir (mensajes ya generados por el traductor).
+        (function wrapSend(translator) {
+            const originalSend = sock.sendMessage.bind(sock);
+            sock.sendMessage = async function (jid, content, opts) {
+                if (content && typeof content === 'object' && content.text && !content._translated) {
+                    try {
+                        const friendly = await translator.reformulate(content.text, jid);
+                        if (friendly && friendly !== content.text) {
+                            const payload = { ...content, text: friendly, _translated: true };
+                            delete payload._translated;
+                            return originalSend(jid, payload, opts);
+                        }
+                    } catch (err) {
+                        console.error(`[AI] Error traduciendo salida de ${id}:`, err.message);
+                    }
+                }
+                return originalSend(jid, content, opts);
+            };
+        })(aiTranslatorController);
 
         sock.ev.on('connection.update', async (update) => {
             const {
@@ -1105,8 +1137,20 @@ async function startBot(botConfig, forceStart = false) {
 
                         const image = content.imageMessage;
                         const document = content.documentMessage;
+                        const audio = content.audioMessage || content.ptvMessage;
 
-                        if (image || document) {
+                        if (audio) {
+                            console.log(`${ts()} [${id}] Audio from ${jid}: solo se acepta texto`);
+                            try {
+                                await menuController.sendPresenceTyping(sock, jid);
+                                await sock.sendMessage(jid, {
+                                    text: `🎤 Recibí tu nota de voz, pero por ahora solo acepto mensajes de *texto*. ` +
+                                        `Escribime tu consulta o pedido por acá y te ayudo.`
+                                }).catch(() => {});
+                            } catch (err) {
+                                console.error(`${ts()} [${id}] Error respondiendo a audio de ${jid}:`, err);
+                            }
+                        } else if (image || document) {
                             const media = image || document;
                             const caption = image?.caption || document?.caption || '';
                             const filename = image ? 'imagen.jpg' : (document.fileName || 'documento.pdf');
@@ -1127,10 +1171,121 @@ async function startBot(botConfig, forceStart = false) {
                                     await menuController.handleIncomingMessage(sock, jid, caption);
                                 }
                             } else if (caption) {
-                                await menuController.handleIncomingMessage(sock, jid, caption);
+                                // Media con caption: el traductor no procesa media directo,
+                                // pero si el caption es lenguaje natural y el menú no está en
+                                // un flujo especial, lo interpretamos. Simplificamos: el menú
+                                // siempre maneja media; el caption se deja tal cual.
+                                const mediaBuf2 = await downloadMediaMessage(msg).catch(() => null);
+                                if (mediaBuf2) {
+                                    await menuController.handleIncomingMessage(sock, jid, caption, {
+                                        type: image ? 'image' : 'document',
+                                        buffer: mediaBuf2,
+                                        filename,
+                                        mimetype: media.mimetype
+                                    });
+                                } else {
+                                    await menuController.handleIncomingMessage(sock, jid, caption);
+                                }
+                            } else {
+                                // Recibimos una imagen/documento sin caption y sin espera de
+                                // comprobante pendiente.
+                                // Si el cliente tiene un PEDIDO EN CURSO, lo más probable es que
+                                // sea el comprobante que el asistente IA pidió pero quedó sin
+                                // waitingFile (el LLM lo pide en texto sin la action, o un texto
+                                // intermedio limpió la espera). Lo pasamos al menú para finalizarlo.
+                                const pedidoPendiente = stateService.getUserOrder(jid);
+                                if (pedidoPendiente && pedidoPendiente.length > 0) {
+                                    try {
+                                        const buffer = await downloadMediaMessage(msg);
+                                        await menuController.handleIncomingMessage(sock, jid, caption, {
+                                            type: image ? 'image' : 'document',
+                                            buffer,
+                                            filename,
+                                            mimetype: media.mimetype
+                                        });
+                                    } catch (err) {
+                                        console.error(`${ts()} [${id}] Error descargando comprobante de ${jid}:`, err);
+                                        await menuController.handleIncomingMessage(sock, jid, caption);
+                                    }
+                                } else {
+                                    // Sin pedido en curso, no quedamos mudos: reconocemos el
+                                    // archivo y mostramos el menú.
+                                    await menuController.sendPresenceTyping(sock, jid);
+                                    await sock.sendMessage(jid, { text: '📎 Recibí tu archivo. Si era un comprobante de pago, ya fue enviado.\n\nEscribí *0* para volver al inicio.' }).catch(() => {});
+                                    await menuController.handleIncomingMessage(sock, jid, '0');
+                                }
                             }
                         } else if (text) {
-                            await menuController.handleIncomingMessage(sock, jid, text);
+                            // Si hay un archivo/comprobante pendiente y llega texto (no media),
+                            // delegar directo al menú (limpia la espera de archivo).
+                            const waitingFileText = stateService.getWaitingForFile(jid);
+                            if (waitingFileText) {
+                                await menuController.handleIncomingMessage(sock, jid, text);
+                            } else {
+                                // Traductor: interpreta lenguaje natural → trigger del menú.
+                                // - devuelve false: el menú procesa el texto tal cual
+                                // - devuelve un trigger (string): el menú procesa ese trigger
+                                // - devuelve {derivado:true}: el traductor ya respondió/derivó
+                                const traduccion = await aiTranslatorController.handleMessage(sock, jid, text, { pushName: msg.pushName }).catch(() => false);
+                                if (traduccion && typeof traduccion === 'object' && traduccion.derivado) {
+                                    // El traductor derivó a un vendedor / finalizó su asistencia
+                                    continue;
+                                }
+                                if (typeof traduccion === 'string' && traduccion) {
+                                    // Si el traductor ya detectó la cantidad en el lenguaje
+                                    // natural ("una muzarella y una coca"), agregamos DIRECTO y
+                                    // en silencio (solo "✅ Añadido: N x Producto"), sin el prompt
+                                    // "¿Cuántos querés?" ni re-mostrar el menú por cada ítem.
+                                    const intentTr = stateService.getUserIntent(jid);
+                                    const directOk = (intentTr && intentTr.cantidad)
+                                        ? await menuController.addItemDirect(sock, jid, traduccion, intentTr.cantidad)
+                                        : false;
+                                    stateService.clearUserIntent(jid);
+                                    if (!directOk) {
+                                        await menuController.handleIncomingMessage(sock, jid, traduccion);
+                                        const pendingCant = stateService.getPendingQuantityItem(jid);
+                                        const intentTr2 = stateService.getUserIntent(jid);
+                                        if (pendingCant && intentTr2 && intentTr2.cantidad) {
+                                            await menuController.handleIncomingMessage(sock, jid, String(intentTr2.cantidad));
+                                            stateService.clearUserIntent(jid);
+                                        }
+                                    }
+                                    // Multi-pedido: el traductor cacheó ítems extra
+                                    // ("una muzzarella y una coca"). Los procesamos en cadena
+                                    // para que el menú los agregue todos en silencio.
+                                    const pendItems = stateService.getPendingOrderItems(jid);
+                                    if (pendItems && pendItems.length > 0) {
+                                        stateService.clearPendingOrderItems(jid);
+                                        for (const it of pendItems) {
+                                            const ok = await menuController.addItemDirect(sock, jid, it.trigger, it.cantidad);
+                                            if (!ok) {
+                                                await menuController.handleIncomingMessage(sock, jid, String(it.trigger));
+                                                const pc = stateService.getPendingQuantityItem(jid);
+                                                if (pc && it.cantidad) {
+                                                    await menuController.handleIncomingMessage(sock, jid, String(it.cantidad));
+                                                }
+                                            }
+                                            stateService.clearUserIntent(jid);
+                                        }
+                                    }
+                                    // EL ASISTENTE CONTINÚA EL FLUJO: tras agregar productos,
+                                    // el bot resumen el pedido y guía el siguiente paso en vez de
+                                    // quedar mudo ("¿querés algo más? / listo para pagar").
+                                    const order = stateService.getUserOrder(jid);
+                                    if (order && order.length > 0 && (directOk || (pendItems && pendItems.length > 0))) {
+                                        let total = 0;
+                                        const lineas = order.map(it => {
+                                            const sub = (Number(it.price) || 0) * (it.quantity || 1);
+                                            total += sub;
+                                            return `- ${it.text}${it.price ? ` ($${sub})` : ''}`;
+                                        });
+                                        const resumen = `Tu pedido por ahora:\n${lineas.join('\n')}\n💰 Total: $${total}\n\n¿Querés sumar algo más? Decime el producto, o escribí "nada más" / "listo" para pasar a pagar.`;
+                                        await sock.sendMessage(jid, { text: resumen }).catch(() => {});
+                                    }
+                                } else {
+                                    await menuController.handleIncomingMessage(sock, jid, text);
+                                }
+                            }
                         }
                     }
                 }
@@ -1152,6 +1307,7 @@ async function main() {
     await configService.ensureTable();
     await configService.seed();
     await botConfigService.ensureTable();
+    await aiUsageService.ensureTable();
     logger.initConsoleCapture();
 
     // API: Check terms approval status

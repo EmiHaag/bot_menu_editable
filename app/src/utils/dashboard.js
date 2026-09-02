@@ -13,6 +13,7 @@ const GoogleDriveService = require('../services/googleDriveService');
 const orderService = require('../services/orderService');
 const botConfigService = require('../services/botConfigService');
 const calendarService = require('../services/googleCalendarService');
+const aiUsageService = require('../services/aiUsageService');
 const logService = require('../services/logService');
 const { helpGuideCSS, helpGuideHTML, helpGuideJS } = require('./helpGuide');
 const { askGemini } = require('./geminiHelper');
@@ -808,7 +809,14 @@ class Dashboard {
                     return res.status(403).json({ error: 'Unauthorized' });
                 }
                 const cfg = await botConfigService.getBotConfig(botId);
-                res.json({ botId, bot_type: cfg.bot_type, calendar_config: cfg.calendar_config });
+                const user = await userService.getUserByIdCliente(botId).catch(() => null);
+                res.json({
+                    botId,
+                    bot_type: cfg.bot_type,
+                    calendar_config: cfg.calendar_config,
+                    ai_config: cfg.ai_config || {},
+                    plan: user ? user.plan : 'estandar'
+                });
             } catch (error) {
                 console.error('Error obteniendo bot config:', error);
                 res.status(500).json({ error: 'Error al obtener configuración del bot' });
@@ -823,10 +831,30 @@ class Dashboard {
                     return res.status(403).json({ error: 'Unauthorized' });
                 }
 
-                const { bot_type, calendar_config } = req.body || {};
+                const current = await botConfigService.getBotConfig(botId);
+                const { bot_type, calendar_config, ai_config, menu_config } = req.body || {};
+
+                // Conservar los campos que no vengan en el request (evitar pisar config guardada)
+                const nBotType = typeof bot_type !== 'undefined' ? bot_type : current.bot_type;
+                const nCal = typeof calendar_config !== 'undefined' ? calendar_config : current.calendar_config;
+                const nMenu = typeof menu_config !== 'undefined' ? menu_config : current.menu_config;
+
+                let aiCfg = typeof ai_config !== 'undefined' ? ai_config : current.ai_config;
+                if (aiCfg && typeof aiCfg === 'object') {
+                    const curAi = current.ai_config || {};
+                    // Registrar fecha de activación la primera vez que se enciende
+                    if (aiCfg.enabled && !curAi.activadoEn && !aiCfg.activadoEn) {
+                        aiCfg = { ...aiCfg, activadoEn: new Date().toISOString() };
+                    } else {
+                        aiCfg = { ...curAi, ...aiCfg };
+                    }
+                }
+
                 const ok = await botConfigService.saveBotConfig(botId, {
-                    bot_type: bot_type || 'CARRITO',
-                    calendar_config: calendar_config || {}
+                    bot_type: nBotType,
+                    calendar_config: nCal,
+                    ai_config: aiCfg,
+                    menu_config: nMenu
                 });
                 if (!ok) return res.status(500).json({ error: 'No se pudo guardar' });
                 res.json({ success: true });
@@ -869,6 +897,23 @@ class Dashboard {
             } catch (error) {
                 console.error('Error consultando disponibilidad:', error);
                 res.status(500).json({ error: error.message, slots: [] });
+            }
+        });
+
+        // Uso de tokens del Asistente IA
+        router.get('/api/bot-config/ai-usage', async (req, res) => {
+            try {
+                const botId = getBotIdFromReq(req);
+                if (!assertBotAccess(req, botId)) {
+                    return res.status(403).json({ error: 'Unauthorized' });
+                }
+                const cfg = await botConfigService.getBotConfig(botId);
+                const activadoEn = (cfg.ai_config || {}).activadoEn || null;
+                const used = await aiUsageService.getTokensUsed(botId, activadoEn);
+                res.json({ used, limit: aiUsageService.LIMIT_TOKENS, windowDays: aiUsageService.WINDOW_DAYS });
+            } catch (error) {
+                console.error('Error obteniendo uso de IA:', error);
+                res.status(500).json({ error: error.message });
             }
         });
 
@@ -2022,6 +2067,13 @@ ${helpGuideHTML}
                             <span class="step-toggle-arrow" style="font-size:14px; color:var(--text-muted); ${hasMenuContent ? '' : 'transform:rotate(-90deg);'}}">${icon('chevronDown', 'w-4 h-4 inline')}</span>
                         </div>
                         <div class="step-body" id="step3Body" style="${hasMenuContent ? '' : 'display:none;'}">
+                    <div style="display:flex; align-items:center; gap:12px; flex-wrap:wrap; padding:0 4px 12px; border-bottom:1px solid var(--border-color); margin-bottom:12px;">
+                        <label style="font-weight:600; min-width:260px;">Silencio tras finalizar pedido (min):</label>
+                        <input type="number" id="silencioPostOrderInput" min="0" step="1" placeholder="0 = desactivado" style="width:120px; padding:8px 12px; border:1px solid var(--border-color); border-radius:6px; font-size:14px; box-sizing:border-box;">
+                        <button type="button" onclick="saveMenuSilencio()" style="padding:8px 16px; background:var(--primary-color); color:white; border:none; border-radius:6px; font-size:14px; font-weight:600; cursor:pointer;">Guardar</button>
+                        <span id="menuSilencioStatus" style="font-size:13px;"></span>
+                        <div style="flex-basis:100%; font-size:12px; color:#777; line-height:1.5;">Tras recibir el comprobante de pago, el bot <strong>no responderá</strong> a mensajes del cliente durante la cantidad de minutos indicada (para que dueño y cliente conversen sin interferencia). Dejalo en <strong>0</strong> o vacío para desactivarlo.</div>
+                    </div>
                     <div class="col-toggle-wrap">
                     <button type="button" class="col-toggle-btn" onclick="event.stopPropagation(); toggleColMenu()" title="Columnas visibles">⋮</button>
                     <div class="col-toggle-menu" id="colToggleMenu">
@@ -2063,6 +2115,70 @@ ${helpGuideHTML}
                     </div>
                         </div>
                     </div>
+
+                    <!-- Asistente IA (Premium) -->
+                    ${(targetUser && targetUser.plan === 'premium') ? `
+                    <div class="schedule-section">
+                        <div class="step-toggle" onclick="toggleStep('aiBody', this)" style="display:flex; align-items:flex-start; justify-content:space-between; gap:10px;">
+                            <div>
+                                <div style="display:inline-block; background:#7c3aed; color:#fff; font-size:11px; font-weight:700; letter-spacing:0.5px; padding:4px 10px; border-radius:4px; margin-bottom:8px;">ASISTENTE IA · PLAN PREMIUM</div>
+                                <h3>${icon('sparkles', 'w-4 h-4 inline')} Asistente IA con GPT-4o mini</h3>
+                            </div>
+                            <span class="step-toggle-arrow" style="font-size:14px; color:var(--text-muted); transform:rotate(-90deg);">${icon('chevronDown', 'w-4 h-4 inline')}</span>
+                        </div>
+                        <div class="step-body" id="aiBody" style="display:none;">
+                            <p class="muted">Cuando el asistente está <strong>activado</strong>, el bot atiende a tus clientes en <strong>lenguaje natural</strong> (reserva turnos, responde consultas y arma pedidos) en lugar del menú de opciones numeradas.</p>
+                            <div style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-top: 8px;">
+                                <label style="font-weight: 600; min-width: 200px;">Activar asistente IA:</label>
+                                <label style="display:flex;align-items:center;gap:6px;cursor:pointer;"><input type="checkbox" id="aiEnabledInput" style="width:17px;height:17px;cursor:pointer;"> Asistente activo</label>
+                            </div>
+                            <div style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-top: 8px;">
+                                <label style="font-weight: 600; min-width: 200px;">Estilo de habla:</label>
+                                <select id="aiEstiloInput" onchange="toggleAiCustom()" style="width: 280px; padding: 8px 12px; border: 1px solid var(--border-color); border-radius: 6px; font-size: 14px; box-sizing: border-box;">
+                                    <option value="profesional">Profesional y amable</option>
+                                    <option value="cercano">Cercano y con emojis</option>
+                                    <option value="formal">Formal y breve</option>
+                                    <option value="custom">Custom (definir el mío)</option>
+                                </select>
+                            </div>
+                            <div id="aiCustomWrap" style="display:none; margin-top: 8px;">
+                                <label style="font-weight: 600; display:block; margin-bottom: 6px;">Instrucciones personalizadas:</label>
+                                <textarea id="aiPromptCustomInput" rows="4" placeholder="Escribí el estilo/instrucciones que querés que use el asistente..." style="width:100%; padding:8px 12px; border:1px solid var(--border-color); border-radius:6px; font-size:14px; box-sizing:border-box;"></textarea>
+                            </div>
+                            <div style="margin-top: 8px;">
+                                <label style="font-weight: 600; display:block; margin-bottom: 6px;">Agregar instrucciones a tu asistente</label>
+                                <textarea id="aiInstruccionesInput" rows="4" placeholder="Escribí reglas o datos extra que querés que respete el asistente (ej: \"Los jueves no se atiende\", \"Ofrecé descuento del 10% en cortes\", \"El local cierra a las 20hs\")..." style="width:100%; padding:8px 12px; border:1px solid var(--border-color); border-radius:6px; font-size:14px; box-sizing:border-box;"></textarea>
+                            </div>
+                            <div style="margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--border-color);">
+                                <label style="font-weight: 700; display:block; margin-bottom: 6px;">Derivar a un vendedor (conversación con humanos)</label>
+                                <p class="muted" style="margin:0 0 8px;">Opcional: si cargás un vendedor, cuando el asistente detecte a un cliente decidido a comprar, le avisa a ese vendedor por WhatsApp con los datos del cliente y le dice que un asesor lo contactará. Solo para bots de pedidos/catálogo.</p>
+                                <div style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-top: 8px;">
+                                    <label style="font-weight: 600; min-width: 200px;">Nombre del vendedor:</label>
+                                    <input type="text" id="aiVendedorNombreInput" placeholder="Ej: Laura" style="width: 280px; padding: 8px 12px; border:1px solid var(--border-color); border-radius:6px; font-size:14px; box-sizing:border-box;">
+                                </div>
+                                <div style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-top: 8px;">
+                                    <label style="font-weight: 600; min-width: 200px;">WhatsApp del vendedor:</label>
+                                    <input type="text" id="aiVendedorTelefonoInput" placeholder="Ej: 5491122334455" style="width: 280px; padding: 8px 12px; border:1px solid var(--border-color); border-radius:6px; font-size:14px; box-sizing:border-box;">
+                                </div>
+                            </div>
+                            <div style="margin-top: 12px; font-size: 12px; color:#777;">
+                                ${icon('informationCircle', 'w-4 h-4 inline')} Incluidas ~<strong>1.000.000 de tokens</strong> cada 30 días desde la activación (~200-300 conversaciones). Si se agota, el bot vuelve automáticamente al modo menú.
+                            </div>
+                            <div style="margin-top: 12px; max-width: 480px;">
+                                <div style="display:flex; justify-content:space-between; font-size:12px; color:#444; margin-bottom:4px;">
+                                    <span>Tokens usados esta ventana</span><span id="aiUsageText">-</span>
+                                </div>
+                                <div style="height:10px; background:#e9ecef; border-radius:5px; overflow:hidden;">
+                                    <div id="aiUsageBar" style="height:100%; width:0%; background:#7c3aed; border-radius:5px;"></div>
+                                </div>
+                            </div>
+                            <div class="schedule-actions">
+                                <button class="btn btn-green schedule-save-btn" onclick="saveAiConfig()">Guardar asistente</button>
+                                <span class="schedule-status" id="aiStatus"></span>
+                            </div>
+                        </div>
+                    </div>
+                    ` : ''}
 
                     <div class="schedule-section">
                         <div class="step-toggle" onclick="toggleStep('step4Body', this)" style="display:flex; align-items:flex-start; justify-content:space-between; gap:10px;">
@@ -2653,6 +2769,10 @@ ${helpGuideHTML}
                                     botType = d.bot_type || 'CARRITO';
                                     calendarConfig = d.calendar_config || calendarConfig;
                                     document.getElementById('botTypeInput').value = botType;
+                                    const silencioInput = document.getElementById('silencioPostOrderInput');
+                                    if (silencioInput) {
+                                        silencioInput.value = (d.menu_config && d.menu_config.silence_after_order_minutes) || 0;
+                                    }
                                     document.getElementById('calendarIdInput').value = calendarConfig.calendar_id || '';
                                     document.getElementById('slotDurationInput').value = calendarConfig.slot_duration_minutes || 30;
                                     document.getElementById('minNoticeInput').value = calendarConfig.min_notice_hours || 0;
@@ -2671,8 +2791,120 @@ ${helpGuideHTML}
                                     onBotTypeChange();
                                     toggleCartModules();
                                     updateWizardAsk();
+                                    loadAiConfig(d);
                                 })
                                 .catch(function(e) { console.error('Error cargando bot config:', e); });
+                        }
+
+                         function loadAiConfig(d) {
+                            const ai = (d && d.ai_config) || {};
+                            const enabled = document.getElementById('aiEnabledInput');
+                            const estilo = document.getElementById('aiEstiloInput');
+                            const customWrap = document.getElementById('aiCustomWrap');
+                            const prompt = document.getElementById('aiPromptCustomInput');
+                            const instrucciones = document.getElementById('aiInstruccionesInput');
+                            const vNombre = document.getElementById('aiVendedorNombreInput');
+                            const vTel = document.getElementById('aiVendedorTelefonoInput');
+                            if (enabled) enabled.checked = !!ai.enabled;
+                            if (estilo) {
+                                estilo.value = ai.estilo || 'profesional';
+                                if (customWrap) customWrap.style.display = estilo.value === 'custom' ? 'block' : 'none';
+                            }
+                            if (prompt) prompt.value = ai.promptCustom || '';
+                            if (instrucciones) instrucciones.value = ai.instrucciones || '';
+                            const vendedor = ai.vendedor || {};
+                            if (vNombre) vNombre.value = vendedor.nombre || '';
+                            if (vTel) vTel.value = vendedor.telefono || '';
+                            loadAiUsage();
+                        }
+
+                        function loadAiUsage() {
+                            const textEl = document.getElementById('aiUsageText');
+                            const barEl = document.getElementById('aiUsageBar');
+                            if (!textEl) return;
+                            fetch('/app/api/bot-config/ai-usage?botId=' + encodeURIComponent(botId))
+                                .then(function(r) { return r.json(); })
+                                .then(function(d) {
+                                    if (d && typeof d.used === 'number') {
+                                        const pct = Math.min(100, (d.used / d.limit) * 100);
+                                        textEl.textContent = d.used.toLocaleString() + ' / ' + d.limit.toLocaleString();
+                                        if (barEl) {
+                                            barEl.style.width = pct + '%';
+                                            barEl.style.background = pct >= 100 ? '#dc2626' : (pct >= 80 ? '#d97706' : '#7c3aed');
+                                        }
+                                    }
+                                })
+                                .catch(function() {});
+                        }
+
+                        function toggleAiCustom() {
+                            const estilo = document.getElementById('aiEstiloInput');
+                            const wrap = document.getElementById('aiCustomWrap');
+                            if (estilo && wrap) wrap.style.display = estilo.value === 'custom' ? 'block' : 'none';
+                        }
+
+                        function saveAiConfig() {
+                            const status = document.getElementById('aiStatus');
+                            if (!status) return;
+                            status.textContent = 'Guardando...';
+                            const enabled = document.getElementById('aiEnabledInput').checked;
+                            const estilo = document.getElementById('aiEstiloInput').value;
+                            const promptCustom = document.getElementById('aiPromptCustomInput').value.trim();
+                            const instrucciones = document.getElementById('aiInstruccionesInput').value.trim();
+                            const vNombre = (document.getElementById('aiVendedorNombreInput') || {}).value || '';
+                            const vTel = (document.getElementById('aiVendedorTelefonoInput') || {}).value || '';
+                            const payload = {
+                                botId: botId,
+                                ai_config: {
+                                    enabled,
+                                    estilo,
+                                    promptCustom,
+                                    instrucciones,
+                                    vendedor: { nombre: vNombre.trim(), telefono: vTel.trim() }
+                                }
+                            };
+                            fetch('/app/api/bot-config', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify(payload)
+                            }).then(function(r) { return r.json(); }).then(function(d) {
+                                if (d.success) {
+                                    status.innerHTML = '${icon('checkCircle', 'w-4 h-4 inline text-green-400')} Asistente IA guardado';
+                                    loadAiUsage();
+                                } else {
+                                    status.innerHTML = '${icon('xCircle', 'w-4 h-4 inline text-red-400')} ' + (d.error || 'Error al guardar');
+                                }
+                                setTimeout(function() { status.textContent = ''; }, 3000);
+                            }).catch(function() {
+                                status.innerHTML = '${icon('xCircle', 'w-4 h-4 inline text-red-400')} Error de conexión';
+                                setTimeout(function() { status.textContent = ''; }, 3000);
+                            });
+                        }
+
+                        function saveMenuSilencio() {
+                            const status = document.getElementById('menuSilencioStatus');
+                            if (!status) return;
+                            status.textContent = 'Guardando...';
+                            const min = Math.max(0, parseInt(document.getElementById('silencioPostOrderInput').value, 10) || 0);
+                            const payload = {
+                                botId: botId,
+                                menu_config: { silence_after_order_minutes: min }
+                            };
+                            fetch('/app/api/bot-config', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify(payload)
+                            }).then(function(r) { return r.json(); }).then(function(d) {
+                                if (d.success) {
+                                    status.innerHTML = '${icon('checkCircle', 'w-4 h-4 inline text-green-400')} Guardado';
+                                } else {
+                                    status.innerHTML = '${icon('xCircle', 'w-4 h-4 inline text-red-400')} ' + (d.error || 'Error al guardar');
+                                }
+                                setTimeout(function() { status.textContent = ''; }, 3000);
+                            }).catch(function() {
+                                status.innerHTML = '${icon('xCircle', 'w-4 h-4 inline text-red-400')} Error de conexión';
+                                setTimeout(function() { status.textContent = ''; }, 3000);
+                            });
                         }
 
                         function saveBotTypeConfig() {

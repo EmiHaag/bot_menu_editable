@@ -26,6 +26,21 @@ const DEFAULT_CALENDAR_CONFIG = {
     reprogramar_enabled: true
 };
 
+const DEFAULT_AI_CONFIG = {
+    enabled: false,
+    estilo: 'profesional',
+    promptCustom: '',
+    instrucciones: '',
+    activadoEn: null,
+    vendedor: { nombre: '', telefono: '' }
+};
+
+const DEFAULT_MENU_CONFIG = {
+    // Minutos que el bot queda en silencio (no responde texto libre) tras finalizar
+    // un pedido con comprobante. 0 = desactivado (comportamiento actual).
+    silence_after_order_minutes: 0
+};
+
 async function ensureTable() {
     if (!sql) {
         console.error('[BotConfigService] NEON_DATABASE_URL not set, bot config service disabled');
@@ -40,6 +55,8 @@ async function ensureTable() {
                 updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
             )
         `;
+        await sql`ALTER TABLE bots ADD COLUMN IF NOT EXISTS ai_config JSONB NOT NULL DEFAULT '{}'::jsonb`;
+        await sql`ALTER TABLE bots ADD COLUMN IF NOT EXISTS menu_config JSONB NOT NULL DEFAULT '{}'::jsonb`;
         await sql`
             CREATE TABLE IF NOT EXISTS turnos (
                 id SERIAL PRIMARY KEY,
@@ -100,18 +117,30 @@ async function getBotConfig(idCliente) {
             cfg = {
                 idCliente,
                 bot_type: 'CARRITO',
-                calendar_config: { ...DEFAULT_CALENDAR_CONFIG, business_hours: JSON.parse(JSON.stringify(DEFAULT_CALENDAR_CONFIG.business_hours)) }
+                calendar_config: { ...DEFAULT_CALENDAR_CONFIG, business_hours: JSON.parse(JSON.stringify(DEFAULT_CALENDAR_CONFIG.business_hours)) },
+                ai_config: { ...DEFAULT_AI_CONFIG },
+                menu_config: { ...DEFAULT_MENU_CONFIG }
             };
         } else {
             const row = rows[0];
             cfg = {
                 idCliente: row.id_cliente,
                 bot_type: row.bot_type || 'CARRITO',
-                calendar_config: parseJson(row.calendar_config, { ...DEFAULT_CALENDAR_CONFIG })
+                calendar_config: parseJson(row.calendar_config, { ...DEFAULT_CALENDAR_CONFIG }),
+                ai_config: parseJson(row.ai_config, { ...DEFAULT_AI_CONFIG }),
+                menu_config: parseJson(row.menu_config, { ...DEFAULT_MENU_CONFIG })
             };
             cfg.calendar_config = {
                 ...DEFAULT_CALENDAR_CONFIG,
                 ...cfg.calendar_config
+            };
+            cfg.ai_config = {
+                ...DEFAULT_AI_CONFIG,
+                ...cfg.ai_config
+            };
+            cfg.menu_config = {
+                ...DEFAULT_MENU_CONFIG,
+                ...cfg.menu_config
             };
         }
         cache.set(cacheKey, cfg);
@@ -122,15 +151,17 @@ async function getBotConfig(idCliente) {
     }
 }
 
-async function saveBotConfig(idCliente, { bot_type, calendar_config }) {
+async function saveBotConfig(idCliente, { bot_type, calendar_config, ai_config, menu_config }) {
     if (!sql || !idCliente) return false;
     try {
         await sql`
-            INSERT INTO bots (id_cliente, bot_type, calendar_config, updated_at)
-            VALUES (${idCliente}, ${bot_type || 'CARRITO'}, ${JSON.stringify(calendar_config || {})}, NOW())
+            INSERT INTO bots (id_cliente, bot_type, calendar_config, ai_config, menu_config, updated_at)
+            VALUES (${idCliente}, ${bot_type || 'CARRITO'}, ${JSON.stringify(calendar_config || {})}, ${JSON.stringify(ai_config || {})}, ${JSON.stringify(menu_config || {})}, NOW())
             ON CONFLICT (id_cliente) DO UPDATE SET
                 bot_type = EXCLUDED.bot_type,
                 calendar_config = EXCLUDED.calendar_config,
+                ai_config = EXCLUDED.ai_config,
+                menu_config = EXCLUDED.menu_config,
                 updated_at = NOW()
         `;
         cache.del(`bot_config_${idCliente}`);
@@ -349,5 +380,6 @@ module.exports = {
     registrarEnListaEspera,
     getListaEsperaParaSlot,
     marcarEstadoListaEspera,
-    DEFAULT_CALENDAR_CONFIG
+    DEFAULT_CALENDAR_CONFIG,
+    DEFAULT_AI_CONFIG
 };
