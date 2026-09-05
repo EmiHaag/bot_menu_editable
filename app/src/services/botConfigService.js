@@ -31,8 +31,9 @@ const DEFAULT_AI_CONFIG = {
     estilo: 'profesional',
     promptCustom: '',
     instrucciones: '',
+    sugerirComplemento: false,
     activadoEn: null,
-    vendedor: { nombre: '', telefono: '' }
+    vendedor: { nombre: '', telefono: '', mensaje: '' }
 };
 
 const DEFAULT_MENU_CONFIG = {

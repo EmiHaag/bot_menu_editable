@@ -2149,6 +2149,10 @@ ${helpGuideHTML}
                                 <label style="font-weight: 600; display:block; margin-bottom: 6px;">Agregar instrucciones a tu asistente</label>
                                 <textarea id="aiInstruccionesInput" rows="4" placeholder="Escribí reglas o datos extra que querés que respete el asistente (ej: \"Los jueves no se atiende\", \"Ofrecé descuento del 10% en cortes\", \"El local cierra a las 20hs\")..." style="width:100%; padding:8px 12px; border:1px solid var(--border-color); border-radius:6px; font-size:14px; box-sizing:border-box;"></textarea>
                             </div>
+                            <div style="margin-top: 10px;">
+                                <label style="display:flex;align-items:center;gap:6px;cursor:pointer;"><input type="checkbox" id="aiSugerirComplementoInput" style="width:17px;height:17px;cursor:pointer;"> Sugerir producto/servicio complementario al finalizar el pedido</label>
+                                <p class="muted" style="margin:4px 0 0;">Cuando el cliente va a confirmar su pedido, el asistente analiza el catálogo real y propone un producto/servicio complementario antes del pago. Podés precisar la regla en "Instrucciones" (ej: "al finalizar, sugerí una bebida" o "sugerí un combo"). El cliente puede rechazarlo y pagar igual.</p>
+                            </div>
                             <div style="margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--border-color);">
                                 <label style="font-weight: 700; display:block; margin-bottom: 6px;">Derivar a un vendedor (conversación con humanos)</label>
                                 <p class="muted" style="margin:0 0 8px;">Opcional: si cargás un vendedor, cuando el asistente detecte a un cliente decidido a comprar, le avisa a ese vendedor por WhatsApp con los datos del cliente y le dice que un asesor lo contactará. Solo para bots de pedidos/catálogo.</p>
@@ -2159,6 +2163,10 @@ ${helpGuideHTML}
                                 <div style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-top: 8px;">
                                     <label style="font-weight: 600; min-width: 200px;">WhatsApp del vendedor:</label>
                                     <input type="text" id="aiVendedorTelefonoInput" placeholder="Ej: 5491122334455" style="width: 280px; padding: 8px 12px; border:1px solid var(--border-color); border-radius:6px; font-size:14px; box-sizing:border-box;">
+                                </div>
+                                <div style="margin-top: 8px;">
+                                    <label style="font-weight: 600; display:block; margin-bottom: 6px;">¿Cómo querés que el asistente derive al humano?</label>
+                                    <textarea id="aiVendedorMensajeInput" rows="3" placeholder="Escribí el mensaje que ve el cliente cuando lo contactás (ej: 'Voy a comunicarte con una persona de nuestro equipo para agilizar tu pedido.')" style="width:100%; padding:8px 12px; border:1px solid var(--border-color); border-radius:6px; font-size:14px; box-sizing:border-box;"></textarea>
                                 </div>
                             </div>
                             <div style="margin-top: 12px; font-size: 12px; color:#777;">
@@ -2805,6 +2813,7 @@ ${helpGuideHTML}
                             const instrucciones = document.getElementById('aiInstruccionesInput');
                             const vNombre = document.getElementById('aiVendedorNombreInput');
                             const vTel = document.getElementById('aiVendedorTelefonoInput');
+                            const vMensaje = document.getElementById('aiVendedorMensajeInput');
                             if (enabled) enabled.checked = !!ai.enabled;
                             if (estilo) {
                                 estilo.value = ai.estilo || 'profesional';
@@ -2812,9 +2821,12 @@ ${helpGuideHTML}
                             }
                             if (prompt) prompt.value = ai.promptCustom || '';
                             if (instrucciones) instrucciones.value = ai.instrucciones || '';
+                            const sugerirComplemento = document.getElementById('aiSugerirComplementoInput');
+                            if (sugerirComplemento) sugerirComplemento.checked = !!ai.sugerirComplemento;
                             const vendedor = ai.vendedor || {};
                             if (vNombre) vNombre.value = vendedor.nombre || '';
                             if (vTel) vTel.value = vendedor.telefono || '';
+                            if (vMensaje) vMensaje.value = vendedor.mensaje || '';
                             loadAiUsage();
                         }
 
@@ -2851,8 +2863,10 @@ ${helpGuideHTML}
                             const estilo = document.getElementById('aiEstiloInput').value;
                             const promptCustom = document.getElementById('aiPromptCustomInput').value.trim();
                             const instrucciones = document.getElementById('aiInstruccionesInput').value.trim();
+                            const sugerirComplemento = !!document.getElementById('aiSugerirComplementoInput').checked;
                             const vNombre = (document.getElementById('aiVendedorNombreInput') || {}).value || '';
                             const vTel = (document.getElementById('aiVendedorTelefonoInput') || {}).value || '';
+                            const vMensaje = (document.getElementById('aiVendedorMensajeInput') || {}).value || '';
                             const payload = {
                                 botId: botId,
                                 ai_config: {
@@ -2860,7 +2874,8 @@ ${helpGuideHTML}
                                     estilo,
                                     promptCustom,
                                     instrucciones,
-                                    vendedor: { nombre: vNombre.trim(), telefono: vTel.trim() }
+                                    sugerirComplemento,
+                                    vendedor: { nombre: vNombre.trim(), telefono: vTel.trim(), mensaje: vMensaje.trim() }
                                 }
                             };
                             fetch('/app/api/bot-config', {

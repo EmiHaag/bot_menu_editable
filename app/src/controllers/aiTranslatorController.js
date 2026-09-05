@@ -149,6 +149,53 @@ class AITranslatorController {
     }
 
     /**
+     * Detecta si el mensaje es un saludo típico de inicio de conversación.
+     */
+    _esSaludo(t) {
+        return /\b(hola|buenas|buen dia|buenos dias|buenas tardes|buenas noches|hello|hey|hi|que tal|que onda|como estas|como anda|como andas|como te va|como te viene|saludos)\b/.test(this._normalizarMatch(t));
+    }
+
+    /**
+     * Teléfono del vendedor configurado (o '' si no hay).
+     */
+    _telefonoVendedor(ai) {
+        const v = (ai && ai.vendedor) || {};
+        return (v.telefono && String(v.telefono).trim()) || '';
+    }
+
+    /**
+     * ¿La intención clasificada es una CONSULTA (no una compra)? Las consultas
+     * se responden conversacionalmente: no agregan al carrito ni derivan.
+     */
+    _esConsulta(intencion) {
+        return intencion === 'CONSULTAR_MENU' || intencion === 'CONSULTAR_HORARIOS' || intencion === 'CHARLA_GENERAL';
+    }
+
+    /**
+     * Clasifica el mensaje con el router de intenciones (IA). Devuelve la
+     * clasificación o null si es FALLO/error/cuota (quien llama decide el
+     * fallback seguro).
+     */
+    async _clasificarConLaIA(user, ai, jid, text) {
+        if (this.quotaBlocked) return null;
+        try {
+            const router = this._getIntentRouter(user, ai);
+            const clasificacion = await router.clasificar(jid, text, (t) => {
+                aiUsageService.addTokens(this.idCliente, t || 0);
+            });
+            if (!clasificacion || clasificacion.intencion === 'FALLO') return null;
+            return clasificacion;
+        } catch (err) {
+            console.error(`[AI] Error en router de intenciones ${this.idCliente}:`, err.message);
+            if (err && err.isQuotaExceeded) {
+                this.quotaBlocked = true;
+                console.warn(`[AI] Bot ${this.idCliente}: router bloqueado por cuota (menú directo)`);
+            }
+            return null;
+        }
+    }
+
+    /**
      * Detección de navegación por frases (no solo exacta): "hola, quiero
      * hacer un pedido", "mostrame el menú", "necesito volver atrás".
      * Devuelve el trigger (0/v/p/vaciar) o null.
@@ -316,8 +363,11 @@ class AITranslatorController {
 
     /**
      * Deriva al cliente a un vendedor humano configurado (avalado por el plan
-     * premium). Se usa cuando el traductor entra en bucle (no encuentra lo que
-     * el usuario busca). Devuelve true si pudo derivar, false si no hay vendedor.
+     * premium). Usado cuando el asistente detecta intención de compra o entra en
+     * bucle (no encuentra lo que el usuario busca). Corta el flujo: avisa al
+     * vendedor por WhatsApp con los datos del pedido y le muestra al cliente el
+     * mensaje de derivación configurado en el dashboard (o el texto por defecto).
+     * Devuelve true si pudo derivar, false si no hay vendedor configurado.
      */
     async _derivarVendedor(sock, jid, pushName) {
         const cfg = await botConfigService.getBotConfig(this.idCliente).catch(() => ({}));
@@ -348,9 +398,149 @@ class AITranslatorController {
             await sock.sendMessage(vendedorJid, { text: msgVendedor })
                 .catch(err => console.error(`[AI] Error avisando vendedor ${this.idCliente}:`, err.message));
         }
+
+        // Mensaje al cliente: configurable desde el dashboard (vendedor.mensaje),
+        // con un texto de respaldo por defecto.
+        const mensajeCliente =
+            (vendedor.mensaje && String(vendedor.mensaje).trim()) ||
+            'Voy a comunicarte con una persona de nuestro equipo para agilizar tu consulta.';
+        await this._sendFriendly(sock, jid, mensajeCliente);
+
         const sesionV = this.stateService.getChatSession(jid) || { history: [], nodeId: 'root' };
         this.stateService.setChatSession(jid, { ...sesionV, derivado: true });
         return true;
+    }
+
+    /**
+     * Callback inyectado en el MenuController para intervenir cuando el menú
+     * cambia a un nodo de checkout/cierre de compra (##FINALIZAR## / ##PAGAR##).
+     * Si hay vendedor configurado, deriva al vendedor y devuelve { detener: true }
+     * para que el menú no continúe con _finalizeOrder/redirección. Si no hay
+     * vendedor o no corresponde, devuelve null para que el menú siga normal.
+     */
+    async intervenirNodoCheckout(sock, jid, pushName, context) {
+        const cfg = await botConfigService.getBotConfig(this.idCliente).catch(() => ({}));
+        const ai = (cfg && cfg.ai_config) || {};
+
+        const order = this.stateService.getUserOrder(jid) || [];
+        if (order.length === 0) return null;
+
+        // Sugerencia de complemento antes de pagar (solo con IA activa y checkbox).
+        // Si el asistente ofreció un complemento, el menú se detiene y la
+        // conversación IA continúa hasta que el cliente confirme pago o agregue.
+        if (await this._sugerirComplementoSiCorresponde(sock, jid)) {
+            console.log(`[AI] Bot ${this.idCliente}: interceptor checkout -> sugerencia de complemento`);
+            return { detener: true };
+        }
+
+        const vendedor = ai.vendedor || {};
+        if (!vendedor.telefono) return null;
+
+        const derivado = await this._derivarVendedor(sock, jid, pushName);
+        if (derivado) {
+            console.log(`[AI] Bot ${this.idCliente}: interceptor checkout -> derivación a vendedor`);
+            return { detener: true };
+        }
+        return null;
+    }
+
+    /**
+     * Consulta al LLM si conviene sugerir un producto/servicio complementario
+     * antes de que el cliente confirme el pago. Usa el catálogo REAL del nivel
+     * actual como única fuente de productos (anti-alucinación) y, si el negocio
+     * lo indicó en "Instrucciones", respeta esa regla. Devuelve
+     * { sugerir, mensaje } o null ante cualquier fallo.
+     */
+    async _consultarSugerenciaComplemento(jid, ai) {
+        const orden = this.stateService.getUserOrder(jid) || [];
+        if (!ai.enabled) return null;
+        const negocio = this.idCliente;
+        const catalogo = await this._buildCatalogo(jid).catch(() => []);
+        const catalogoTxt = catalogo.length
+            ? catalogo.map((c, i) => `${i + 1}. "${c.trigger}" → ${c.title}${c.price ? ` ($${c.price})` : ''}`).join('\n')
+            : '(sin productos en el nivel actual)';
+        let pedidoTxt = '(sin ítems)';
+        if (orden.length) {
+            let total = 0;
+            const lineas = orden.map(it => {
+                const sub = (it.price || 0) * (it.quantity || 1);
+                total += sub;
+                return `- ${it.quantity} x ${it.text}` + (it.price ? ` ($${sub})` : '');
+            });
+            pedidoTxt = `${lineas.join('\n')}\nTOTAL: $${total}`;
+        }
+        const instrucciones = (ai.instrucciones && String(ai.instrucciones).trim())
+            ? `Instrucciones del negocio: ${String(ai.instrucciones).trim()}\n`
+            : '';
+        const systemPrompt =
+            `Sos el asesor de ventas del bot de WhatsApp de "${negocio}".\n` +
+            `Recibís el pedido actual del cliente y el catálogo real del nivel de menú actual.\n` +
+            `Tu tarea es decidir si conviene ofrecerle al cliente un producto/servicio COMPLEMENTARIO antes de que confirme el pago.\n\n` +
+            `REGLAS (obligatorias):\n` +
+            `- ${instrucciones}Si el negocio indicó qué complemento sugerir, seguilo siempre que exista en el CATÁLOGO REAL.\n` +
+            `- Compará el pedido con el catálogo: si el cliente ya incluyó ese tipo de complemento (o no tiene sentido ofrecérselo), no sugieras nada.\n` +
+            `- Considerá también el TOTAL del pedido: no sugieras complementos si el rubro o la situación no lo ameritan.\n` +
+            `- Si corresponde sugerir, ofrecé UNO o DOS productos/servicios del CATÁLOGO REAL, por su nombre exacto (y precio si lo tiene). NUNCA inventes productos ni precios.\n` +
+            `- Si no hay nada natural que sugerir, devolvé {"sugerir": false}.\n` +
+            `- La sugerencia es OPCIONAL para el cliente: que por defecto pueda rechazarla y pasar a pagar.\n` +
+            `- Mensaje breve y amable, SOLO el texto de la oferta.\n\n` +
+            `PEDIDO ACTUAL DEL CLIENTE:\n${pedidoTxt}\n\n` +
+            `CATÁLOGO REAL DEL NIVEL ACTUAL:\n${catalogoTxt}\n` +
+            `\nDevolvé SOLO JSON (sin texto adicional): {"sugerir": true|false, "mensaje": "texto de la oferta (o '')"}`;
+        try {
+            const result = await llmChatService.chat({
+                systemPrompt,
+                messages: [{ role: 'user', content: '¿Conviene sugerir un complemento para este pedido?' }],
+                tools: [],
+                executeTool: null,
+                onTokens: (n) => aiUsageService.addTokens(this.idCliente, n)
+            });
+            const content = result && result.content ? result.content.trim() : '';
+            if (!content) return null;
+            const jsonMatch = content.match(/\{[\s\S]*\}/);
+            if (!jsonMatch) return null;
+            const parsed = JSON.parse(jsonMatch[0]);
+            const sugerir = parsed && parsed.sugerir === true;
+            const mensaje = (parsed && parsed.mensaje && String(parsed.mensaje).trim()) || '';
+            if (!sugerir || !mensaje) return { sugerir: false, mensaje: '' };
+            return { sugerir: true, mensaje };
+        } catch (err) {
+            console.error(`[AI] Error consultando sugerencia de complemento ${this.idCliente}:`, err.message);
+            if (err && err.isQuotaExceeded) {
+                this.quotaBlocked = true;
+                console.warn(`[AI] Bot ${this.idCliente}: se bloqueó el traductor por cuota agotada (sin sugerencia de complemento)`);
+            }
+            return null;
+        }
+    }
+
+    /**
+     * Regla genérica "sugerir complemento al finalizar": solo con IA activa y
+     * checkbox activado. Si el cliente ya recibió la oferta (sesión con
+     * "complementoSugerido") y vuelve a confirmar, borra el flag y devuelve
+     * false para que el flujo siga a pagar/derivar (la próxima vez ofrecerá de
+     * nuevo). Devuelve true si envió la oferta (el nodo checkout debe detenerse).
+     */
+    async _sugerirComplementoSiCorresponde(sock, jid) {
+        const cfg = await botConfigService.getBotConfig(this.idCliente).catch(() => ({}));
+        const ai = (cfg && cfg.ai_config) || {};
+        if (!ai.enabled || !ai.sugerirComplemento) return false;
+        const orden = this.stateService.getUserOrder(jid) || [];
+        if (orden.length === 0) return false;
+
+        const sesion = this.stateService.getChatSession(jid) || { history: [], nodeId: 'root' };
+        if (sesion.complementoSugerido) {
+            const { complementoSugerido, ...resto } = sesion;
+            this.stateService.setChatSession(jid, resto);
+            return false;
+        }
+        const decision = await this._consultarSugerenciaComplemento(jid, ai);
+        if (decision && decision.sugerir && decision.mensaje) {
+            this.stateService.setChatSession(jid, { ...sesion, complementoSugerido: true });
+            await this._sendFriendly(sock, jid, decision.mensaje);
+            return true;
+        }
+        return false;
     }
 
     /**
@@ -600,6 +790,7 @@ class AITranslatorController {
         if (!user || user.plan !== 'premium') return false;
         const cfg = await botConfigService.getBotConfig(this.idCliente);
         const ai = cfg.ai_config || {};
+        const celularVendedor = this._telefonoVendedor(ai);
         if (!ai.enabled) return false;
         if (this.quotaBlocked) return false;
         const used = await aiUsageService.getTokensUsed(this.idCliente, ai.activadoEn);
@@ -623,6 +814,18 @@ class AITranslatorController {
         if (special) {
             console.log(`[AI] Bot ${this.idCliente}: flujo especial (${special}), pasa directo al menú`);
             return false;
+        }
+
+        // Primer contacto: el cliente escribe un saludo sin sesión previa. El
+        // asistente se presenta con el nombre del negocio (para que el cliente
+        // sepa que habló al número correcto), igual que lo hace el primer nodo.
+        if ((!session.history || session.history.length === 0) && this._esSaludo(text)) {
+            const negocio = user.nombreCliente || user.businessName || this.idCliente;
+            const bienvenida = `Hola, bienvenido a ${negocio}. ¿En qué puedo ayudarte?`;
+            this.stateService.setChatSession(jid, { history: [{ role: 'assistant', content: bienvenida }], nodeId: 'root' });
+            console.log(`[AI] Bot ${this.idCliente}: primer saludo "${text}" -> bienvenida con nombre del negocio`);
+            await this._sendFriendly(sock, jid, bienvenida);
+            return { derivado: true };
         }
 
         // El MENÚ es el handler y mantiene la posición real del cliente en
@@ -661,6 +864,24 @@ class AITranslatorController {
         }
         if (navTrigger && navTrigger !== 'PEDIDO') {
             this.stateService.clearTranslationFails(jid);
+            // Intención de compra clara al querer pagar/finalizar con pedido no
+            // vacío: el asistente corta el flujo y deriva al vendedor (si hay
+            // vendedor configurado). Si no hay vendedor, se comporta normal.
+            if (navTrigger === 'p') {
+                const ordenNav = this.stateService.getUserOrder(jid) || [];
+                if (ordenNav.length > 0) {
+                    // Sugerencia de complemento antes de pagar (si aplica).
+                    if (await this._sugerirComplementoSiCorresponde(sock, jid)) {
+                        console.log(`[AI] Bot ${this.idCliente}: querer pagar "${text}" -> sugerencia de complemento`);
+                        return { derivado: true };
+                    }
+                    const derivado = await this._derivarVendedor(sock, jid, pushName);
+                    if (derivado) {
+                        console.log(`[AI] Bot ${this.idCliente}: querer pagar "${text}" -> derivación a vendedor`);
+                        return { derivado: true };
+                    }
+                }
+            }
             this.stateService.setUserIntent(jid, { trigger: navTrigger, cantidad: this._detectarCantidad(text) });
             console.log(`[AI] Bot ${this.idCliente}: navegación "${text}" -> trigger "${navTrigger}"`);
             return navTrigger;
@@ -675,17 +896,33 @@ class AITranslatorController {
             const ok = await this._derivarVendedor(sock, jid, pushName);
             this.stateService.clearTranslationFails(jid);
             if (ok) {
-                await this._sendFriendly(sock, jid, 'Esperá un momento: alguien de nuestro equipo te va a contestar. Voy a finalizar mi asistencia. 🙌');
+                // _derivarVendedor ya envió al cliente el mensaje de derivación
+                // (configurable) y avisó al vendedor por WhatsApp.
             }
             return { derivado: true };
         }
 
-        // Multi-pedido: "una muzzarella y una coca" -> el traductor devuelve el
-        // primer ítem y cachea el resto (setPendingOrderItems) para que el menú
-        // los procese en cadena desde app.js.
+        // Multi-pedido: "una muzzarella y una coca" -> intención de compra con
+        // varios productos. Si hay vendedor configurado, agregamos todos y
+        // derivamos al vendedor (corte de flujo). Si no, mantenemos el flujo en
+        // cadena actual (primer ítem + cola para el menú).
         const multi = await this._detectarMultiPedido(jid, text, options);
-        if (multi && multi.items.length >= 2) {
+        // Sin vendedor, el multi-pedido se resuelve determinista (cadena).
+        // Con vendedor, la IA (router) decide si es compra o consulta.
+        if (multi && multi.items.length >= 2 && !celularVendedor) {
             this.stateService.clearTranslationFails(jid);
+            let todosAgregados = true;
+            for (const it of multi.items) {
+                const ok = await this.menuController.addItemDirect(sock, jid, it.trigger, it.cantidad, { silencioso: true });
+                if (!ok) todosAgregados = false;
+            }
+            if (todosAgregados) {
+                const derivado = await this._derivarVendedor(sock, jid, pushName);
+                if (derivado) {
+                    console.log(`[AI] Bot ${this.idCliente}: multi-compra "${text}" (${multi.items.length} ítems) -> derivación a vendedor`);
+                    return { derivado: true };
+                }
+            }
             const primero = multi.items[0];
             const resto = multi.items.slice(1).map(it => ({ trigger: it.trigger, cantidad: it.cantidad }));
             this.stateService.setPendingOrderItems(jid, resto);
@@ -697,9 +934,37 @@ class AITranslatorController {
         const matchSimple = this._matchOption(text, options);
         if (matchSimple) {
             this.stateService.clearTranslationFails(jid);
-            this.stateService.setUserIntent(jid, { trigger: matchSimple, cantidad: this._detectarCantidad(text) });
-            console.log(`[AI] Bot ${this.idCliente}: match simple "${text}" -> trigger "${matchSimple}"`);
-            return matchSimple;
+            if (!celularVendedor) {
+                // Sin vendedor: no hay derivación posible; el menú agrega normalmente.
+                this.stateService.setUserIntent(jid, { trigger: matchSimple, cantidad: this._detectarCantidad(text) });
+                console.log(`[AI] Bot ${this.idCliente}: match simple "${text}" -> trigger "${matchSimple}" (sin vendedor)`);
+                return matchSimple;
+            }
+
+            // Con vendedor: la determinación consulta-vs-compra la toma la IA.
+            const cls = await this._clasificarConLaIA(user, ai, jid, text);
+            if (!cls) {
+                // Sin certeza (FALLO/error/cuota): seguro, el menú responde normal y NO deriva.
+                console.log(`[AI] Bot ${this.idCliente}: match simple "${text}" -> IA sin certeza, menú normal (sin derivar)`);
+                return false;
+            }
+            if (this._esConsulta(cls.intencion)) {
+                // Consulta: se responde conversacional, sin agregar al carrito ni derivar.
+                const texto = cls.respuesta_conversacional || '¡Claro! ¿En qué puedo ayudarte con eso?';
+                await this._sendFriendly(sock, jid, texto);
+                console.log(`[AI] Bot ${this.idCliente}: consulta "${text}" -> respuesta IA (sin derivar, intención ${cls.intencion})`);
+                return { derivado: true };
+            }
+            // Compra/acción: delega al procesador (agrega silencioso + deriva si corresponde).
+            const res = await this._procesarIntencion(sock, jid, pushName, cls);
+            if (res === 'FALLO') return false;
+            if (typeof res === 'string') {
+                this.stateService.clearTranslationFails(jid);
+                console.log(`[AI] Bot ${this.idCliente}: match simple "${text}" (con vendedor) -> intención "${cls.intencion}" -> trigger "${res}"`);
+                return res;
+            }
+            this.stateService.clearTranslationFails(jid);
+            return res;
         }
 
         // El cliente ya tiene productos en el pedido y la negación indica que
@@ -708,6 +973,18 @@ class AITranslatorController {
         // tokens y sin riesgo de que la IA malinterprete y vuelva al inicio).
         const orderActual = this.stateService.getUserOrder(jid) || [];
         if (orderActual.length > 0 && /(?:^|\s)(?:no\s*(?:estoy\s*)?(?:listo|ya\s*est[aá]|quier(?:o|és)?\s*nada\s*m[aá]s|puedo\s*agregar\s*m[aá]s)|ya\s+est[aá]\b|eso\s+(?:ser[ií]a|es)\s+todo|no\s+quiero\s+nada\s*m[aá]s)/i.test(text)) {
+            // Confirmar/cerrar pedido = intención de compra clara: si corresponde,
+            // primero sugerimos un complemento (antes de derivar/finalizar).
+            if (await this._sugerirComplementoSiCorresponde(sock, jid)) {
+                console.log(`[AI] Bot ${this.idCliente}: confirmar pedido "${text}" -> sugerencia de complemento`);
+                return { derivado: true };
+            }
+            // Si hay vendedor configurado, el asistente corta el flujo y deriva.
+            const derivado = await this._derivarVendedor(sock, jid, pushName);
+            if (derivado) {
+                console.log(`[AI] Bot ${this.idCliente}: confirmar pedido "${text}" -> derivación a vendedor`);
+                return { derivado: true };
+            }
             const trig = this._navPorFrase(this._normalizarMatch('pagar')) || 'p';
             this.stateService.clearTranslationFails(jid);
             this.stateService.setUserIntent(jid, { trigger: trig, cantidad: null });
@@ -842,14 +1119,31 @@ class AITranslatorController {
             switch (intencion) {
                 case 'AGREGAR_AL_CARRITO': {
                     if (!items.length) {
-                        await this._sendFriendly(sock, jid, respuesta || '¿Qué producto querés agregar?');
+                        // El LLM detectó intención de agregar pero sin producto claro:
+                        // no debería ocurrir si la clasificación fue correcta. Pedimos
+                        // el producto sin mostrar el menú (evita el "coletazo").
+                        await this._sendFriendly(sock, jid, respuesta || '¿Qué producto querés? Decímelo y te lo busco.');
                         return { derivado: true };
                     }
+                    // Intención de compra concreta: el cliente pidió UN producto o
+                    // servicio específico. El asistente detecta la intención y, como
+                    // EXCEPCIÓN, corta el flujo y deriva al vendedor real sin recorrer
+                    // todos los pasos del menú (avisando antes al vendedor por WhatsApp).
+                    // Agregamos los ítems al carrito una única vez: así el vendedor ve
+                    // exactamente qué pidió el cliente en el aviso de derivación.
                     const resultado = [];
                     for (const it of items) {
-                        const ok = await this.menuController.addItemDirect(sock, jid, it.trigger, it.cantidad);
+                        const ok = await this.menuController.addItemDirect(sock, jid, it.trigger, it.cantidad, { silencioso: true });
                         resultado.push({ trigger: it.trigger, ok });
                     }
+                    const derivadoCompra = await this._derivarVendedor(sock, jid, pushName);
+                    if (derivadoCompra) {
+                        // _derivarVendedor ya avisó al vendedor (con el pedido actual,
+                        // que incluye el producto) y mostró al cliente el mensaje de
+                        // derivación configurado. Corta la conversación IA.
+                        return { derivado: true };
+                    }
+                    // Sin vendedor configurado: mostramos el resumen normal del pedido.
                     if (resultado.some(r => r.ok)) {
                         const orden = this.stateService.getUserOrder(jid) || [];
                         let total = 0;
@@ -928,7 +1222,18 @@ class AITranslatorController {
                         await this._sendFriendly(sock, jid, 'Todavía no tenés productos en tu pedido. ¿Querés ver el menú para elegir algo?');
                         return menuTrigger;
                     }
-                    // Deja que el motor determinista resuelva el flujo de pago real.
+                    // Sugerencia de complemento antes de pagar (solo con IA activa
+                    // y checkbox). Si el asistente ofrece un complemento, corta y
+                    // sigue la conversación IA hasta confirmar o agregar.
+                    if (await this._sugerirComplementoSiCorresponde(sock, jid)) {
+                        return { derivado: true };
+                    }
+                    // Intención de compra clara (quiere pagar/confirmar): el
+                    // asistente corta el flujo y deriva al vendedor real.
+                    const derivado = await this._derivarVendedor(sock, jid, pushName);
+                    if (derivado) return { derivado: true };
+                    // Sin vendedor configurado: deja que el motor determinista
+                    // resuelva el flujo de pago real.
                     return 'p';
                 }
 

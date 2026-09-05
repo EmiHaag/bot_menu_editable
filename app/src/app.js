@@ -976,6 +976,13 @@ async function startBot(botConfig, forceStart = false) {
             menuController
         });
 
+        // Inyectar el interceptor del asistente en el menuController: cuando el
+        // menú cambia a un nodo de checkout/compra, el asistente interviene
+        // (presenta natural + aplica reglas de derivación al vendedor).
+        menuController.setAssistantInterceptor((sock, jid, pushName, context) => {
+            return aiTranslatorController.intervenirNodoCheckout(sock, jid, pushName, context);
+        });
+
         const {
             state,
             saveCreds

@@ -11,6 +11,18 @@ class MenuController {
         this.googleSheetsService = googleSheetsService; // Servicio para leer datos de Google Sheets
         this.stateService = stateService;             // Servicio para gestionar estados y carritos de usuarios
         this.orderService = orderService;             // Servicio para guardar pedidos en Google Sheets
+        this.assistantInterceptor = null;             // Callback opcional del asistente IA (nodos de checkout)
+    }
+
+    /**
+     * Inyecta el callback del asistente IA para intervenir en nodos de
+     * checkout/compra (##PAGAR## / ##FINALIZAR## / cierre de pedido).
+     * El callback recibe (sock, jid, pushName) y puede devolver un texto
+     * alternativo para reemplazar el mensaje del nodo, o null para que el
+     * menú envíe el mensaje normal.
+     */
+    setAssistantInterceptor(cb) {
+        this.assistantInterceptor = typeof cb === 'function' ? cb : null;
     }
 
     /**
@@ -426,7 +438,7 @@ class MenuController {
      * Solo aplica a productos HOJA (sin hijos). Devuelve true si se agregó.
      * NO cambia el nivel actual del usuario (queda en la categoría de productos).
      */
-    async addItemDirect(sock, jid, trigger, cantidad) {
+    async addItemDirect(sock, jid, trigger, cantidad, opts) {
         const currentStateId = this.stateService.getUserState(jid);
         const options = await this.googleSheetsService.getNodesByParent(currentStateId);
         const node = options.find(o => String(o.trigger).toLowerCase() === String(trigger).toLowerCase());
@@ -445,8 +457,13 @@ class MenuController {
             price: parseFloat(String(node.price).replace(',', '.')) || 0,
             quantity: quantity
         });
-        await this.sendPresenceTyping(sock, jid);
-        await sock.sendMessage(jid, { text: `✅ Añadido: ${quantity} x ${node.title}` });
+        // Modo silencioso: usado por el asistente IA cuando agrega un producto
+        // que va seguido de su propia confirmación/derivación (evita el ruido
+        // "✅ Añadido" + mensaje del asistente).
+        if (!(opts && opts.silencioso)) {
+            await this.sendPresenceTyping(sock, jid);
+            await sock.sendMessage(jid, { text: `✅ Añadido: ${quantity} x ${node.title}` });
+        }
         return true;
     }
 
@@ -605,6 +622,26 @@ class MenuController {
         // 3. Nodo hoja: muestra su mensaje y redirige según redirigirA
         let finalMessage = await this.replaceOrderSummary(node.message, jid);
         finalMessage += `\n\n_Escribe *0* para volver al inicio._`;
+
+        // Intervención del asistente en nodo de checkout/cierre de compra: le
+        // permite presentar la transición de forma natural y aplicar reglas
+        // (incluida la derivación al vendedor). El callback devuelve
+        // { reemplazar, detener }: si detener es true, se corta el flujo y el
+        // menú no finaliza ni redirige (el asistente ya respondió/derivó).
+        if (this.assistantInterceptor && (nodeTags.includes('FINALIZAR') || nodeTags.includes('PAGAR'))) {
+            try {
+                const res = await this.assistantInterceptor(sock, jid, null, { nodeTags, tipo: 'checkout' });
+                if (res && typeof res === 'object') {
+                    if (res.reemplazar && typeof res.reemplazar === 'string' && res.reemplazar.trim()) {
+                        finalMessage = res.reemplazar.trim();
+                    }
+                    if (res.detener) return;
+                }
+            } catch (err) {
+                console.error('[MenuController] Error en interceptor de checkout:', err.message);
+            }
+        }
+
         await this.sendPresenceTyping(sock, jid);
         await sock.sendMessage(jid, { text: finalMessage });
 
