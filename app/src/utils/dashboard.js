@@ -3,13 +3,13 @@ require('dotenv').config();
 require('dotenv').config({ path: require('path').join(__dirname, '..', '..', '..', '.env') });
 const express = require('express');
 const bodyParser = require('body-parser');
-const GoogleSheetsService = require('../services/googleSheetsService');
+const multer = require('multer');
+const { MenuDbService } = require('../services/menuDbService');
 const userService = require('../services/userService');
 const {
     google
 } = require('googleapis');
 
-const GoogleDriveService = require('../services/googleDriveService');
 const orderService = require('../services/orderService');
 const botConfigService = require('../services/botConfigService');
 const calendarService = require('../services/googleCalendarService');
@@ -35,18 +35,10 @@ class Dashboard {
     }
 
     async initService(botId, spreadsheetId) {
-        // Si no se provee spreadsheetId, intentamos obtenerlo del usuario
-        if (!spreadsheetId) {
-            const user = await userService.getUsers().then(users => users.find(u => u.idCliente === botId));
-            spreadsheetId = user ? user.spreadsheetId : process.env.SPREADSHEET_ID;
-        }
-
-        const cacheKey = `${botId}_${spreadsheetId}`;
+        const cacheKey = `${botId}`;
         if (!this.services[cacheKey]) {
-            this.services[cacheKey] = new GoogleSheetsService({
-                clientId: botId,
-                spreadsheetId: spreadsheetId,
-                credentials: process.env.CREDENTIALS_JSON
+            this.services[cacheKey] = new MenuDbService({
+                clientId: botId
             });
         }
         return this.services[cacheKey];
@@ -59,6 +51,12 @@ class Dashboard {
             extended: true
         }));
         router.use(bodyParser.json());
+
+        // Upload de imágenes del catálogo (memoria; se optimiza y se sube a Drive)
+        const uploadImage = multer({
+            storage: multer.memoryStorage(),
+            limits: { fileSize: 15 * 1024 * 1024 } // 15 MB máx de entrada
+        });
 
         // Middleware to get the correct service based on logged user and query param
         const getServiceInfo = async (req) => {
@@ -90,6 +88,76 @@ class Dashboard {
 
         // --- RUTAS DE ADMINISTRACIÓN DE CLIENTES ---
         
+        // Subida de imágenes para un nodo del catálogo (solo plan premium)
+        router.post('/api/upload-imagen', uploadImage.array('imagen', 10), async (req, res) => {
+            try {
+                const { service, botId } = await getServiceInfo(req);
+
+                // Gate premium: solo comercios premium + suscripción activa
+                const verificarPlanPremium = require('../services/planService').verificarPlanPremium;
+                const esPremium = await verificarPlanPremium(botId).catch(() => false);
+                if (!esPremium) {
+                    return res.status(403).json({ success: false, error: 'Requiere plan premium' });
+                }
+
+                const files = req.files || [];
+                if (files.length === 0) {
+                    return res.status(400).json({ success: false, error: 'No se recibió ninguna imagen' });
+                }
+
+                // Optimizar (sharp): max 1280px, JPEG q<300KB
+                const imageOptimizerService = require('../services/imageOptimizerService');
+                const GoogleDriveService = require('../services/googleDriveService');
+                const folderId = await GoogleDriveService.getOrCreateImagesFolder(botId);
+
+                const subidas = [];
+                for (const file of files) {
+                    const buffer = await imageOptimizerService.optimizarImagen(file.buffer);
+                    const originalName = file.originalname || 'imagen.jpg';
+                    const ext = originalName.includes('.') ? originalName.split('.').pop() : 'jpg';
+                    const filename = `${Date.now()}_${botId}_${subidas.length + 1}.${ext}`;
+
+                    const subida = await GoogleDriveService.uploadFile(buffer, {
+                        filename,
+                        mimeType: 'image/jpeg',
+                        parentFolderId: folderId
+                    });
+                    subidas.push({ url: subida.url, driveFileId: subida.fileId, size: subida.size });
+                    console.log(`[Dashboard] Imagen subida para ${botId}: ${subida.fileId} (${subida.size} bytes)`);
+                }
+
+                res.json({ success: true, subidas });
+            } catch (error) {
+                console.error('[Dashboard] Error subiendo imagen:', error.message);
+                res.status(500).json({ success: false, error: error.message });
+            }
+        });
+
+        // Borra una imagen de Drive (al quitar una imagen subida recién en el modal,
+        // antes de guardar el nodo; las ya guardadas se borran al guardar vía updateNode)
+        router.post('/api/borrar-imagen', async (req, res) => {
+            try {
+                const { botId } = await getServiceInfo(req);
+                const verificarPlanPremium = require('../services/planService').verificarPlanPremium;
+                const esPremium = await verificarPlanPremium(botId).catch(() => false);
+                if (!esPremium) {
+                    return res.status(403).json({ success: false, error: 'Requiere plan premium' });
+                }
+
+                const driveFileId = req.body.driveFileId;
+                if (!driveFileId) {
+                    return res.status(400).json({ success: false, error: 'Falta driveFileId' });
+                }
+
+                const GoogleDriveService = require('../services/googleDriveService');
+                const ok = await GoogleDriveService.deleteFile(driveFileId);
+                res.json({ success: ok });
+            } catch (error) {
+                console.error('[Dashboard] Error borrando imagen de Drive:', error.message);
+                res.status(500).json({ success: false, error: error.message });
+            }
+        });
+
         router.get('/admin', async (req, res) => {
             if (req.user.idCliente !== 'admin') return res.status(403).send('Acceso denegado');
             
@@ -297,18 +365,24 @@ class Dashboard {
             const { idCliente, nombreCliente, user, password } = req.body;
 
             try {
-                // 1. Obtener o crear carpeta 'bots'
-                const folderId = await GoogleDriveService.getOrCreateFolder('bots');
+                // 1. Registrar la config del bot (fila en `bots`) con el nombre del negocio
+                await botConfigService.saveBotConfig(idCliente, {
+                    bot_type: 'CARRITO',
+                    calendar_config: {},
+                    ai_config: {},
+                    menu_config: {}
+                });
+                await require('../services/menuDbService').sql`
+                    UPDATE bots SET nombre_negocio = ${nombreCliente || ''} WHERE id_cliente = ${idCliente}
+                `;
 
-                // 2. Crear Spreadsheet para el cliente con sus datos de login
-                const spreadsheetId = await GoogleDriveService.createClientSpreadsheet({
-                    idCliente,
-                    nombreCliente,
-                    user,
-                    password
-                }, folderId);
+                // 2. Crear el nodo root del menú en SQL
+                const { MenuDbService } = require('../services/menuDbService');
+                const menuSvc = new MenuDbService({ clientId: idCliente });
+                await menuSvc.initializeClientSheet();
+                await menuSvc.clearCache();
 
-                // 3. Crear Spreadsheet de Pedidos para el cliente
+                // 3. Crear Spreadsheet de Pedidos para el cliente (pedidos siguen en Sheets)
                 await orderService.createPedidosSpreadsheet(idCliente);
 
                 // 4. Agregar a la lista de usuarios maestra
@@ -317,7 +391,7 @@ class Dashboard {
                     nombreCliente,
                     user,
                     password,
-                    spreadsheetId
+                    spreadsheetId: ''
                 });
 
                 res.redirect('/app/admin?success=1');
@@ -332,22 +406,21 @@ class Dashboard {
             const id = req.params.id;
 
             try {
-                // Obtener datos del usuario antes de borrarlo para tener su spreadsheetId
-                const users = await userService.getUsers();
-                const client = users.find(u => u.idCliente === id);
-                
                 // 1. Borrar de la lista de usuarios maestra
                 await userService.deleteUser(id);
 
                 // 2. Borrar suscripción y facturas
                 await billingService.deleteSuscripcionByIdCliente(id);
 
-                // 3. Si tenía un spreadsheet propio, mandarlo a la papelera
-                if (client && client.spreadsheetId && client.spreadsheetId !== process.env.SPREADSHEET_ID) {
-                    await GoogleDriveService.deleteFile(client.spreadsheetId);
-                }
+                // 3. Borrar menú y config del bot en SQL
+                await require('../services/menuDbService').sql`
+                    DELETE FROM menu_nodos WHERE comercio_id = ${id}
+                `;
+                await require('../services/menuDbService').sql`
+                    DELETE FROM bots WHERE id_cliente = ${id}
+                `;
 
-                // 3. Borrar spreadsheet de Pedidos
+                // 4. Borrar spreadsheet de Pedidos (pedidos siguen en Sheets)
                 await orderService.deletePedidosSpreadsheet(id);
 
                 res.redirect('/app/admin?deleted=1');
@@ -1826,7 +1899,6 @@ ${helpGuideCSS}
                                 <span class="tooltip-bubble">Si configurás tu bot como "Bot de catálogo" podrás ver los pedidos en esta base de datos.</span>
                             </span>
                             <a href="https://calendar.google.com/calendar/r" target="_blank" class="btn btn-calendar">${icon('calendar', 'w-4 h-4 inline')} Calendario</a>
-                            ${isAdmin ? `<a href="https://docs.google.com/spreadsheets/d/${service.spreadsheetId}" target="_blank" class="btn btn-sheet">${icon('document', 'w-4 h-4 inline')} Sheet</a>` : ''}
                             <a href="/app/logout" class="btn btn-red">${icon('arrowLeft', 'w-4 h-4 inline')} Salir</a>
                     </div>
 
@@ -2261,6 +2333,20 @@ ${helpGuideHTML}
                                                 </label>
                                                 <textarea id="addMessage" name="message" rows="3" placeholder="Mensaje que enviará el bot..." oninput="updatePreview('add')"></textarea>
                                             </div>
+                                            <div class="form-group" style="margin-bottom: 12px;">
+                                                <label style="display: flex; align-items: center;">Imágenes del catálogo
+                                                    <span class="info-icon">i
+                                                        <span class="tooltip">Se enviarán como fotos por WhatsApp al cliente (requiere plan premium). Máx 1280px, JPEG &lt; 300 KB por foto.</span>
+                                                    </span>
+                                                </label>
+                                                <div style="display:flex;gap:8px;align-items:center;">
+                                                    <input type="file" id="addImageInput" accept="image/*" multiple placeholder="Elegí una o varias imágenes..." style="flex:1;padding:6px;border:1px solid var(--border-color);border-radius:6px;">
+                                                    <button type="button" class="btn btn-green" style="padding:8px 14px;white-space:nowrap;" onclick="uploadNodoImagen('add')">Subir</button>
+                                                </div>
+                                                <div id="addImagePreview" style="display:flex;flex-wrap:wrap;gap:8px;margin-top:8px;"></div>
+                                                <input type="hidden" id="addImagenes" name="imagenes" value="[]">
+                                                <small id="addImageMsg" style="color:#888;"></small>
+                                            </div>
                                             <div class="form-group" style="margin-bottom: 20px;" id="cartModuleAdd">
                                                 <div style="border:1px solid var(--border-color);border-radius:8px;padding:12px 12px 8px 12px;">
                                                     <div style="font-size:12px;font-weight:700;color:var(--text-main);margin-bottom:8px;">Carrito de compras</div>
@@ -2434,6 +2520,20 @@ ${helpGuideHTML}
                                             </label>
                                             <textarea id="editMessage" name="message" rows="4" oninput="updatePreview('edit')"></textarea>
                                         </div>
+                                        <div class="form-group" style="margin-bottom: 12px;">
+                                            <label style="display: flex; align-items: center;">Imágenes del catálogo
+                                                <span class="info-icon">i
+                                                    <span class="tooltip" id="editImagesTooltip">Se envían como fotos por WhatsApp (requiere plan premium). Se eliminan automáticamente de Drive si se borra el nodo.</span>
+                                                </span>
+                                            </label>
+                                            <div style="display:flex;gap:8px;align-items:center;">
+                                                <input type="file" id="editImageInput" accept="image/*" multiple placeholder="Elegí una o varias imágenes..." style="flex:1;padding:6px;border:1px solid var(--border-color);border-radius:6px;">
+                                                <button type="button" class="btn btn-green" style="padding:8px 14px;white-space:nowrap;" onclick="uploadNodoImagen('edit')">Subir</button>
+                                            </div>
+                                            <div id="editImagePreview" style="display:flex;flex-wrap:wrap;gap:8px;margin-top:8px;"></div>
+                                            <input type="hidden" id="editImagenes" name="imagenes" value="[]">
+                                            <small id="editImageMsg" style="color:#888;"></small>
+                                        </div>
                                         <div class="form-group" id="editTagsGroup" style="margin-bottom: 12px;">
                                             <div style="border:1px solid var(--border-color);border-radius:8px;padding:8px 10px 6px 10px;margin:8px;" id="cartModuleEdit">
                                                 <div style="font-size:12px;font-weight:700;color:var(--text-main);margin-bottom:6px;">Carrito de compras</div>
@@ -2571,6 +2671,9 @@ ${helpGuideHTML}
                         const menuData = ${JSON.stringify(menuData)};
                         const botId = "${botId}";
                         let currentParent = null;
+
+                        // driveFileId de imágenes subidas en la sesión actual del modal (aún no guardadas en BD)
+                        let imgSubidasSesion = [];
 
                         // --- Horarios de Atención ---
                         const scheduleConfig = ${JSON.stringify(scheduleConfig)};
@@ -3166,6 +3269,7 @@ ${helpGuideJS}
                         };
 
                         function openAddModal(idx) {
+                            imgSubidasSesion = [];
                             const parent = menuData[idx] || { title: 'Raíz', id: 'root' };
                             const parentId = parent.id || 'root';
                             currentParent = parent;
@@ -3184,6 +3288,7 @@ ${helpGuideJS}
                             document.getElementById('addIsData').checked = false;
                             document.getElementById('addIsArchivo').checked = false;
                             document.getElementById('addIsPagar').checked = false;
+                            setNodoImagenes('add', []);
                             updatePreview('add');
 
                             // Reset wizard state
@@ -3626,6 +3731,7 @@ ${helpGuideJS}
                         }
 
                         function openEditModal(idx) {
+                            imgSubidasSesion = [];
                             const node = menuData[idx];
                             if (!node) return;
 
@@ -3651,6 +3757,7 @@ ${helpGuideJS}
                             document.getElementById('editIsPagar').checked = isPagar;
                             const editIsTurno = document.getElementById('editIsTurno');
                             if (editIsTurno) editIsTurno.checked = node.message && node.message.includes('##TURNO##');
+                            setNodoImagenes('edit', node.imagenes || []);
 
                             const strictGroup = document.getElementById('strictTriggerGroup');
                             const strictCheckbox = document.getElementById('editStrictTrigger');
@@ -3918,6 +4025,18 @@ ${helpGuideJS}
                         });
 
                         function closeModal(modalId) {
+                            // Al cerrar addModal/editModal, borrar de Drive las imágenes
+                            // subidas en esta sesión y nunca guardadas (huérfanos)
+                            if ((modalId === 'addModal' || modalId === 'editModal') && imgSubidasSesion.length > 0) {
+                                const pendientes = imgSubidasSesion.splice(0);
+                                pendientes.forEach(driveFileId => {
+                                    fetch('/app/api/borrar-imagen', {
+                                        method: 'POST',
+                                        headers: { 'Content-Type': 'application/json' },
+                                        body: JSON.stringify({ driveFileId, botId: (typeof botId !== 'undefined' ? botId : '') })
+                                    }).catch(() => {});
+                                });
+                            }
                             const el = document.getElementById(modalId);
                             if (el) el.style.display = "none";
                         }
@@ -3926,7 +4045,7 @@ ${helpGuideJS}
                         document.addEventListener('click', function(e) {
                             document.querySelectorAll('.modal').forEach(function(m) {
                                 if (m.style.display === 'block' && e.target === m) {
-                                    m.style.display = 'none';
+                                    closeModal(m.id);
                                 }
                             });
                         });
@@ -3936,7 +4055,7 @@ ${helpGuideJS}
                             if (e.key === 'Escape') {
                                 document.querySelectorAll('.modal').forEach(function(m) {
                                     if (m.style.display === 'block') {
-                                        m.style.display = 'none';
+                                        closeModal(m.id);
                                     }
                                 });
                             }
@@ -4096,6 +4215,81 @@ ${helpGuideJS}
                             updatePreview(type);
                         }
 
+                        // --- Imágenes del catálogo (premium) ---
+                        function getNodoImagenes(type) {
+                            const el = document.getElementById(type + 'Imagenes');
+                            try { return JSON.parse(el.value || '[]'); } catch (e) { return []; }
+                        }
+
+                        function setNodoImagenes(type, arr) {
+                            const list = Array.isArray(arr) ? arr.filter(i => i && i.url) : [];
+                            document.getElementById(type + 'Imagenes').value = JSON.stringify(list);
+                            const preview = document.getElementById(type + 'ImagePreview');
+                            const msg = document.getElementById(type + 'ImageMsg');
+                            if (msg) msg.textContent = list.length ? list.length + ' imagen(es) configurada(s)' : '';
+                            preview.innerHTML = list.map(function(img, i) {
+                                return '<div style="position:relative;display:inline-block;">' +
+                                    '<img src="' + img.url + '" style="width:64px;height:64px;object-fit:cover;border-radius:6px;border:1px solid var(--border-color);">' +
+                                    '<button type="button" onclick="quitarNodoImagen(&quot;' + type + '&quot;,' + i + ')" style="position:absolute;top:-6px;right:-6px;background:#dc2626;color:white;border:none;border-radius:50%;width:18px;height:18px;font-size:11px;line-height:1;cursor:pointer;padding:0;">&#10005;</button>' +
+                                    '</div>';
+                            }).join('');
+                        }
+
+                        function quitarNodoImagen(type, idx) {
+                            const list = getNodoImagenes(type);
+                            const quitada = list[idx];
+                            list.splice(idx, 1);
+                            setNodoImagenes(type, list);
+                            // Si la imagen se subió en esta sesión del modal (nunca se guardó en la BD),
+                            // borrarla de Drive ya mismo para no dejar archivos huérfanos.
+                            if (quitada && quitada.driveFileId && imgSubidasSesion.indexOf(quitada.driveFileId) !== -1) {
+                                fetch('/app/api/borrar-imagen', {
+                                    method: 'POST',
+                                    headers: { 'Content-Type': 'application/json' },
+                                    body: JSON.stringify({ driveFileId: quitada.driveFileId, botId: (typeof botId !== 'undefined' ? botId : '') })
+                                }).then(r => r.json()).then(d => {
+                                    const msg = document.getElementById(type + 'ImageMsg');
+                                    if (msg && !d.success) msg.textContent = 'No se pudo borrar de Drive: ' + (d.error || '');
+                                }).catch(() => {});
+                            }
+                        }
+
+                        async function uploadNodoImagen(type) {
+                            const fileInput = document.getElementById(type + 'ImageInput');
+                            const msg = document.getElementById(type + 'ImageMsg');
+                            if (!fileInput.files || fileInput.files.length === 0) {
+                                if (msg) msg.textContent = 'Elegí al menos una imagen primero.';
+                                return;
+                            }
+                            const archivos = Array.from(fileInput.files);
+                            if (archivos.length > 10) {
+                                if (msg) msg.textContent = 'Máximo 10 imágenes por subida.';
+                                return;
+                            }
+                            const list = getNodoImagenes(type);
+                            const formData = new FormData();
+                            archivos.forEach(f => formData.append('imagen', f));
+                            formData.append('botId', typeof botId !== 'undefined' ? botId : '');
+                            if (msg) msg.textContent = 'Subiendo y optimizando ' + archivos.length + ' imagen(es)...';
+                            try {
+                                const res = await fetch('/app/api/upload-imagen', { method: 'POST', body: formData });
+                                const data = await res.json();
+                                if (!res.ok) {
+                                    throw new Error(data.error || 'Error al subir las imágenes');
+                                }
+                                if (Array.isArray(data.subidas)) {
+                                    data.subidas.forEach(s => {
+                                        list.push({ url: s.url, driveFileId: s.driveFileId });
+                                        imgSubidasSesion.push(s.driveFileId);
+                                    });
+                                }
+                                setNodoImagenes(type, list);
+                                fileInput.value = '';
+                            } catch (err) {
+                                if (msg) msg.textContent = 'Error: ' + err.message;
+                            }
+                        }
+
                         function stripTagsFromMessage(msg) {
                             let out = msg || '';
                             ['##PEDIDO##', '##CANTIDAD##', '##FINALIZAR##', '##DATOS##', '##ARCHIVO##', '##PAGAR##', '##TURNO##', '##MISTURNOS##'].forEach(function(t) {
@@ -4183,7 +4377,7 @@ ${helpGuideJS}
                 }
                 res.redirect(`/app/?botId=${encodeURIComponent(botId)}`);
             } catch (error) {
-                console.error('Error al borrar en Sheets:', error);
+                console.error('Error al borrar en la base de datos:', error);
                 res.status(500).send('Error al borrar la fila.');
             }
         });
@@ -4205,7 +4399,8 @@ ${helpGuideJS}
                     price,
                     strictTrigger,
                     redirigirA,
-                    disponible
+                    disponible,
+                    imagenes
                 } = req.body;
 
                 await service.updateNode(index, {
@@ -4217,11 +4412,12 @@ ${helpGuideJS}
                     price,
                     strictTrigger,
                     redirigirA,
-                    disponible: disponible || 'true'
+                    disponible: disponible || 'true',
+                    imagenes
                 });
                 res.redirect(`/app/?botId=${encodeURIComponent(botId)}`);
             } catch (error) {
-                console.error('Error al guardar en Sheets:', error);
+                console.error('Error al guardar en la base de datos:', error);
                 res.status(500).send('Error al guardar los datos.');
             }
         });
@@ -4230,7 +4426,7 @@ ${helpGuideJS}
         router.post('/api/add-node', async (req, res) => {
             try {
                 const { service } = await getServiceInfo(req);
-                const { id, parentId, trigger, title, message, price, redirigirA, disponible } = req.body;
+                const { id, parentId, trigger, title, message, price, redirigirA, disponible, imagenes } = req.body;
 
                 await service.addNode({
                     id,
@@ -4240,7 +4436,8 @@ ${helpGuideJS}
                     message,
                     price,
                     redirigirA,
-                    disponible: disponible || 'true'
+                    disponible: disponible || 'true',
+                    imagenes
                 });
 
                 res.json({ success: true });
@@ -4265,7 +4462,8 @@ ${helpGuideJS}
                     message,
                     price,
                     redirigirA,
-                    disponible
+                    disponible,
+                    imagenes
                 } = req.body;
 
                 await service.addNode({
@@ -4276,12 +4474,13 @@ ${helpGuideJS}
                     message,
                     price,
                     redirigirA,
-                    disponible: disponible || 'true'
+                    disponible: disponible || 'true',
+                    imagenes
                 });
 
                 res.redirect(`/app/?botId=${encodeURIComponent(botId)}`);
             } catch (error) {
-                console.error('Error al agregar a Sheets:', error);
+                console.error('Error al agregar a la base de datos:', error);
                 res.status(500).send('Error al agregar los datos.');
             }
         });

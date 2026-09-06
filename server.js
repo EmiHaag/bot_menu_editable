@@ -235,7 +235,7 @@ app.post('/api/register', async (req, res) => {
             nombreCliente: name,
             user: username,
             password,
-            spreadsheetId: process.env.SPREADSHEET_ID,
+            spreadsheetId: '',
             email,
             trialStartDate: trialStart.toISOString(),
             trialEndDate: trialEnd.toISOString(),
@@ -579,7 +579,7 @@ app.post('/api/mercadopago/test-complete', async (req, res) => {
             nombreCliente: name,
             user: username,
             password,
-            spreadsheetId: process.env.SPREADSHEET_ID
+            spreadsheetId: ''
         });
         await billingService.registrarSuscripcion({
             preapprovalId: preapproval_id,
@@ -683,7 +683,7 @@ async function asegurarSuscripcion({ preapprovalId, payerEmail, payerName, exter
                     nombreCliente: nombre,
                     user: username,
                     password,
-                    spreadsheetId: process.env.SPREADSHEET_ID,
+                    spreadsheetId: '',
                     email
                 });
                 user = { idCliente, nombreCliente: nombre, email };

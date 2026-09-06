@@ -167,15 +167,108 @@ class GoogleDriveService extends GoogleAuthBase {
         }
     }
 
+    /**
+     * Sube una imagen optimizada a Google Drive y la deja pública.
+     * @param {Buffer} buffer - contenido de la imagen (ya optimizado)
+     * @param {Object} opts - { filename, mimeType, parentFolderId }
+     * @returns {Promise<{fileId, size, url, driveFileId}>}
+     */
+    async uploadFile(buffer, opts = {}) {
+        const { filename, mimeType = 'image/jpeg', parentFolderId } = opts;
+        const { Readable } = require('stream');
+        const drive = this.drive;
+        const fileMetadata = {
+            name: filename || `imagen_${Date.now()}.jpg`,
+            mimeType
+        };
+        if (parentFolderId) fileMetadata.parents = [parentFolderId];
+
+        const response = await drive.files.create({
+            resource: fileMetadata,
+            media: {
+                mimeType,
+                body: Readable.from(buffer)
+            },
+            fields: 'id,size'
+        });
+
+        const fileId = response.data.id;
+        const size = Number(response.data.size || buffer.length);
+        await this.makeFilePublic(fileId);
+        const url = this.getDirectDownloadUrl(fileId);
+
+        console.log(`[GoogleDriveService] Imagen subida ${fileId} (${size} bytes)`);
+        return { fileId, size, url, driveFileId: fileId };
+    }
+
+    /**
+     * Deja un archivo accesible con el enlace para cualquiera (lectura).
+     */
+    async makeFilePublic(fileId) {
+        try {
+            if (!fileId) return;
+            const drive = this.drive;
+            await drive.permissions.create({
+                fileId,
+                resource: { role: 'reader', type: 'anyone' }
+            });
+            return true;
+        } catch (error) {
+            console.error('[GoogleDriveService] Error haciendo público el archivo:', error.message);
+            throw error;
+        }
+    }
+
+    /**
+     * Enlace de descarga directa de una imagen de Drive (sin la página de vista previa).
+     * Es el formato que WhatsApp puede descargar para enviar la foto.
+     *   vista previa: https://drive.google.com/file/d/{id}/view?usp=sharing
+     *   descarga:     https://lh3.googleusercontent.com/d/{id}
+     */
+    getDirectDownloadUrl(fileId) {
+        if (!fileId) return '';
+        return `https://lh3.googleusercontent.com/d/${fileId}`;
+    }
+
+    /**
+     * Obtiene (o crea) la carpeta de imágenes de un cliente dentro de la carpeta raíz 'img'.
+     * Estructura: /img/{idCliente}
+     */
+    async getOrCreateImagesFolder(clientId) {
+        const parentId = await this.getOrCreateFolder('img');
+        const folderName = clientId || 'cliente';
+        try {
+            const drive = this.drive;
+            const response = await drive.files.list({
+                q: `name = '${folderName}' and mimeType = 'application/vnd.google-apps.folder' and '${parentId}' in parents and trashed = false`,
+                fields: 'files(id, name)'
+            });
+            if (response.data.files.length > 0) {
+                return response.data.files[0].id;
+            }
+            const folder = await drive.files.create({
+                resource: {
+                    name: folderName,
+                    mimeType: 'application/vnd.google-apps.folder',
+                    parents: [parentId]
+                },
+                fields: 'id'
+            });
+            return folder.data.id;
+        } catch (error) {
+            console.error('[GoogleDriveService] Error en getOrCreateImagesFolder:', error.message);
+            throw error;
+        }
+    }
+
     async deleteFile(fileId) {
         try {
             if (!fileId) return;
             const drive = this.drive;
-            await drive.files.update({
-                fileId: fileId,
-                resource: { trashed: true }
+            await drive.files.delete({
+                fileId: fileId
             });
-            console.log(`Archivo ${fileId} movido a la papelera.`);
+            console.log(`Archivo ${fileId} borrado definitivamente de Drive.`);
             return true;
         } catch (error) {
             console.error('[GoogleDriveService] Error deleting file:', error.message);

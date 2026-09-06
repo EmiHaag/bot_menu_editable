@@ -29,9 +29,12 @@ function sleep(ms) {
  * @param {Array}  opts.tools       - Definiciones de tools (OpenAI format).
  * @param {Function} opts.executeTool - async (name, args) => string (resultado).
  * @param {Function} [opts.onTokens] - async (tokens) callback para registrar consumo.
- * @returns {Promise<{content: string|null, toolCalls: number}>}
+ * @param {string}  [opts.toolChoice] - 'auto' | 'required' (default 'auto' cuando hay tools).
+ * @param {Function} [opts.earlyStop] - (name, args) => boolean. Si devuelve true tras
+ *     ejecutar una tool, corta el bucle de inmediato (ahorra la ronda final de texto).
+ * @returns {Promise<{content: string|null, toolCalls: number, stopped?: boolean}>}
  */
-async function chat({ systemPrompt, messages, tools, executeTool, onTokens }) {
+async function chat({ systemPrompt, messages, tools, executeTool, onTokens, toolChoice, earlyStop }) {
     if (!process.env.OPENAI_API_KEY) {
         throw new Error('OPENAI_API_KEY no configurada');
     }
@@ -57,7 +60,7 @@ async function chat({ systemPrompt, messages, tools, executeTool, onTokens }) {
                 temperature: 0.6,
                 messages: fullMessages,
                 tools: tools.length ? tools : undefined,
-                tool_choice: tools.length ? 'auto' : undefined
+                tool_choice: tools.length ? (toolChoice || 'auto') : undefined
             });
         } catch (err) {
             const status = err && err.status;
@@ -117,6 +120,10 @@ async function chat({ systemPrompt, messages, tools, executeTool, onTokens }) {
                     args = JSON.parse(call.function.arguments);
                 }
                 toolResult = await executeTool(call.function.name, args);
+                if (typeof earlyStop === 'function' && earlyStop(call.function.name, args)) {
+                    if (dbg) console.log(`[llm] early stop tras tool ${call.function.name}`);
+                    return { content: finalContent, toolCalls: toolCallsUsed, stopped: true };
+                }
             } catch (err) {
                 toolResult = 'Error ejecutando la herramienta: ' + (err && err.message ? err.message : String(err));
             }

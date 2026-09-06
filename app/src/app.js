@@ -22,7 +22,7 @@ const {
 const QRCode = require('qrcode');
 const pino = require('pino');
 const express = require('express');
-const GoogleSheetsService = require('./services/googleSheetsService');
+const { MenuDbService } = require('./services/menuDbService');
 const StateService = require('./services/stateService');
 const MenuController = require('./controllers/menuController');
 const AITranslatorController = require('./controllers/aiTranslatorController');
@@ -960,10 +960,8 @@ async function startBot(botConfig, forceStart = false) {
             fs.mkdirSync(authFolder, { recursive: true });
         }
 
-        const googleSheetsService = new GoogleSheetsService({
-            clientId: id,
-            spreadsheetId,
-            credentials
+        const googleSheetsService = new MenuDbService({
+            clientId: id
         });
 
         const stateService = new StateService(id);
@@ -1315,6 +1313,8 @@ async function main() {
     await configService.seed();
     await botConfigService.ensureTable();
     await aiUsageService.ensureTable();
+    const { ensureMenuTables } = require('./services/menuDbService');
+    await ensureMenuTables();
     logger.initConsoleCapture();
 
     // API: Check terms approval status

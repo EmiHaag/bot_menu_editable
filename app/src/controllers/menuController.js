@@ -5,6 +5,7 @@
 const userService = require('../services/userService');
 const botConfigService = require('../services/botConfigService');
 const calendarService = require('../services/googleCalendarService');
+const { verificarPlanPremium } = require('../services/planService');
 
 class MenuController {
     constructor(googleSheetsService, stateService, orderService = null) {
@@ -368,10 +369,6 @@ class MenuController {
             };
         }
 
-        // Construcción del texto del menú + Resumen de pedido si existe
-        let menuText = await this.replaceOrderSummary(currentNode.message, jid) + '\n\n';
-        //console.log("menuText #202:: ", menuText);
-        
         // Filtrar nodos de finalización
         // Si la categoría tiene ##PAGAR##, ocultamos ##FINALIZAR## de la lista
         // porque el usuario puede usar "p" del footer para finalizar
@@ -383,6 +380,26 @@ class MenuController {
             }
             return true;
         });
+
+        // Construcción del texto del menú + Resumen de pedido si existe.
+        // Humanización: cuando hay opciones, anteponemos una introducción
+        // cálida en vez del mensaje genérico ("Elige una opción").
+        const msgNodo = (await this.replaceOrderSummary(currentNode.message, jid) || '').trim();
+        const msgNorm = String(msgNodo).normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+        const esPlaceholder = !msgNorm || /^elige (una|tu|sus|las|tus)\s*opcion(es)?[\.!:]?$/i.test(msgNorm);
+        const introOpciones = visibleNodes.length > 0
+            ? (visibleNodes.length === 1
+                ? 'Tengo esta opción para vos:'
+                : `Tengo estas ${visibleNodes.length} opciones que pueden interesarte:`)
+            : '';
+        let menuText;
+        if (introOpciones && esPlaceholder) {
+            menuText = introOpciones + '\n\n';
+        } else if (introOpciones) {
+            menuText = msgNodo + '\n\n' + introOpciones + '\n\n';
+        } else {
+            menuText = msgNodo + '\n\n';
+        }
 
         // Listar opciones de submenus con precios (tachar no disponibles)
         visibleNodes.forEach(node => {
@@ -488,8 +505,88 @@ class MenuController {
     }
 
     /**
+     * Envía las imágenes de un nodo del catálogo como fotos por WhatsApp.
+     * Solo si el nodo tiene imágenes y el comercio tiene plan premium activo.
+     */
+    async _enviarImagenes(sock, jid, node) {
+        if (!node || !Array.isArray(node.imagenes) || node.imagenes.length === 0) return;
+
+        const comercioId = this.googleSheetsService.clientId;
+        let esPremium = false;
+        try {
+            esPremium = await verificarPlanPremium(comercioId);
+        } catch (err) {
+            console.error(`[MenuController] Error verificando plan de ${comercioId}:`, err.message);
+        }
+        if (!esPremium) return;
+
+        for (const img of node.imagenes) {
+            if (!img || !img.url) continue;
+            try {
+                await sock.sendMessage(jid, { image: { url: img.url } });
+                await this.delay(300);
+            } catch (err) {
+                console.error(`[MenuController] Error enviando imagen ${img.url}:`, err.message);
+            }
+        }
+    }
+
+    /**
+     * Envía la primera foto de cada opción de un listado/sección como vista
+     * previa. Solo si el comercio es premium y la cantidad de opciones es
+     * acotada (no saturar el chat con cientos de fotos).
+     */
+    async _enviarPreviews(sock, jid, nodes) {
+        const MAX_OPCIONES = 5;
+        if (!Array.isArray(nodes) || nodes.length === 0 || nodes.length > MAX_OPCIONES) return;
+
+        const conImagenes = nodes.filter(n => n && Array.isArray(n.imagenes) && n.imagenes.length > 0);
+        if (conImagenes.length === 0) return;
+
+        const comercioId = this.googleSheetsService.clientId;
+        let esPremium = false;
+        try {
+            esPremium = await verificarPlanPremium(comercioId);
+        } catch (err) {
+            console.error(`[MenuController] Error verificando plan de ${comercioId}:`, err.message);
+        }
+        if (!esPremium) return;
+
+        for (const n of conImagenes) {
+            const primera = n.imagenes[0];
+            if (!primera || !primera.url) continue;
+            try {
+                await sock.sendMessage(jid, { image: { url: primera.url } });
+                await this.delay(300);
+            } catch (err) {
+                console.error(`[MenuController] Error enviando preview ${primera.url}:`, err.message);
+            }
+        }
+    }
+
+    /**
+     * Registra en la sesión el último ítem/ficha que el cliente vio. Responde a
+     * expresiones deícticas ("me interesa", "me gusta esa") que llegan después,
+     * sin que el cliente tenga que volver a nombrar la propiedad.
+     */
+    _setUltimoItemVisto(jid, node) {
+        try {
+            if (!this.stateService || typeof this.stateService.setChatSession !== 'function') return;
+            const sesion = (typeof this.stateService.getChatSession === 'function'
+                ? this.stateService.getChatSession(jid)
+                : null) || { history: [], nodeId: 'root' };
+            const prev = (sesion && sesion.interes) || {};
+            this.stateService.setChatSession(jid, {
+                ...sesion,
+                interes: { trigger: node.trigger, title: node.title || prev.title || '' }
+            });
+        } catch (err) {
+            console.error(`[MenuController] Error guardando interés ${this.idCliente || ''}:`, err.message);
+        }
+    }
+
+/**
      * Procesa un nodo de forma integral: tags, submenús o mensajes finales.
-     * Esta función unifica la lógica para evitar errores de navegación.
      */
     async processNode(sock, jid, node) {
         const nodeTags = [];
@@ -513,6 +610,18 @@ class MenuController {
         }
 
         const subOptions = await this.googleSheetsService.getNodesByParent(node.id);
+
+        // Si es una ficha/ítem final (hoja sin pasos de proceso), registramos el
+        // interés del cliente en esa opción: un posterior "me interesa" / "me
+        // gusta esa" podrá referirse a esta ficha sin que vuelva a nombrarla.
+        if (subOptions.length === 0 && nodeTags.length === 0) {
+            this._setUltimoItemVisto(jid, node);
+        }
+
+        // CATÁLOGO MULTIMEDIA: si el nodo tiene imágenes y el comercio es premium,
+        // se envían como fotos por WhatsApp antes del texto del menú. Si no es
+        // premium, se ignoran (el texto ya cubre título/descripción/precio).
+        await this._enviarImagenes(sock, jid, node);
 
         // 0. CANTIDAD: mostrar prompt, esperar número del usuario
         if (nodeTags.includes('CANTIDAD')) {
@@ -615,6 +724,10 @@ class MenuController {
 
         // 2. Tiene hijos: mostrar submenú
         if (subOptions.length > 0) {
+            // Vista previa de imágenes: al listar una sección se envían las
+            // primeras fotos de las opciones (solo si son pocas, para no
+            // saturar el chat). Las fotos completas se ven al abrir cada ficha.
+            await this._enviarPreviews(sock, jid, subOptions);
             await this.sendMenu(sock, jid, node.id);
             return;
         }

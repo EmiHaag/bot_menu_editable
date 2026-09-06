@@ -46,6 +46,9 @@ class AITranslatorController {
         // Motor conversacional híbrido (clasificación de intenciones + tool calling).
         // Se instancia con callbacks que construyen el catálogo y el contexto reales.
         this.intentRouter = null;
+        // Tipo de bot según la config (CARRITO/TURNOS/FAQ). Se actualiza en cada
+        // handleMessage; la IA lo usa para saber si existe o no el flujo de carrito.
+        this._botType = 'CARRITO';
     }
 
     /**
@@ -61,7 +64,8 @@ class AITranslatorController {
             buildCatalogo: (jid) => this._buildCatalogo(jid),
             buildContexto: (jid) => this._buildContexto(jid),
             ai,
-            negocio: user.nombreCliente || user.businessName || this.idCliente
+            negocio: user.nombreCliente || user.businessName || this.idCliente,
+            sinCarrito: this._botType === 'FAQ'
         });
         return this.intentRouter;
     }
@@ -141,6 +145,24 @@ class AITranslatorController {
     }
 
     /**
+     * ¿Una opción del catálogo es una SECCIÓN (categoría navegable, con hijos
+     * en el menú) y no una hoja/producto final? Se usa para saber si el cliente
+     * que nombra/consulta un tema quiere DESPLEGAR su lista (navegar) en lugar
+     * de comprar algo concreto.
+     */
+    async _esSeccionCatalogo(jid, trigger) {
+        try {
+            if (!trigger) return false;
+            const nodeId = this.stateService.getUserState(jid) || 'root';
+            const opciones = await this._opcionesNivel(jid, nodeId);
+            const opt = (opciones || []).find(o => String(o.trigger) === String(trigger));
+            return !!(opt && opt.seccion);
+        } catch (err) {
+            return false;
+        }
+    }
+
+    /**
      * Convierte un texto de una opción del menú a un trigger limpio
      * (el menú acepta dígitos, letras o palabras como "p", "v", "0").
      */
@@ -153,6 +175,50 @@ class AITranslatorController {
      */
     _esSaludo(t) {
         return /\b(hola|buenas|buen dia|buenos dias|buenas tardes|buenas noches|hello|hey|hi|que tal|que onda|como estas|como anda|como andas|como te va|como te viene|saludos)\b/.test(this._normalizarMatch(t));
+    }
+
+    /**
+     * ¿Es un saludo "puro"? El mensaje solo saluda/agradece, sin intención
+     * adicional (no pide nada, no consulta, no navega). Si viene acompañado de
+     * una intención ("hola, quiero alquilar"), NO es un saludo puro: la intención
+     * debe capturarse y procesarse (compra, consulta, etc.).
+     */
+    _esSaludoPuro(t) {
+        const n = this._normalizarMatch(t);
+        if (!this._esSaludo(t)) return false;
+        // Si hay intención explícita además del saludo, no es puro.
+        if (/(?:quier(o|és|emos)|me (?:gustaria|gustaría)|necesito|busco|consultar|preguntar|tengo una (?:consulta|duda)|me interesa|ando buscando|estoy buscando|queria saber|quería saber|a que hora|cuanto cuesta|cuanto vale|precio|disponible|alquilar|alquiler|comprar|vender|contratar|reservar|turno|pedir|encargar|listo para|quiero pagar)\b/i.test(n)) {
+            return false;
+        }
+        return true;
+    }
+
+    /**
+     * Detecta si el mensaje es una consulta/pregunta/negación aunque el LLM
+     * lo haya clasificado como AGREGAR_AL_CARRITO. Patrones como "no tenés
+     * más?", "qué más tenés", "otras opciones?", etc. son preguntas claras,
+     * NO intención de compra. Si devuelve true, la intención debe forzarse a
+     * CONSULTAR_MENU para evitar agregar al carrito por error.
+     */
+    _esConsultaImplicita(text) {
+        const n = this._normalizarMatch(text);
+        // Preguntas directas
+        if (/\b(?:que (?:mas|mas opciones|otras opciones|otro|otra|opcion|opciones|tenes|tienen)|hay (?:mas|otras|otros)|(?:tenes|tienen|hay) (?:mas|otras|otros|algo mas|mas opciones)|(?:otras?|mas) (?:opciones?|propiedades?|inmuebles?)|(?:cuanto|cuesta|vale|precio|disponibilidad|contacto|telefono|whatsapp|mail|correo|horario|direccion|donde|ubicacion|mapa))\b/.test(n)) return true;
+        // Negaciones + pregunta
+        if (/\b(?:no (?:hay|tenes|tienen|tengo|disponible|encuentro|veo)|que (?:pasa|sucede|hay))\b/.test(n)) return true;
+        // Preguntas con "?" al final
+        if (/\?\s*$/.test(text.trim())) {
+            // Si además contiene palabras de consulta (no es "quiero X" que sería compra)
+            if (/\b(?:que|cuando|donde|como|cuanto|quien|por que|porque|haber|hay|existe|disponible|opciones?|alternativas?|info|informacion|detalles?|mas|otras?|algo)\b/.test(n)) return true;
+        }
+        return false;
+    }
+
+    /**
+     * ¿El bot es de tipo FAQ/consulta (sin carrito de compras)?
+     */
+    _esFAQ() {
+        return this._botType === 'FAQ';
     }
 
     /**
@@ -193,6 +259,85 @@ class AITranslatorController {
             }
             return null;
         }
+    }
+
+    /**
+     * Recuerda la última sección/producto sobre el que el cliente estuvo
+     * consultando (trigger + título). Se usa para resolver pedidos deícticos
+     * tipo "mostrame cuales tenes" navegando a esa sección del menú.
+     */
+    _setInteres(jid, trigger, title) {
+        if (!trigger) return;
+        try {
+            const sesion = this.stateService.getChatSession(jid) || { history: [], nodeId: 'root' };
+            const prev = sesion.interes || {};
+            this.stateService.setChatSession(jid, {
+                ...sesion,
+                interes: { trigger, title: title || prev.title || '' }
+            });
+        } catch (err) {
+            console.error(`[AI] Error guardando interes ${this.idCliente}:`, err.message);
+        }
+    }
+
+    /**
+     * ¿El mensaje es una afirmación simple ("si", "dale", "ok", "obvio",
+     * "claro que si")? Se usa para aceptar la oferta que el asistente hizo
+     * (por ejemplo "¿Le muestro las propiedades?") navegando al último tema.
+     */
+    _esAfirmacion(text) {
+        const t = this._normalizarMatch(text);
+        if (!t) return false;
+        if (/\b(no|nop|nope|para nada|no gracias|cancelar|mejor no)\b/.test(t)) return false;
+        if (/^(?:s[ií]|d[aá]le|ok+|obvio|segu[íi]|adelante|excelente|buen[oa]|perfecto|claro|[aá]ndale|de[ ]?una)\b/.test(t) && !/\b(precio|cuanto|horario|promo|descuento|cu[aá]nto|como|donde|cuando|pasar|pagar|alquiler\s+de|costo)\b/.test(t)) {
+            // Frases de confirmación ofrecidas por un humano o asistente
+            if (/^(?:s[ií]|d[aá]le|ok+|obvio|segu[íi]|adelante|claro|[aá]ndale|de[ ]?una|buen[oa]|perfecto|excelente)\b/.test(t)) return true;
+            // "si quiero", "si me mostras", "si por favor"
+            if (/^s[ií]\s+(?:quiero|quer[eé]s?|me\s+mostr|por\s+favor|dale|claro|segu[íi])/.test(t)) return true;
+            // "dale mostrame", "dale, mostrame"
+            if (/^(?:d[aá]le|claro|ok)\s+(?:mostr|dale|vamos)/.test(t)) return true;
+        }
+        return false;
+    }
+
+    /**
+     * ¿El mensaje expresa interés deíctico sobre el último ítem visto ("me
+     * interesa", "esa me gusta", "quiero esa", "estoy interesado") sin volver
+     * a nombrarlo? Se resuelve con el último tema (interes) de la sesión.
+     * Entendible como intención de compra cuando va acompañado de vendedor.
+     */
+    _esDeicticoInteres(text) {
+        const t = String(text || '').toLowerCase().trim();
+        if (!t) return false;
+        // Consultas y preguntas no son un interés de compra deíctico.
+        if (/\b(?:saber|ver|cu[aá]nto\b|cuesta|vale|precio|info|informaci[oó]n|pregunt|consult|detalle|dudas?|horario|direcci[oó]n|ubicaci[oó]n|m[aá]s\s+opciones)\b/.test(t)) return false;
+        // Interés deíctico: no nombra el ítem, se refiere a "esa/esa opción/la".
+        return /\b(?:me\s+interesa|me\s+gusta|me\s+gustar[ií]a|estoy\s+interesad[oa]|esta\s+me\s+(?:interesa|gusta)|esa\s+me\s+(?:interesa|gusta)|la\s+quiero|lo\s+quiero|quiero\s+esa|me\s+interesa\s+alquilar|quiero\s+alquilar\s+esa|mucho\s+me\s+interesa)\b/.test(t) ||
+            /^me\s+interesa$/.test(t) ||
+            /^me\s+gusta$/.test(t) ||
+            /^(?:esa|esta)\s+(?:casa|propiedad|inmueble|departamento|opci[oó]n)\s*(?:me\s+)?(?:interesa|gusta)/.test(t) ||
+            /^(?:esa|esta)\s+(?:me\s+)?(?:interesa|gusta)/.test(t);
+    }
+
+    /**
+     * Resuelve la navegación deíctica: si el cliente pidió "ver el listado"
+     * ("mostrame cuales tenes") o confirmó la oferta ("si, mostralo") y hay un
+     * último tema (interes) que sea una opción navegable del nivel actual,
+     * devuelve el trigger para que el menú muestre esa sección. Si no, null.
+     */
+    /**
+     * ¿El mensaje pide VER el listado/opciones de lo que estaba hablando
+     * ("mostrame cuales tenes", "dame las opciones", "que hay")? Deíctico:
+     * se resuelve con el último tema (interes) del cliente.
+     */
+    _esPeticionListado(text) {
+        const t = this._normalizarMatch(text);
+        if (/\b(horari|precios?|precio|cuanto cuesta|promo|descuento|com[oó] (es|funciona)|entrega|direcci[oó]n|pago|pagas)\b/.test(t)) return false;
+        return /\b(mostr(ar|ame)?|muestrame|cuales\s+(son|tenes|tienen|hay|manej|sonantas)|que\s+(opciones|ten[eé]s|hay)\b|ver\s+(las?|mis)?\s*opciones|opciones\b|listad[oa]\b|dejame\s*ver|cupon|de que [a-z]+ (tenes|tienen))\b/.test(t) ||
+            /^(?:s[ií],?)?\s*mostr[ae]/i.test(t) ||
+            /^(?:no\s*,\s*)?(?:ya\s*)?(?:lo\s*)?mostrame/i.test(t) ||
+            /^(?:no\s*,\s*)?(?:ya\s*)?quier(?:o|és|es)\s*ver/i.test(t) ||
+            /^(?:no\s*,\s*)?(?:ya\s*)?cuales/i.test(t);
     }
 
     /**
@@ -314,7 +459,16 @@ class AITranslatorController {
                 const grandchildren = await this._getChildren(c.id);
                 if (grandchildren.length === 0) continue;
             }
-            res.push({ trigger: c.trigger, title: c.title, price: c.price });
+            // ¿Es una SECCIÓN (sub-menú) o un producto vendible hoja? eso
+            // permite al router distinguir "navegar a Alquileres" de "comprar X".
+            let esSeccion = false;
+            try {
+                const hijos = await this._getChildren(c.id);
+                esSeccion = hijos.some((h) => !this._esPasoCheckout(h));
+            } catch (err) {
+                esSeccion = false;
+            }
+            res.push({ trigger: c.trigger, title: c.title, price: c.price, seccion: esSeccion });
         }
         return res;
     }
@@ -369,7 +523,7 @@ class AITranslatorController {
      * mensaje de derivación configurado en el dashboard (o el texto por defecto).
      * Devuelve true si pudo derivar, false si no hay vendedor configurado.
      */
-    async _derivarVendedor(sock, jid, pushName) {
+    async _derivarVendedor(sock, jid, pushName, opts) {
         const cfg = await botConfigService.getBotConfig(this.idCliente).catch(() => ({}));
         const ai = (cfg && cfg.ai_config) || {};
         const vendedor = ai.vendedor || {};
@@ -382,6 +536,7 @@ class AITranslatorController {
             totalV += (it.price || 0) * (it.quantity || 1);
             return `• ${it.quantity} x ${it.text}` + (it.price ? ` ($${it.price * it.quantity})` : '');
         });
+        const interesV = (opts && opts.interes) || null;
         const telefonoClienteV = String(jid).split('@')[0] || '';
         const datosV = this.stateService.getDatosText(jid);
         const nombreVendedor = vendedor.nombre ? String(vendedor.nombre).trim() : 'asesor';
@@ -392,6 +547,9 @@ class AITranslatorController {
             `*Teléfono:* ${telefonoClienteV}\n` +
             (datosV ? `*Datos:* ${datosV}\n` : '') +
             (lineasV.length ? `*Interés:*\n${lineasV.join('\n')}\n*Total:* $${totalV}\n` : '') +
+            (interesV && interesV.title
+                ? (lineasV.length ? `\nCon interés puntual en: *${interesV.title}* (${interesV.trigger})\n` : `*Interés puntual:* ${interesV.title} (${interesV.trigger})\n`)
+                : '') +
             `\nContactalo para resolver su consulta.`;
         const vendedorJid = this._phoneToJid(telVendedor);
         if (vendedorJid) {
@@ -789,6 +947,7 @@ class AITranslatorController {
         const user = await userService.getUserByIdCliente(this.idCliente).catch(() => null);
         if (!user || user.plan !== 'premium') return false;
         const cfg = await botConfigService.getBotConfig(this.idCliente);
+        this._botType = cfg.bot_type || 'CARRITO';
         const ai = cfg.ai_config || {};
         const celularVendedor = this._telefonoVendedor(ai);
         if (!ai.enabled) return false;
@@ -816,16 +975,23 @@ class AITranslatorController {
             return false;
         }
 
-        // Primer contacto: el cliente escribe un saludo sin sesión previa. El
-        // asistente se presenta con el nombre del negocio (para que el cliente
-        // sepa que habló al número correcto), igual que lo hace el primer nodo.
+        // Primer contacto. El asistente SIEMPRE se presenta con el nombre del
+        // negocio (para que el cliente sepa que habló al número correcto),
+        // igual que lo hace el primer nodo del menú. Diferencia clave:
+        //   - Saludo puro ("hola", "buenas"): solo la bienvenida y corta.
+        //   - Saludo + intención ("hola, quiero alquilar"): envía la bienvenida
+        //     y DESPUÉS continúa el flujo para capturar la intención (navegar a
+        //     la sección, agregar al carrito, etc.) en vez de perderla.
         if ((!session.history || session.history.length === 0) && this._esSaludo(text)) {
             const negocio = user.nombreCliente || user.businessName || this.idCliente;
             const bienvenida = `Hola, bienvenido a ${negocio}. ¿En qué puedo ayudarte?`;
             this.stateService.setChatSession(jid, { history: [{ role: 'assistant', content: bienvenida }], nodeId: 'root' });
-            console.log(`[AI] Bot ${this.idCliente}: primer saludo "${text}" -> bienvenida con nombre del negocio`);
             await this._sendFriendly(sock, jid, bienvenida);
-            return { derivado: true };
+            if (this._esSaludoPuro(text)) {
+                console.log(`[AI] Bot ${this.idCliente}: primer saludo puro "${text}" -> bienvenida con nombre del negocio`);
+                return { derivado: true };
+            }
+            console.log(`[AI] Bot ${this.idCliente}: primer saludo + intención "${text}" -> bienvenida + continúa el flujo`);
         }
 
         // El MENÚ es el handler y mantiene la posición real del cliente en
@@ -909,7 +1075,8 @@ class AITranslatorController {
         const multi = await this._detectarMultiPedido(jid, text, options);
         // Sin vendedor, el multi-pedido se resuelve determinista (cadena).
         // Con vendedor, la IA (router) decide si es compra o consulta.
-        if (multi && multi.items.length >= 2 && !celularVendedor) {
+        // En bots FAQ/consulta (sinCarrito) no existe multi-pedido de compra.
+        if (multi && multi.items.length >= 2 && !this._esFAQ() && !celularVendedor) {
             this.stateService.clearTranslationFails(jid);
             let todosAgregados = true;
             for (const it of multi.items) {
@@ -934,8 +1101,22 @@ class AITranslatorController {
         const matchSimple = this._matchOption(text, options);
         if (matchSimple) {
             this.stateService.clearTranslationFails(jid);
+            const opt = options.find(o => o.trigger === matchSimple);
+            const esSeccion = await this._esSeccionCatalogo(jid, matchSimple);
+
+            // El cliente ya nombró una SECCIÓN del catálogo (ej. "alquileres"):
+            // desplegamos directamente su lista, sin gastar tokens ni derivar,
+            // tanto con como sin vendedor. Es "ir a lo que ya pidió ver".
+            if (esSeccion) {
+                this._setInteres(jid, matchSimple, opt ? opt.title : '');
+                this.stateService.setUserIntent(jid, { trigger: matchSimple, cantidad: null });
+                console.log(`[AI] Bot ${this.idCliente}: sección "${text}" -> despliega "${matchSimple}" (${opt ? opt.title : ''})`);
+                return matchSimple;
+            }
+
             if (!celularVendedor) {
                 // Sin vendedor: no hay derivación posible; el menú agrega normalmente.
+                this._setInteres(jid, matchSimple, opt ? opt.title : '');
                 this.stateService.setUserIntent(jid, { trigger: matchSimple, cantidad: this._detectarCantidad(text) });
                 console.log(`[AI] Bot ${this.idCliente}: match simple "${text}" -> trigger "${matchSimple}" (sin vendedor)`);
                 return matchSimple;
@@ -950,6 +1131,7 @@ class AITranslatorController {
             }
             if (this._esConsulta(cls.intencion)) {
                 // Consulta: se responde conversacional, sin agregar al carrito ni derivar.
+                this._setInteres(jid, matchSimple, opt ? opt.title : '');
                 const texto = cls.respuesta_conversacional || '¡Claro! ¿En qué puedo ayudarte con eso?';
                 await this._sendFriendly(sock, jid, texto);
                 console.log(`[AI] Bot ${this.idCliente}: consulta "${text}" -> respuesta IA (sin derivar, intención ${cls.intencion})`);
@@ -967,12 +1149,101 @@ class AITranslatorController {
             return res;
         }
 
+        // Petición deíctica de "ver el listado" ("mostrame cuales tenes", "dame
+        // las opciones", "que opciones hay"): si el cliente estuvo consultando
+        // una sección del menú (interes), navegamos ahí para que el menú muestre
+        // sus opciones reales. Sin tokens y sin derivar (solo navegación).
+        // También manejamos afirmaciones simples ("si", "dale", "ok") cuando el
+        // asistente ofreció mostrar el listado (ej. "¿Le muestro las propiedades?").
+        if (this._esPeticionListado(text) || this._esAfirmacion(text)) {
+            const sesion = this.stateService.getChatSession(jid) || {};
+            const interes = sesion.interes;
+            if (interes && interes.trigger) {
+                const triggerValido = options.some(o => o.trigger === interes.trigger);
+                if (triggerValido) {
+                    this.stateService.clearTranslationFails(jid);
+                    this.stateService.setUserIntent(jid, { trigger: interes.trigger, cantidad: null });
+                    console.log(`[AI] Bot ${this.idCliente}: petición de listado/afirmación "${text}" -> navega a "${interes.trigger}" (${interes.title})`);
+                    return interes.trigger;
+                }
+            }
+        }
+
+        // Interés deíctico sobre la última ficha/ítem visto ("me interesa", "me
+        // gusta esa", "quiero esa"): el cliente se refiere a la propiedad que
+        // acaba de ver en pantalla. Si hay vendedor configurado, es intención de
+        // compra/contacto clara y se deriva; si no, se re-abre la ficha.
+        const sesionInteres = this.stateService.getChatSession(jid) || {};
+        const ultimoInteres = sesionInteres.interes || null;
+        if (this._esDeicticoInteres(text) && ultimoInteres && ultimoInteres.trigger) {
+            const trigInteres = String(ultimoInteres.trigger);
+            const esSeccionInteres = await this._esSeccionCatalogo(jid, trigInteres);
+            const esOpcionInteres = options.some(o => String(o.trigger).toLowerCase() === trigInteres.toLowerCase());
+            // Si el cliente está viendo la ficha (el estado ya avanzó a ese nodo,
+            // que es una hoja sin más opciones en el nivel actual), "me interesa"
+            // se refiere a la propiedad que está en pantalla. Sin esto, con el
+            // nivel actual ya agotado el bloque se saltaba y caía al clasificador.
+            const nodoEstado = await this._getNodeById(this.stateService.getUserState(jid) || 'root').catch(() => null);
+            const esLaFichaActual = !!(nodoEstado && String(nodoEstado.trigger) === trigInteres);
+            if (esSeccionInteres || esOpcionInteres || esLaFichaActual) {
+                // Si el último tema era una SECCIÓN, sigue siendo exploración:
+                // navegamos a ella (igual que el bloque de listado/afirmación).
+                if (esSeccionInteres) {
+                    this.stateService.clearTranslationFails(jid);
+                    this._setInteres(jid, trigInteres, ultimoInteres.title || '');
+                    this.stateService.setUserIntent(jid, { trigger: trigInteres, cantidad: null });
+                    console.log(`[AI] Bot ${this.idCliente}: interés deíctico "${text}" sobre SECCIÓN "${trigInteres}" -> navega`);
+                    return trigInteres;
+                }
+                // Ficha/ítem concreto: intención de interés clara sobre esa opción.
+                if (!celularVendedor) {
+                    // Sin vendedor: re-abrimos la ficha; el menú la muestra completa.
+                    this.stateService.clearTranslationFails(jid);
+                    this._setInteres(jid, trigInteres, ultimoInteres.title || '');
+                    this.stateService.setUserIntent(jid, { trigger: trigInteres, cantidad: 1 });
+                    console.log(`[AI] Bot ${this.idCliente}: interés deíctico "${text}" sobre ficha "${trigInteres}" (${ultimoInteres.title}) -> abre la ficha`);
+                    return trigInteres;
+                }
+                // Con vendedor: es contacto/comprar esa opción.
+                // FAQ: derivamos al vendedor señalándole la propiedad de interés.
+                if (this._esFAQ()) {
+                    const derivado = await this._derivarVendedor(sock, jid, pushName, { interes: ultimoInteres });
+                    if (derivado) {
+                        console.log(`[AI] Bot ${this.idCliente}: interés deíctico (FAQ) "${text}" sobre "${trigInteres}" -> deriva a vendedor`);
+                        return { derivado: true };
+                    }
+                    // Sin vendedor alcanzable: abrimos la ficha.
+                    this.stateService.clearTranslationFails(jid);
+                    this._setInteres(jid, trigInteres, ultimoInteres.title || '');
+                    this.stateService.setUserIntent(jid, { trigger: trigInteres, cantidad: 1 });
+                    return trigInteres;
+                }
+                // CARRITO: agrega la ficha al pedido y deriva (o muestra resumen).
+                const clsCompra = {
+                    intencion: 'AGREGAR_AL_CARRITO',
+                    items: [{ trigger: trigInteres, cantidad: 1 }],
+                    respuesta_conversacional: '¡Genial, te lo agrego!'
+                };
+                const resCompra = await this._procesarIntencion(sock, jid, pushName, clsCompra);
+                if (resCompra && resCompra !== 'FALLO') {
+                    this.stateService.clearTranslationFails(jid);
+                    console.log(`[AI] Bot ${this.idCliente}: interés deíctico "${text}" sobre "${trigInteres}" -> compra/derivación`);
+                    return resCompra;
+                }
+                // Si el procesador falló, abrimos la ficha igual.
+                this.stateService.clearTranslationFails(jid);
+                this._setInteres(jid, trigInteres, ultimoInteres.title || '');
+                this.stateService.setUserIntent(jid, { trigger: trigInteres, cantidad: 1 });
+                return trigInteres;
+            }
+        }
+
         // El cliente ya tiene productos en el pedido y la negación indica que
         // no quiere seguir agregando ("no listo", "no quiero nada más", "ya está",
         // etc.): pasamos directo a pagar sin interpretar con el LLM (sin gastar
         // tokens y sin riesgo de que la IA malinterprete y vuelva al inicio).
         const orderActual = this.stateService.getUserOrder(jid) || [];
-        if (orderActual.length > 0 && /(?:^|\s)(?:no\s*(?:estoy\s*)?(?:listo|ya\s*est[aá]|quier(?:o|és)?\s*nada\s*m[aá]s|puedo\s*agregar\s*m[aá]s)|ya\s+est[aá]\b|eso\s+(?:ser[ií]a|es)\s+todo|no\s+quiero\s+nada\s*m[aá]s)/i.test(text)) {
+        if (!this._esFAQ() && orderActual.length > 0 && /(?:^|\s)(?:no\s*(?:estoy\s*)?(?:listo|ya\s*est[aá]|quier(?:o|és)?\s*nada\s*m[aá]s|puedo\s*agregar\s*m[aá]s)|ya\s+est[aá]\b|eso\s+(?:ser[ií]a|es)\s+todo|no\s+quiero\s+nada\s*m[aá]s)/i.test(text)) {
             // Confirmar/cerrar pedido = intención de compra clara: si corresponde,
             // primero sugerimos un complemento (antes de derivar/finalizar).
             if (await this._sugerirComplementoSiCorresponde(sock, jid)) {
@@ -1000,6 +1271,15 @@ class AITranslatorController {
             const clasificacion = await router.clasificar(jid, text, (t) => {
                 aiUsageService.addTokens(this.idCliente, t || 0);
             });
+            // Safety net: si el LLM clasificó como AGREGAR_AL_CARRITO pero el
+            // mensaje es claramente una pregunta/negación ("no tenés más?",
+            // "qué más tenés", "otras opciones?"), forzamos CONSULTAR_MENU
+            // para evitar agregar al carrito por error.
+            if (clasificacion && clasificacion.intencion === 'AGREGAR_AL_CARRITO' && this._esConsultaImplicita(text)) {
+                console.log(`[AI] Bot ${this.idCliente}: safety net "${text}" -> AGREGAR_AL_CARRITO forzado a CONSULTAR_MENU (pregunta/negación detectada)`);
+                clasificacion.intencion = 'CONSULTAR_MENU';
+                clasificacion.items = [];
+            }
             if (clasificacion && clasificacion.intencion !== 'FALLO') {
                 const res = await this._procesarIntencion(sock, jid, pushName, clasificacion);
                 if (res === 'FALLO') {
@@ -1088,6 +1368,10 @@ class AITranslatorController {
     async _buildContexto(jid) {
         const nodeId = this.stateService.getUserState(jid) || 'root';
         let contexto = `NODO ACTUAL DEL USUARIO: ${nodeId}\n`;
+        const sesion = this.stateService.getChatSession(jid) || {};
+        if (sesion.interes && sesion.interes.trigger) {
+            contexto += `ÚLTIMO TEMA DEL CLIENTE: ${sesion.interes.title || sesion.interes.trigger} (trigger "${sesion.interes.trigger}" del menú actual)\n`;
+        }
         const order = this.stateService.getUserOrder(jid) || [];
         if (order && order.length > 0) {
             let total = 0;
@@ -1125,6 +1409,26 @@ class AITranslatorController {
                         await this._sendFriendly(sock, jid, respuesta || '¿Qué producto querés? Decímelo y te lo busco.');
                         return { derivado: true };
                     }
+                    // Anti-error: si el LLM marcó una SECCIÓN como "agregar al
+                    // carrito" (ej. "quiero alquilar" -> sección "Alquileres"),
+                    // el cliente quiere EXPLORAR esa sección, no comprarla como
+                    // si fuera un producto vendible. Navegamos a ella.
+                    const trigPrimero = String(items[0].trigger || '').trim();
+                    if (trigPrimero && await this._esSeccionCatalogo(jid, trigPrimero)) {
+                        this.stateService.clearTranslationFails(jid);
+                        this._setInteres(jid, trigPrimero, '');
+                        console.log(`[AI] Bot ${this.idCliente}: intención compra sobre SECCIÓN "${items[0].trigger}" -> navega (no agrega al carrito)`);
+                        return trigPrimero;
+                    }
+                    // FAQ/consulta: NO existe carrito. El ítem (ficha/propiedad) se
+                    // abre como información completa (fotos + descripción) para que
+                    // el cliente consulte, jamás se agrega a un pedido.
+                    if (this._esFAQ()) {
+                        this.stateService.clearTranslationFails(jid);
+                        this._setInteres(jid, trigPrimero, '');
+                        console.log(`[AI] Bot ${this.idCliente}: intención de compra (FAQ) "${items[0].trigger}" -> abre la ficha, sin carrito`);
+                        return trigPrimero;
+                    }
                     // Intención de compra concreta: el cliente pidió UN producto o
                     // servicio específico. El asistente detecta la intención y, como
                     // EXCEPCIÓN, corta el flujo y deriva al vendedor real sin recorrer
@@ -1161,6 +1465,11 @@ class AITranslatorController {
                 }
 
                 case 'QUITAR_DEL_CARRITO': {
+                    // FAQ: no hay carrito; el cliente solo puede consultar fichas.
+                    if (this._esFAQ()) {
+                        await this._sendFriendly(sock, jid, 'En esta cuenta no hay un carrito de compras: soy un asistente de consultas. ¿Sobre qué propiedad querés saber más?');
+                        return { derivado: true };
+                    }
                     if (!items.length) {
                         await this._sendFriendly(sock, jid, respuesta || '¿Qué producto querés quitar del pedido?');
                         return { derivado: true };
@@ -1191,6 +1500,11 @@ class AITranslatorController {
                 }
 
                 case 'VER_CARRITO': {
+                    // FAQ: no hay carrito; remitimos al catálogo/consultas.
+                    if (this._esFAQ()) {
+                        await this._sendFriendly(sock, jid, 'No tenés ningún pedido: en esta cuenta solo hay consultas sobre el catálogo. ¿Qué te gustaría ver?');
+                        return { derivado: true };
+                    }
                     const orden = this.stateService.getUserOrder(jid) || [];
                     if (orden.length === 0) {
                         await this._sendFriendly(sock, jid, 'Todavía no tenés nada en tu pedido. ¿Qué te gustaría agregar?');
@@ -1209,6 +1523,30 @@ class AITranslatorController {
                 case 'CONSULTAR_MENU': {
                     // Delegamos al menú para que re-muestre las opciones reales del nivel actual.
                     const nodeId = this.stateService.getUserState(jid) || 'root';
+                    // Si la clasificación indicó una SECCIÓN concreta del catálogo
+                    // (ej. "quiero alquilar" -> sección "Alquileres"), navegamos a
+                    // ella directamente en vez de re-mostrar el menú raíz.
+                    const trigConsulta = (items && items.length > 0) ? String(items[0].trigger || '').trim() : '';
+                    if (trigConsulta && await this._esSeccionCatalogo(jid, trigConsulta)) {
+                        this.stateService.clearTranslationFails(jid);
+                        this._setInteres(jid, trigConsulta, '');
+                        console.log(`[AI] Bot ${this.idCliente}: consulta de SECCIÓN "${items[0].trigger}" -> navega`);
+                        return trigConsulta;
+                    }
+                    // FAQ/consulta: si el ítem pedido es una ficha del nivel actual
+                    // (no una sección), abrimos la ficha completa (fotos + descripción)
+                    // en vez de re-mostrar el listado.
+                    if (this._esFAQ() && trigConsulta) {
+                        const nivelId = this.stateService.getUserState(jid) || 'root';
+                        const opcionesNivel = await this._opcionesNivel(jid, nivelId).catch(() => []);
+                        const existeFicha = opcionesNivel.some(o => String(o.trigger).toLowerCase() === trigConsulta.toLowerCase());
+                        if (existeFicha) {
+                            this.stateService.clearTranslationFails(jid);
+                            this._setInteres(jid, trigConsulta, '');
+                            console.log(`[AI] Bot ${this.idCliente}: consulta de FICHA (FAQ) "${items[0].trigger}" -> abre la ficha`);
+                            return trigConsulta;
+                        }
+                    }
                     if (this.menuController && typeof this.menuController.sendMenu === 'function') {
                         await this.menuController.sendMenu(sock, jid, nodeId);
                     }
@@ -1216,6 +1554,11 @@ class AITranslatorController {
                 }
 
                 case 'FINALIZAR_PEDIDO': {
+                    // FAQ: no hay pedidos ni pago; respondemos como consulta.
+                    if (this._esFAQ()) {
+                        await this._sendFriendly(sock, jid, 'Acá no hay un carrito ni pago: soy un asistente de consultas sobre el catálogo. ¿En qué más puedo ayudarte?');
+                        return { derivado: true };
+                    }
                     const order = this.stateService.getUserOrder(jid) || [];
                     if (order.length === 0) {
                         const menuTrigger = this._navPorFrase(this._normalizarMatch('menu')) || '0';
