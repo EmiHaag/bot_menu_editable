@@ -65,7 +65,8 @@ class AITranslatorController {
             buildContexto: (jid) => this._buildContexto(jid),
             ai,
             negocio: user.nombreCliente || user.businessName || this.idCliente,
-            sinCarrito: this._botType === 'FAQ'
+            sinCarrito: this._botType === 'FAQ',
+            tipoBot: this._botType
         });
         return this.intentRouter;
     }
@@ -187,7 +188,12 @@ class AITranslatorController {
         const n = this._normalizarMatch(t);
         if (!this._esSaludo(t)) return false;
         // Si hay intención explícita además del saludo, no es puro.
-        if (/(?:quier(o|és|emos)|me (?:gustaria|gustaría)|necesito|busco|consultar|preguntar|tengo una (?:consulta|duda)|me interesa|ando buscando|estoy buscando|queria saber|quería saber|a que hora|cuanto cuesta|cuanto vale|precio|disponible|alquilar|alquiler|comprar|vender|contratar|reservar|turno|pedir|encargar|listo para|quiero pagar)\b/i.test(n)) {
+        // Se usan RAÍCES sin límite de fin de palabra (y género de palabras
+        // completas) para que también matcheen plurales ("alquileres",
+        // "departamentos") y gerundios ("consultando", "buscando"): si no, un
+        // primer mensaje como "hola estoy consultando por alquileres" se
+        // trataba como saludo puro y se perdía la intención.
+        if (/\b(?:quier[oaes]|gustari[ao]|necesit[ao]|busc|consult|averigu|pregunt|tengo\s+una\s+(?:consulta|duda)|interesa|ando\s+buscando|estoy\s+buscando|queria\s+saber|quería\s+saber|a\s+que\s+hora|cuanto\s+cuesta|cuanto\s+vale|preci|disponib|compr|vend|contrat|reserv|turn|pedir|encarg|listo\s+para|pago|pagar)/i.test(n)) {
             return false;
         }
         return true;
@@ -317,6 +323,23 @@ class AITranslatorController {
             /^me\s+gusta$/.test(t) ||
             /^(?:esa|esta)\s+(?:casa|propiedad|inmueble|departamento|opci[oó]n)\s*(?:me\s+)?(?:interesa|gusta)/.test(t) ||
             /^(?:esa|esta)\s+(?:me\s+)?(?:interesa|gusta)/.test(t);
+    }
+
+    /**
+     * ¿El mensaje expresa interés EXPLÍCITO por un ítem/ficha concreto
+     * ("me interesa la de las heras", "me gusta la casa", "estoy interesado
+     * en el depto")? A diferencia de _esDeicticoInteres (que se refiere al
+     * último ítem sin nombrarlo), acá se nombra o se aclara la opción, y no
+     * es una mera pregunta de información.
+     */
+    _esInteresExplicito(text) {
+        const t = this._normalizarMatch(text);
+        if (!t) return false;
+        // Preguntas/consultas de información NO son un interés de compra/contacto.
+        if (/\b(?:cuanto\s+cuesta|cuanto\s+vale|precio|horario|dudas?|consult|pregunt|mas\s+opciones|m[áa]s\s+informaci[oó]n|saber\s+mas|detalle|informaci[oó]n)\b/.test(t)) return false;
+        return /\b(?:me\s+interesa|me\s+interesan|me\s+gusta|me\s+gustar[ií]a|estoy\s+interesad[oa]|quisiera|me\s+encant|me\s+quedo\s+con|la\s+quiero|lo\s+quiero|quiero\s+esa|quiero\s+ese)\b/.test(t) ||
+            /^me\s+interesa/.test(t) ||
+            /^me\s+gusta/.test(t);
     }
 
     /**
@@ -1119,6 +1142,36 @@ class AITranslatorController {
                 this._setInteres(jid, matchSimple, opt ? opt.title : '');
                 this.stateService.setUserIntent(jid, { trigger: matchSimple, cantidad: this._detectarCantidad(text) });
                 console.log(`[AI] Bot ${this.idCliente}: match simple "${text}" -> trigger "${matchSimple}" (sin vendedor)`);
+                return matchSimple;
+            }
+
+            // Interés EXPLÍCITO sobre una ficha concreta ("me interesa la de las
+            // heras", "me gusta X"): no es una consulta genérica ni una compra de
+            // carrito. Con FAQ + vendedor, abrimos la ficha (fotos + descripción)
+            // y luego derivamos al vendedor señalándole esa propiedad. Sin FAQ,
+            // es una compra/contacto que se resuelve con el clasificador normal.
+            if (this._esInteresExplicito(text)) {
+                this._setInteres(jid, matchSimple, opt ? opt.title : '');
+                if (this._esFAQ() && this.menuController && typeof this.menuController.handleIncomingMessage === 'function') {
+                    try {
+                        await this.menuController.handleIncomingMessage(sock, jid, matchSimple);
+                    } catch (err) {
+                        console.error(`[AI] Error abriendo ficha "${matchSimple}":`, err.message);
+                    }
+                    const derivado = await this._derivarVendedor(sock, jid, pushName, { interes: { trigger: matchSimple, title: opt ? opt.title : '' } });
+                    if (derivado) {
+                        this.stateService.clearTranslationFails(jid);
+                        console.log(`[AI] Bot ${this.idCliente}: interés explícito "${text}" sobre "${matchSimple}" (${opt ? opt.title : ''}) -> abre ficha y deriva a vendedor`);
+                        return { derivado: true };
+                    }
+                    // Vendedor no alcanzable: al menos mostramos la ficha.
+                    this.stateService.clearTranslationFails(jid);
+                    this.stateService.setUserIntent(jid, { trigger: matchSimple, cantidad: 1 });
+                    return matchSimple;
+                }
+                this.stateService.clearTranslationFails(jid);
+                this.stateService.setUserIntent(jid, { trigger: matchSimple, cantidad: 1 });
+                console.log(`[AI] Bot ${this.idCliente}: interés explícito "${text}" sobre "${matchSimple}" (${opt ? opt.title : ''}) -> abre la ficha`);
                 return matchSimple;
             }
 

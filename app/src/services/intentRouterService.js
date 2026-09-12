@@ -32,8 +32,9 @@ class IntentRouterService {
      * @param {Object} opts.ai              - config ai_config (estilo, promptCustom, instrucciones)
      * @param {string} opts.negocio         - nombre del negocio
      * @param {boolean} [opts.sinCarrito]   - true para bots tipo FAQ/consulta: no existe carrito de compras.
+     * @param {string} [opts.tipoBot]       - tipo de bot: 'CARRITO' | 'TURNOS' | 'FAQ'.
      */
-    constructor({ idCliente, stateService, menuController, orderService, buildCatalogo, buildContexto, ai, negocio, sinCarrito }) {
+    constructor({ idCliente, stateService, menuController, orderService, buildCatalogo, buildContexto, ai, negocio, sinCarrito, tipoBot }) {
         this.idCliente = idCliente;
         this.stateService = stateService;
         this.menuController = menuController || null;
@@ -43,6 +44,7 @@ class IntentRouterService {
         this.ai = ai || {};
         this.negocio = negocio || idCliente;
         this.sinCarrito = !!(sinCarrito);
+        this.tipoBot = tipoBot || (sinCarrito ? 'FAQ' : 'CARRITO');
         this.quotaBlocked = false;
     }
 
@@ -73,6 +75,9 @@ class IntentRouterService {
         const reglasFAQ = this.sinCarrito
             ? `- MODO CONSULTA (FAQ): este bot NO vende ni tiene carrito de compras. No existen intenciones de agregar/quitar/ver carrito ni de finalizar/pagar pedido. Si el cliente expresa interés en una ficha del catálogo real (por ejemplo "quiero la casa de 3 habitaciones", "me interesa el departamento", "cuánto cuesta la casa", "quiero alquilar esa"), usá "CONSULTAR_MENU" con el "trigger" de ese ítem en "items" (el sistema mostrará la ficha/información completa). Las preguntas generales van como CONSULTA (CONSULTAR_MENU o CHARLA_GENERAL). NUNCA uses intenciones de carrito: no existen en este bot.\n`
             : '';
+        const reglasTurnos = this.tipoBot === 'TURNOS'
+            ? `- MODO TURNOS (agenda): este bot gestiona RESERVAS DE TURNOS; NO vende productos ni tiene carrito de compras. Si el cliente quiere reservar, cambiar, cancelar o ver sus turnos, NUNCA uses "AGREGAR_AL_CARRITO", "QUITAR_DEL_CARRITO", "VER_CARRITO" ni "FINALIZAR_PEDIDO": usá "CONSULTAR_MENU" con el "trigger" real del ítem de turnos del catálogo (por ejemplo el de "reservar turno" o "mis turnos") para que el sistema abra ese flujo determinista. Las preguntas sobre horarios van como "CONSULTAR_HORARIOS".\n`
+            : '';
         const reglasSeccion = this.sinCarrito
             ? `- SECCIONES del catálogo (marcadas "(SECCIÓN)") son sub-menús con más fichas. Si el cliente pide ver/entrar a una sección, usá "CONSULTAR_MENU" e incluí su trigger en "items". Los ítems que NO son sección son fichas/consultas individuales: si el cliente los pide por su nombre, usá "CONSULTAR_MENU" con su trigger para abrir la ficha.\n`
             : `- SECCIONES del catálogo (marcadas "(SECCIÓN)") son sub-menús, NO productos vendibles. Si el cliente pide ver/consultar/entrar a una sección ("quiero alquilar", "me interesa la venta", "mostrame los departamentos"), usá "CONSULTAR_MENU" e incluí en "items" el trigger de esa SECCIÓN para que el sistema navegue a ella. NUNCA uses "AGREGAR_AL_CARRITO" ni "QUITAR_DEL_CARRITO" con el trigger de una SECCIÓN.\n`;
@@ -82,6 +87,7 @@ class IntentRouterService {
             `REGLAS (obligatorias):\n` +
             `- Elegí UNA de estas intenciones: ${intenciones.join(', ')}.\n` +
             `${reglasFAQ}` +
+            `${reglasTurnos}` +
             `- DISTINGUÍ CONSULTA DE COMPRA (obligatorio). Cada negocio es distinto (comida, propiedades, servicios, turnos, etc.): los ejemplos que siguen son ILUSTRATIVOS, no exhaustivos, y este bot vende lo que figura en el CATÁLOGO REAL de abajo. Una CONSULTA es una PREGUNTA sin encargar nada: por ejemplo "¿qué ofrecen?", "¿cuánto cuesta?", "¿tenés X?", "¿está disponible?", "¿me pasás el precio?", "¿en qué horarios atienden?". Las consultas SIEMPRE van como "CONSULTAR_MENU" con "respuesta_conversacional" informativa: no agregan al carrito, no son compras y NUNCA derivan a un humano.\n` +
             `- AGREGAR_AL_CARRITO SOLO con intención directa de COMPRAR/ADQUIRIR/ENCARGAR un ítem del CATÁLOGO REAL. Ejemplos ilustrativos de la FORMA (no exhaustivos): "quiero comprar/encargar [ITEM del catálogo]", "me llevo [ITEM]", "quiero contratar [SERVICIO]". Si el ITEM pedido está en el CATÁLOGO REAL, usá "AGREGAR_AL_CARRITO" con su "trigger". NUNCA uses "CONSULTAR_MENU" ni "CHARLA_GENERAL" cuando el cliente pidió comprar algo del catálogo.\n` +
             `${reglasSeccion}` +

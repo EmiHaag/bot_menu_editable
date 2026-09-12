@@ -520,10 +520,18 @@ class MenuController {
         }
         if (!esPremium) return;
 
-        for (const img of node.imagenes) {
+        const captionBase = node.title ? String(node.title) : '';
+        const total = node.imagenes.length;
+        for (let i = 0; i < node.imagenes.length; i++) {
+            const img = node.imagenes[i];
             if (!img || !img.url) continue;
             try {
-                await sock.sendMessage(jid, { image: { url: img.url } });
+                // Cada imagen se envía con su descripción como caption (parte del
+                // mismo mensaje), para que la foto no quede separada del texto.
+                // Si hay varias fotos, se numeran (ej. "Título (1/3)") para que
+                // el cliente sepa a cuál corresponde.
+                const caption = total > 1 ? `${captionBase} (${i + 1}/${total})` : captionBase;
+                await sock.sendMessage(jid, { image: { url: img.url }, caption: caption || undefined });
                 await this.delay(300);
             } catch (err) {
                 console.error(`[MenuController] Error enviando imagen ${img.url}:`, err.message);
@@ -556,7 +564,10 @@ class MenuController {
             const primera = n.imagenes[0];
             if (!primera || !primera.url) continue;
             try {
-                await sock.sendMessage(jid, { image: { url: primera.url } });
+                // La imagen se envía con su title como caption (parte del mismo
+                // mensaje), así cada foto lleva su nombre debajo sin mensajes
+                // de texto separados.
+                await sock.sendMessage(jid, { image: { url: primera.url }, caption: n.title ? String(n.title) : undefined });
                 await this.delay(300);
             } catch (err) {
                 console.error(`[MenuController] Error enviando preview ${primera.url}:`, err.message);

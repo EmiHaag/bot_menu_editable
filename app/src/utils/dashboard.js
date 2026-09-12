@@ -1071,9 +1071,17 @@ class Dashboard {
 
                 const connector = depth > 0 ? '└─ ' : '';
                 const indent = depth > 0 ? ` style="padding-left: ${depth * 16}px;"` : '';
+                const parentTitle = node.parentId && node.parentId !== 'root'
+                    ? ((menuData.find(p => p.id === node.parentId) || {}).title || '')
+                    : '';
+                const triggerCell = depth > 0
+                    ? (parentTitle
+                        ? `<div><span style="color: #999; font-size: 11px; font-style: italic;">[${parentTitle}]</span><br><span class="connector" style="color: #999;">${connector}</span><b>${displayTrigger}</b></div>`
+                        : `<span class="connector" style="color: #999;">${connector}</span><b>${displayTrigger}</b>`)
+                    : `<b>${displayTrigger}</b>`;
                 return `
                 <tr>
-                    <td${indent}><span class="connector" style="color: #999;">${connector}</span><b>${displayTrigger}</b></td>
+                    <td${indent}>${triggerCell}</td>
                     <td>${displayTitle}</td>
                     <td style="max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${cleanMessage}</td>
                     <td>
@@ -1947,7 +1955,7 @@ ${helpGuideHTML}
                                     </span></span></label>
                                     <input type="text" id="calendarIdInput" placeholder="xxxx@gmail.com o /c/...@group.calendar.google.com" style="flex: 1; min-width: 260px; padding: 8px 12px; border: 1px solid var(--border-color); border-radius: 6px; font-size: 14px; box-sizing: border-box;">
                                 </div>
-                                <div style="font-size: 12px; color: #777;">Vinculación: compartí tu calendario con la cuenta de Google vinculada al bot (<code>${process.env.ADMIN_EMAIL || 'cuenta del bot'}</code>) con permisos de edición y pegá su ID. No hay OAuth individual por bot.</div>
+                                <div style="font-size: 12px; color: #777;">Vinculación: compartí <a href="https://calendar.google.com/" target="_blank" rel="noopener noreferrer" style="color: #166534; text-decoration: underline;">tu calendario</a> con la cuenta de Google vinculada al bot (<code>${process.env.ADMIN_EMAIL || 'cuenta del bot'}</code>) con permisos de edición y pegá su ID. No hay OAuth individual por bot.</div>
                                 <div style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap;">
                                     <label style="font-weight: 600; min-width: 200px;">Duración del turno (min):</label>
                                     <input type="number" id="slotDurationInput" value="30" min="5" step="5" style="width: 100px; padding: 8px 12px; border: 1px solid var(--border-color); border-radius: 6px; font-size: 14px;">

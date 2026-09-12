@@ -5,7 +5,10 @@
   "scripts": {
     "start": "node server.js",
     "dev": "nodemon server.js",
-    "koyeb": "node server.js"
+    "koyeb": "node server.js",
+    "test:smart": "node scripts/test-runner-smart.js",
+    "test:llm": "node scripts/test-llm-router.js",
+    "test:watch": "node scripts/qa-watchdog.js"
   },
   "type": "commonjs",
   "dependencies": {
