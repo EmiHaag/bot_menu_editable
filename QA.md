@@ -59,7 +59,7 @@ Así se ve el recorrido de principio a fin:
                         │  (npm run test:llm)      │ ───────────────┐
                         │  ¿Confirmás gastar        │               │
                         │   tokens? ──No→ se omite  │               │
-                        │  Sí ─► 20 casos de prueba │               │
+                        │  Sí ─► 21 casos de prueba │               │
                         │  ─► score por categoría   │               │
                         │  ─► umbral 90%            │               │
                         └──────────┬───────────────┘               │
@@ -67,7 +67,7 @@ Así se ve el recorrido de principio a fin:
                      ┌────────────────────────────────────────────────────┐
                      │         REPORTE QA final                          │
                      │  · Resultado de las pruebas HTTP (X/15)           │
-                     │  · Bloque [LLM] si corrió el benchmark (X/20)     │
+                     │  · Bloque [LLM] si corrió el benchmark (X/21)     │
                      │  · Exit 0 = todo bien | Exit 1 = algo falló       │
                      └────────────────────────────────────────────────────┘
 ```
@@ -152,7 +152,7 @@ una línea `sin mapeo`, considerá agregar el archivo a `EXACT_MAP` o un test de
 
 Esta pieza **no toca el servidor ni WhatsApp**. Toma el **mismo código de decisión
 del bot** (el `IntentRouterService`), le inyecta un **catálogo falso en memoria**
-(como si el comercio tuviera 3 o 4 productos), y le hace **20 preguntas de prueba**.
+(como si el comercio tuviera 3 o 4 productos), y le hace **21 preguntas de prueba**.
 
 ### De dónde salen las preguntas
 
@@ -289,7 +289,7 @@ Resultado HTTP: 14/15 PASS
 | Comando | Qué hace | ¿Gasta tokens? |
 |---|---|---|
 | `npm run test:smart` | QA HTTP de una pasada (server + rutas). | No |
-| `npm run test:llm` | Benchmark del cerebro (20 casos). Pide confirmación. | Sí, si confirmás |
+| `npm run test:llm` | Benchmark del cerebro (21 casos). Pide confirmación. | Sí, si confirmás |
 | `npm run test:llm -- --yes` | Benchmark sin preguntar. | Sí |
 | `npm run test:llm -- --dry-run` | Valida fixtures, sin llamar a la IA. | No |
 | `npm run test:watch` | Vigilante automático (server + QA + benchmark). | Solo si corre el benchmark |
@@ -303,7 +303,7 @@ Resultado HTTP: 14/15 PASS
   Un "endpoint" es una dirección: `GET /api/config` = "traeme la configuración".
 - **Server / Express**: el programita que atiende esas direcciones desde tu máquina.
 - **git**: el historial de tus archivos. El QA le pregunta "¿qué cambiaste?".
-- **Fixture**: un archivo de datos de prueba prearmado (acá, las 20 preguntas).
+- **Fixture**: un archivo de datos de prueba prearmado (acá, las 21 preguntas).
 - **IntentRouterService**: el "cerebro" del bot que decide qué intención tiene un mensaje
   (comprar, preguntar, pedir turno, chusmear).
 - **gpt-4o-mini**: el modelo de IA que el cerebro usa para decidir. Es el que cobra tokens.

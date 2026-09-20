@@ -8,7 +8,18 @@
     "koyeb": "node server.js",
     "test:smart": "node scripts/test-runner-smart.js",
     "test:llm": "node scripts/test-llm-router.js",
-    "test:watch": "node scripts/qa-watchdog.js"
+    "test:watch": "node scripts/qa-watchdog.js",
+    "prompts:pull": "node scripts/prompts.js pull",
+    "prompts:push": "node scripts/prompts.js push",
+    "prompts:reset": "node scripts/prompts.js reset",
+    "prompts:render": "node scripts/prompts.js render",
+    "prompts:default": "node scripts/prompts.js default",
+    "synthetic:run": "node scripts/synthetic.js run",
+    "synthetic:verify": "node scripts/synthetic.js run --verify",
+    "synthetic:stats": "node scripts/synthetic.js stats",
+    "synthetic:list": "node scripts/synthetic.js list",
+    "synthetic:clear": "node scripts/synthetic.js clear",
+    "synthetic:logs": "node scripts/synthetic.js logs"
   },
   "type": "commonjs",
   "dependencies": {

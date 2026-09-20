@@ -73,6 +73,67 @@
           "expected": {
             "intencion": "CONSULTAR_HORARIOS"
           }
+        },
+        {
+          "id": "carrito-08",
+          "input": "dale dos de muzza y una coca de litro",
+          "expected": {
+            "intencion": "AGREGAR_AL_CARRITO",
+            "items": [
+              { "trigger": "pizz_muz", "cantidad": 2 },
+              { "trigger": "beb_coca_1l", "cantidad": 1 }
+            ]
+          }
+        },
+        {
+          "id": "carrito-09",
+          "input": "cuanto sale la muzza y la coca? despues te digo",
+          "expected": {
+            "intencion": "CONSULTAR_MENU",
+            "not": [ "AGREGAR_AL_CARRITO" ]
+          }
+        },
+        {
+          "id": "carrito-10",
+          "input": "una completa y dos coca",
+          "expected": {
+            "intencion": "AGREGAR_AL_CARRITO",
+            "items": [
+              { "trigger": "hamb_comp", "cantidad": 1 },
+              { "trigger": "beb_coca_1l", "cantidad": 2 }
+            ]
+          }
+        },
+        {
+          "id": "carrito-11",
+          "input": "me anotas una muzza para más tarde?",
+          "expected": {
+            "intencion": "AGREGAR_AL_CARRITO",
+            "items": [ { "trigger": "pizz_muz", "cantidad": 1 } ]
+          }
+        },
+        {
+          "id": "carrito-12",
+          "input": "sabés si tienen hamburguesa? para un regalo",
+          "expected": {
+            "intencion": "CONSULTAR_MENU",
+            "not": [ "AGREGAR_AL_CARRITO" ]
+          }
+        },
+        {
+          "id": "carrito-13",
+          "input": "qué tengo en el carrito?",
+          "expected": {
+            "intencion": "VER_CARRITO"
+          }
+        },
+        {
+          "id": "carrito-14",
+          "input": "quiero confirmar el pedido, mandámelo",
+          "expected": {
+            "intencion": "FINALIZAR_PEDIDO",
+            "not": [ "AGREGAR_AL_CARRITO" ]
+          }
         }
       ]
     },
@@ -134,6 +195,40 @@
           "expected": {
             "intencion": "CHARLA_GENERAL",
             "not": [ "FALLO" ]
+          }
+        },
+        {
+          "id": "turnos-07",
+          "input": "te puedo sacar turno para mañana al mediodía?",
+          "expected": {
+            "intencion": "CONSULTAR_MENU",
+            "items": [ { "trigger": "turno_reserva" } ],
+            "not": [ "AGREGAR_AL_CARRITO", "FINALIZAR_PEDIDO" ]
+          }
+        },
+        {
+          "id": "turnos-08",
+          "input": "pasame el horario de atención, porfa",
+          "expected": {
+            "intencion": "CONSULTAR_HORARIOS"
+          }
+        },
+        {
+          "id": "turnos-09",
+          "input": "quiero ver si hay hueco el viernes a la tarde",
+          "expected": {
+            "intencion": "CONSULTAR_MENU",
+            "items": [ { "trigger": "turno_reserva" } ],
+            "not": [ "AGREGAR_AL_CARRITO", "FINALIZAR_PEDIDO" ]
+          }
+        },
+        {
+          "id": "turnos-10",
+          "input": "puedo pedir que me muestres mis turnos?",
+          "expected": {
+            "intencion": "CONSULTAR_MENU",
+            "items": [ { "trigger": "mis_turnos" } ],
+            "not": [ "AGREGAR_AL_CARRITO" ]
           }
         }
       ]
@@ -205,6 +300,58 @@
           "input": "Gracias por todo, buen día",
           "expected": {
             "intencion": "CHARLA_GENERAL",
+            "not": [ "FALLO" ]
+          }
+        },
+        {
+          "id": "faq-08",
+          "input": "¿Cuánto cuesta la casa de 3 habitaciones?",
+          "expected": {
+            "intencion": "CONSULTAR_MENU",
+            "items": [ { "trigger": "casa_3h" } ],
+            "not": [ "AGREGAR_AL_CARRITO", "FINALIZAR_PEDIDO", "VER_CARRITO" ]
+          }
+        },
+        {
+          "id": "faq-09",
+          "input": "me pasás el precio de la casa de 3 con todos los servicios?",
+          "expected": {
+            "intencion": "CONSULTAR_MENU",
+            "items": [ { "trigger": "casa_3h" } ],
+            "not": [ "AGREGAR_AL_CARRITO", "FINALIZAR_PEDIDO", "VER_CARRITO" ]
+          }
+        },
+        {
+          "id": "faq-10",
+          "input": "¿tienen algo disponible cerca del centro?",
+          "expected": {
+            "intencion": "CONSULTAR_MENU",
+            "items": [ { "trigger": "alquileres" } ],
+            "not": [ "AGREGAR_AL_CARRITO", "FINALIZAR_PEDIDO", "VER_CARRITO" ]
+          }
+        },
+        {
+          "id": "faq-11",
+          "input": "confirmame la dirección del local, porfa",
+          "expected": {
+            "intencion": "CONSULTAR_MENU",
+            "items": [ { "trigger": "ubicacion" } ],
+            "not": [ "AGREGAR_AL_CARRITO" ]
+          }
+        },
+        {
+          "id": "faq-12",
+          "input": "gracias por la data chicos, buen fin de semana",
+          "expected": {
+            "intencion": "CHARLA_GENERAL",
+            "not": [ "FALLO" ]
+          }
+        },
+        {
+          "id": "faq-13",
+          "input": "hola atienden mañana? estoy buscando precios para alquilar en tandil",
+          "expected": {
+            "intencion": "CONSULTAR_HORARIOS",
             "not": [ "FALLO" ]
           }
         }

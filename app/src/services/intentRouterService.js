@@ -1,4 +1,6 @@
 const llmChatService = require('../services/llmChatService');
+const llmPromptService = require('../services/llmPromptService');
+const aiFewShotService = require('../services/aiFewShotService');
 
 /**
  * Motor conversacional híbrido: clasifica la intención del cliente con el LLM
@@ -33,8 +35,9 @@ class IntentRouterService {
      * @param {string} opts.negocio         - nombre del negocio
      * @param {boolean} [opts.sinCarrito]   - true para bots tipo FAQ/consulta: no existe carrito de compras.
      * @param {string} [opts.tipoBot]       - tipo de bot: 'CARRITO' | 'TURNOS' | 'FAQ'.
+     * @param {number} [opts.temperature]   - temperatura del clasificador (default 0.6; 0 para benchmarks).
      */
-    constructor({ idCliente, stateService, menuController, orderService, buildCatalogo, buildContexto, ai, negocio, sinCarrito, tipoBot }) {
+    constructor({ idCliente, stateService, menuController, orderService, buildCatalogo, buildContexto, ai, negocio, sinCarrito, tipoBot, temperature }) {
         this.idCliente = idCliente;
         this.stateService = stateService;
         this.menuController = menuController || null;
@@ -45,6 +48,7 @@ class IntentRouterService {
         this.negocio = negocio || idCliente;
         this.sinCarrito = !!(sinCarrito);
         this.tipoBot = tipoBot || (sinCarrito ? 'FAQ' : 'CARRITO');
+        this.temperature = temperature;
         this.quotaBlocked = false;
     }
 
@@ -62,9 +66,9 @@ class IntentRouterService {
     /**
      * Prompt de sistema para el clasificador de intenciones.
      * El LLM SOLO referencia triggers del catálogo real; nunca escribe nombres,
-     * precios ni acciones libres.
+     * precios ni acciones libres. El texto base se lee de Neon (con default en código).
      */
-    _buildSystemPrompt(message, catalogo, contexto) {
+    async _buildSystemPrompt(message, catalogo, contexto) {
         const ai = this.ai;
         const estilo = (ai.estilo && ESTILO_MAP[ai.estilo]) || ai.promptCustom || 'Cordial y profesional, usando "usted", con tono respetuoso y claro.';
         const intenciones = this._getIntenciones();
@@ -82,25 +86,34 @@ class IntentRouterService {
             ? `- SECCIONES del catálogo (marcadas "(SECCIÓN)") son sub-menús con más fichas. Si el cliente pide ver/entrar a una sección, usá "CONSULTAR_MENU" e incluí su trigger en "items". Los ítems que NO son sección son fichas/consultas individuales: si el cliente los pide por su nombre, usá "CONSULTAR_MENU" con su trigger para abrir la ficha.\n`
             : `- SECCIONES del catálogo (marcadas "(SECCIÓN)") son sub-menús, NO productos vendibles. Si el cliente pide ver/consultar/entrar a una sección ("quiero alquilar", "me interesa la venta", "mostrame los departamentos"), usá "CONSULTAR_MENU" e incluí en "items" el trigger de esa SECCIÓN para que el sistema navegue a ella. NUNCA uses "AGREGAR_AL_CARRITO" ni "QUITAR_DEL_CARRITO" con el trigger de una SECCIÓN.\n`;
 
-        return `Sos el CLASIFICADOR de intenciones del bot de WhatsApp de "${this.negocio}".\n` +
-            `NO actuás por tu cuenta: tu ÚNICA tarea es analizar el mensaje del cliente y llamar a la herramienta "clasificar_intencion" con los datos estructurados. El sistema determinista ejecuta la acción.\n\n` +
-            `REGLAS (obligatorias):\n` +
-            `- Elegí UNA de estas intenciones: ${intenciones.join(', ')}.\n` +
-            `${reglasFAQ}` +
-            `${reglasTurnos}` +
-            `- DISTINGUÍ CONSULTA DE COMPRA (obligatorio). Cada negocio es distinto (comida, propiedades, servicios, turnos, etc.): los ejemplos que siguen son ILUSTRATIVOS, no exhaustivos, y este bot vende lo que figura en el CATÁLOGO REAL de abajo. Una CONSULTA es una PREGUNTA sin encargar nada: por ejemplo "¿qué ofrecen?", "¿cuánto cuesta?", "¿tenés X?", "¿está disponible?", "¿me pasás el precio?", "¿en qué horarios atienden?". Las consultas SIEMPRE van como "CONSULTAR_MENU" con "respuesta_conversacional" informativa: no agregan al carrito, no son compras y NUNCA derivan a un humano.\n` +
-            `- AGREGAR_AL_CARRITO SOLO con intención directa de COMPRAR/ADQUIRIR/ENCARGAR un ítem del CATÁLOGO REAL. Ejemplos ilustrativos de la FORMA (no exhaustivos): "quiero comprar/encargar [ITEM del catálogo]", "me llevo [ITEM]", "quiero contratar [SERVICIO]". Si el ITEM pedido está en el CATÁLOGO REAL, usá "AGREGAR_AL_CARRITO" con su "trigger". NUNCA uses "CONSULTAR_MENU" ni "CHARLA_GENERAL" cuando el cliente pidió comprar algo del catálogo.\n` +
-            `${reglasSeccion}` +
-            `- Si el cliente pide algo de una SECCIÓN en un mensaje recién llegado pero todavía está en el menú principal, la intención es navegar a esa sección (CONSULTAR_MENU con su trigger en "items"), no comprarla directamente.\n` +
-            `- Solo usá "CONSULTAR_MENU" cuando el cliente pida VER el menú, las opciones generales o haga una consulta sin encargar nada concreto (por ejemplo "qué tienen", "mostrá el menú", "opciones").\n` +
-            `- Para AGREGAR_AL_CARRITO / QUITAR_DEL_CARRITO: solo podés usar productos listados en el CATÁLOGO REAL de abajo. Devolvé SIEMPRE el "trigger" del producto (no inventes nombres ni triggers). "cantidad" es el número de unidades (default 1). "nota" (opcional) es una aclaración en texto libre.\n` +
-            `- Si menciona algo que no está en el catálogo, o hay AMBIGÜEDAD entre varios productos, NO inventes: usá intencion "FALLO" o "CONSULTAR_MENU" y dejala al sistema.\n` +
-            `- FINALIZAR_PEDIDO: cuando el cliente quiere terminar/pagar (por ejemplo "listo", "nada más", "quiero pagar", "no listo", etc.) y tiene ítems en el pedido.\n` +
-            `- CONSULTAR_MENU / CONSULTAR_HORARIOS / VER_CARRITO / CHARLA_GENERAL: para consultas o charla. "respuesta_conversacional" debe ser breve y amigable, SIEMPRE en el estilo: ${estilo}\n` +
-            `- NUNCA inventes precios, productos, horarios ni descuentos. Si no lo sabés, no lo afirmes.\n` +
-            `- Si el mensaje no encaja con certeza alta o no se entiende, usá intencion "FALLO".\n\n` +
-            `${contexto}\n\n` +
-            `CATÁLOGO REAL DEL NIVEL ACTUAL:\n${catalogoTxt}\n`;
+        const template = await llmPromptService.getPrompt('clasificador');
+        const prompt = llmPromptService.renderPrompt(template, {
+            negocio: this.negocio,
+            intenciones: intenciones.join(', '),
+            reglas_faq: reglasFAQ,
+            reglas_turnos: reglasTurnos,
+            reglas_seccion: reglasSeccion,
+            estilo,
+            contexto: contexto || '',
+            catalogo: catalogoTxt
+        });
+
+        // Few-shot examples from synthetic pipeline (Neon).
+        let fewShotBlock = '';
+        try {
+            const examples = await aiFewShotService.getExamples(this.idCliente);
+            if (examples.length > 0) {
+                const lines = examples.map(ex => {
+                    const itemsStr = (ex.items || []).length
+                        ? ` → ítems: ${ex.items.map(i => `${i.trigger}${i.cantidad > 1 ? '×' + i.cantidad : ''}`).join(', ')}`
+                        : '';
+                    return `  - "${ex.userInput}" → ${ex.intent}${itemsStr}`;
+                });
+                fewShotBlock = `\nEJEMPLOS CORREGIDOS (aprendé de estos casos):\n${lines.join('\n')}\n`;
+            }
+        } catch (_) { /* Neon no disponible, skip few-shot */ }
+
+        return prompt + fewShotBlock;
     }
 
     _toolDefinition() {
@@ -153,7 +166,7 @@ class IntentRouterService {
 
         const catalogo = await this.buildCatalogo(jid).catch(() => []);
         const contexto = await this.buildContexto(jid).catch(() => '');
-        const systemPrompt = this._buildSystemPrompt(message, catalogo, contexto);
+        const systemPrompt = await this._buildSystemPrompt(message, catalogo, contexto);
 
         let captured = null;
         const executeTool = async (name, args) => {
@@ -170,7 +183,8 @@ class IntentRouterService {
                 executeTool,
                 onTokens,
                 toolChoice: 'required',
-                earlyStop: (name) => name === 'clasificar_intencion'
+                earlyStop: (name) => name === 'clasificar_intencion',
+                temperature: this.temperature
             });
             // La clasificación viene en la tool call (captured), no en el texto final.
             return this._normalizarClasificacion(captured, catalogo);

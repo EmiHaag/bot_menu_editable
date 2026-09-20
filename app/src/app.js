@@ -34,6 +34,7 @@ const termsService = require('./services/termsService');
 const billingService = require('./services/billingService');
 const configService = require('./services/configService');
 const botConfigService = require('./services/botConfigService');
+const llmPromptService = require('./services/llmPromptService');
 const emailService = require('./services/emailService');
 const logService = require('./services/logService');
 const logger = require('./utils/logger');
@@ -1312,7 +1313,10 @@ async function main() {
     await configService.ensureTable();
     await configService.seed();
     await botConfigService.ensureTable();
+    await llmPromptService.ensureTable();
     await aiUsageService.ensureTable();
+    const aiFewShotService = require('./services/aiFewShotService');
+    await aiFewShotService.ensureTables();
     const { ensureMenuTables } = require('./services/menuDbService');
     await ensureMenuTables();
     logger.initConsoleCapture();

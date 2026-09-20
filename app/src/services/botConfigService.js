@@ -33,7 +33,7 @@ const DEFAULT_AI_CONFIG = {
     instrucciones: '',
     sugerirComplemento: false,
     activadoEn: null,
-    vendedor: { nombre: '', telefono: '', mensaje: '' }
+    vendedor: { mensaje: '', contactos: [] }
 };
 
 const DEFAULT_MENU_CONFIG = {

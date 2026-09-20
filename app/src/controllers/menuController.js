@@ -7,6 +7,11 @@ const botConfigService = require('../services/botConfigService');
 const calendarService = require('../services/googleCalendarService');
 const { verificarPlanPremium } = require('../services/planService');
 
+// Tope de opciones por página del menú. Si una lista tiene más, se guarda en
+// estado temporal y se avanza con la opción "ver más" (cada bloque se envía
+// como un mensaje de WhatsApp nuevo).
+const MAX_ITEMS_POR_PAGINA = 5;
+
 class MenuController {
     constructor(googleSheetsService, stateService, orderService = null) {
         this.googleSheetsService = googleSheetsService; // Servicio para leer datos de Google Sheets
@@ -326,6 +331,30 @@ class MenuController {
                 return;
             }
             await this.processNode(sock, jid, selectedOption);
+        } else if (/^(ver\s+)?m[aá]s$|^m[aá]s\s+opciones$|^siguiente$/i.test(input)) {
+            // 6b. PAGINACIÓN "VER MÁS": si hay una lista temporal en el menú
+            // actual, avanzamos al bloque siguiente de opciones. Cada bloque
+            // se envía como un mensaje de WhatsApp nuevo (fotos + texto).
+            const listado = this.stateService.getMenuListado(jid);
+            if (listado && listado.parentId === currentStateId && Array.isArray(listado.items)) {
+                const totalPaginas = Math.max(1, Math.ceil(listado.items.length / MAX_ITEMS_POR_PAGINA));
+                const paginaSiguiente = (listado.page || 0) + 1;
+                if (paginaSiguiente < totalPaginas) {
+                    const slice = listado.items.slice(
+                        paginaSiguiente * MAX_ITEMS_POR_PAGINA,
+                        (paginaSiguiente + 1) * MAX_ITEMS_POR_PAGINA
+                    );
+                    await this._enviarPreviews(sock, jid, slice);
+                    await this.sendMenu(sock, jid, currentStateId, { page: paginaSiguiente });
+                    return;
+                }
+            }
+            await this.sendPresenceTyping(sock, jid);
+            await sock.sendMessage(jid, {
+                text: 'Opción no válida.'
+            });
+            await this.sendMenu(sock, jid, currentStateId);
+            return;
         } else {
             // 7. MANEJO DE ENTRADAS NO VÁLIDAS O PRIMER CONTACTO
             if (currentStateId === 'root' && !selectedOption) {
@@ -354,9 +383,13 @@ class MenuController {
     }
 
     /**
-     * Construye y envía el cuerpo del menú con sus opciones y footer
+     * Construye y envía el cuerpo del menú con sus opciones y footer.
+     * Si la lista supera MAX_ITEMS_POR_PAGINA, la guarda en estado temporal
+     * (estado por usuario) y muestra solo el bloque de la página actual:
+     * el usuario avanza con la opción "ver más" y cada bloque se envía como
+     * un mensaje de WhatsApp nuevo.
      */
-    async sendMenu(sock, jid, parentId) {
+    async sendMenu(sock, jid, parentId, opts = {}) {
         const nodes = await this.googleSheetsService.getNodesByParent(parentId);
         const order = this.stateService.getUserOrder(jid);
 
@@ -381,6 +414,46 @@ class MenuController {
             return true;
         });
 
+        // PAGINACIÓN: si hay más opciones que el tope, la lista completa se
+        // guarda en estado temporal y se muestra página por página.
+        let listado = null;
+        if (visibleNodes.length > MAX_ITEMS_POR_PAGINA) {
+            listado = this.stateService.getMenuListado(jid);
+            // La lista cacheada pertenece a otro menú: se descarta.
+            if (listado && listado.parentId !== parentId) listado = null;
+            if (!listado) {
+                listado = {
+                    parentId,
+                    page: 0,
+                    items: visibleNodes.map(n => ({
+                        trigger: n.trigger,
+                        title: n.title,
+                        price: n.price || '',
+                        disponible: n.disponible === 'false' ? 'false' : 'true',
+                        imagenes: (n.imagenes && n.imagenes[0] && n.imagenes[0].url)
+                            ? [{ url: n.imagenes[0].url }]
+                            : []
+                    }))
+                };
+            }
+            const totalPaginas = Math.max(1, Math.ceil(listado.items.length / MAX_ITEMS_POR_PAGINA));
+            let pagina = opts.page !== undefined ? opts.page : (listado.page || 0);
+            if (pagina >= totalPaginas) pagina = totalPaginas - 1;
+            if (pagina < 0) pagina = 0;
+            listado.page = pagina;
+            this.stateService.setMenuListado(jid, listado);
+        } else {
+            // Lista chica: render directo y descartamos cualquier cache previo.
+            const prev = this.stateService.getMenuListado(jid);
+            if (prev && prev.parentId === parentId) this.stateService.clearMenuListado(jid);
+        }
+        const totalItems = listado ? listado.items.length : visibleNodes.length;
+        const totalPaginas = listado ? Math.max(1, Math.ceil(totalItems / MAX_ITEMS_POR_PAGINA)) : 1;
+        const pagina = listado ? listado.page : 0;
+        const slice = listado
+            ? listado.items.slice(pagina * MAX_ITEMS_POR_PAGINA, (pagina + 1) * MAX_ITEMS_POR_PAGINA)
+            : visibleNodes;
+
         // Construcción del texto del menú + Resumen de pedido si existe.
         // Humanización: cuando hay opciones, anteponemos una introducción
         // cálida en vez del mensaje genérico ("Elige una opción").
@@ -401,8 +474,15 @@ class MenuController {
             menuText = msgNodo + '\n\n';
         }
 
+        // Indicador de posición dentro de una lista paginada.
+        if (totalPaginas > 1) {
+            const primero = pagina * MAX_ITEMS_POR_PAGINA + 1;
+            const ultimo = Math.min((pagina + 1) * MAX_ITEMS_POR_PAGINA, totalItems);
+            menuText += `_Mostrando ${primero}–${ultimo} de ${totalItems}_\n\n`;
+        }
+
         // Listar opciones de submenus con precios (tachar no disponibles)
-        visibleNodes.forEach(node => {
+        slice.forEach(node => {
             const priceText = node.price ? ` ($${node.price})` : '';
             if (node.disponible === 'false') {
                 menuText += `~*${node.trigger}*. ${node.title}${priceText}~ (sin stock)\n`;
@@ -414,6 +494,10 @@ class MenuController {
 
         // FOOTER DE NAVEGACIÓN CONSISTENTE
         menuText += `\n---\n`;
+
+        if (totalPaginas > 1 && pagina < totalPaginas - 1) {
+            menuText += `*ver más*. Ver más opciones\n`;
+        }
 
         if (order.length > 0) {
             if (currentNode.message && currentNode.message.includes('##PAGAR##')) {
@@ -541,14 +625,20 @@ class MenuController {
 
     /**
      * Envía la primera foto de cada opción de un listado/sección como vista
-     * previa. Solo si el comercio es premium y la cantidad de opciones es
-     * acotada (no saturar el chat con cientos de fotos).
+     * previa. Solo si el comercio es premium. Como las listas van paginadas
+     * de a MAX_ITEMS_POR_PAGINA, se muestran como máximo las fotos del primer
+     * bloque (o del bloque que ya venga recortado, p. ej. en "ver más").
      */
     async _enviarPreviews(sock, jid, nodes) {
-        const MAX_OPCIONES = 5;
-        if (!Array.isArray(nodes) || nodes.length === 0 || nodes.length > MAX_OPCIONES) return;
+        if (!Array.isArray(nodes) || nodes.length === 0) return;
 
-        const conImagenes = nodes.filter(n => n && Array.isArray(n.imagenes) && n.imagenes.length > 0);
+        // Si llega la lista completa (más del tope), mostramos solo el bloque
+        // de la página actual; si ya viene recortada, se usa tal cual.
+        const pageNodes = nodes.length > MAX_ITEMS_POR_PAGINA
+            ? nodes.slice(0, MAX_ITEMS_POR_PAGINA)
+            : nodes;
+
+        const conImagenes = pageNodes.filter(n => n && Array.isArray(n.imagenes) && n.imagenes.length > 0);
         if (conImagenes.length === 0) return;
 
         const comercioId = this.googleSheetsService.clientId;
@@ -599,6 +689,21 @@ class MenuController {
 /**
      * Procesa un nodo de forma integral: tags, submenús o mensajes finales.
      */
+    /**
+     * ¿El nodo hoja pide hablar con un humano/asesor ("Hablar con asesor
+     * administrativo", "me pasás con un asesor", "atención con ventas")?
+     * Se evalúa sobre el TÍTULO y la primera línea del mensaje para no activar
+     * la derivación en fichas de información común.
+     */
+    _esNodoAsesor(node) {
+        if (!node) return false;
+        const t = (String(node.title || '') + ' ' + String(node.message || '').split(/\r?\n/)[0])
+            .toLowerCase()
+            .normalize('NFD')
+            .replace(/[\u0300-\u036f]/g, '');
+        return /\b(?:hablar\s+con|habla\s+con|asesor|asesora|me\s+pa[sc]+\w*\s+con|comunic(?:arme|arte)?\s+con|atencion\s+(?:con|de))\b/.test(t);
+    }
+
     async processNode(sock, jid, node) {
         const nodeTags = [];
         if (node.message) {
@@ -738,6 +843,8 @@ class MenuController {
             // Vista previa de imágenes: al listar una sección se envían las
             // primeras fotos de las opciones (solo si son pocas, para no
             // saturar el chat). Las fotos completas se ven al abrir cada ficha.
+            // Al entrar a una sección la paginación arranca desde la página 0.
+            this.stateService.clearMenuListado(jid);
             await this._enviarPreviews(sock, jid, subOptions);
             await this.sendMenu(sock, jid, node.id);
             return;
@@ -747,14 +854,16 @@ class MenuController {
         let finalMessage = await this.replaceOrderSummary(node.message, jid);
         finalMessage += `\n\n_Escribe *0* para volver al inicio._`;
 
-        // Intervención del asistente en nodo de checkout/cierre de compra: le
-        // permite presentar la transición de forma natural y aplicar reglas
-        // (incluida la derivación al vendedor). El callback devuelve
-        // { reemplazar, detener }: si detener es true, se corta el flujo y el
-        // menú no finaliza ni redirige (el asistente ya respondió/derivó).
-        if (this.assistantInterceptor && (nodeTags.includes('FINALIZAR') || nodeTags.includes('PAGAR'))) {
+        // Intervención del asistente en nodo de checkout/cierre de compra O en
+        // nodos que piden hablar con un humano ("Hablar con asesor
+        // administrativo"): le permite presentar la transición de forma natural
+        // y aplicar reglas (incluida la derivación al vendedor). El callback
+        // devuelve { reemplazar, detener }: si detener es true, se corta el
+        // flujo y el menú no finaliza ni redirige (el asistente ya derivó).
+        const esNodoAsesor = this._esNodoAsesor(node);
+        if (this.assistantInterceptor && (nodeTags.includes('FINALIZAR') || nodeTags.includes('PAGAR') || esNodoAsesor)) {
             try {
-                const res = await this.assistantInterceptor(sock, jid, null, { nodeTags, tipo: 'checkout' });
+                const res = await this.assistantInterceptor(sock, jid, null, { node, nodeTags, tipo: esNodoAsesor ? 'asesor' : 'checkout' });
                 if (res && typeof res === 'object') {
                     if (res.reemplazar && typeof res.reemplazar === 'string' && res.reemplazar.trim()) {
                         finalMessage = res.reemplazar.trim();

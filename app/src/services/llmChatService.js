@@ -32,9 +32,11 @@ function sleep(ms) {
  * @param {string}  [opts.toolChoice] - 'auto' | 'required' (default 'auto' cuando hay tools).
  * @param {Function} [opts.earlyStop] - (name, args) => boolean. Si devuelve true tras
  *     ejecutar una tool, corta el bucle de inmediato (ahorra la ronda final de texto).
+ * @param {number}  [opts.temperature] - Temperatura del modelo (default 0.6).
+ *     Usá valores bajos (0.0-0.2) en benchmarks/evaluaciones para señal estable.
  * @returns {Promise<{content: string|null, toolCalls: number, stopped?: boolean}>}
  */
-async function chat({ systemPrompt, messages, tools, executeTool, onTokens, toolChoice, earlyStop }) {
+async function chat({ systemPrompt, messages, tools, executeTool, onTokens, toolChoice, earlyStop, temperature }) {
     if (!process.env.OPENAI_API_KEY) {
         throw new Error('OPENAI_API_KEY no configurada');
     }
@@ -51,13 +53,14 @@ async function chat({ systemPrompt, messages, tools, executeTool, onTokens, tool
     let retries = 0;
     const MAX_RETRIES = 3;
     const dbg = process.env.AI_DEBUG === '1';
+    const temp = (typeof temperature === 'number' && temperature >= 0 && temperature <= 2) ? temperature : 0.6;
 
     for (let round = 0; round <= MAX_TOOL_ROUNDS; round++) {
         let completion;
         try {
             completion = await api.chat.completions.create({
                 model: MODEL,
-                temperature: 0.6,
+                temperature: temp,
                 messages: fullMessages,
                 tools: tools.length ? tools : undefined,
                 tool_choice: tools.length ? (toolChoice || 'auto') : undefined

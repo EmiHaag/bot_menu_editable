@@ -22,6 +22,7 @@ class StateService {
         this.cache.del(this._getKey(jid));
         this.cache.del(this._getKey(jid) + ':order');
         this.cache.del(this._getKey(jid) + ':datos');
+        this.cache.del(this._getKey(jid) + ':menu_listado');
     }
 
     addItemToOrder(jid, item) {
@@ -101,6 +102,20 @@ class StateService {
 
     clearDatosText(jid) {
         this.cache.del(this._getKey(jid) + ':datos');
+    }
+
+    // LISTADO TEMPORAL DEL MENÚ (paginación "ver más"): guarda la lista completa
+    // de opciones de la página actual para avanzar de a bloques sin re-consultar.
+    setMenuListado(jid, data) {
+        this.cache.set(this._getKey(jid) + ':menu_listado', data, 3600);
+    }
+
+    getMenuListado(jid) {
+        return this.cache.get(this._getKey(jid) + ':menu_listado') || null;
+    }
+
+    clearMenuListado(jid) {
+        this.cache.del(this._getKey(jid) + ':menu_listado');
     }
 
     setPendingQuantityItem(jid, itemTitle) {

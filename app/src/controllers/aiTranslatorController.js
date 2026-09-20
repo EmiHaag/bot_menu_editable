@@ -2,6 +2,7 @@ const userService = require('../services/userService');
 const botConfigService = require('../services/botConfigService');
 const aiUsageService = require('../services/aiUsageService');
 const llmChatService = require('../services/llmChatService');
+const llmPromptService = require('../services/llmPromptService');
 const IntentRouterService = require('../services/intentRouterService');
 
 const ESTILOS = {
@@ -228,11 +229,138 @@ class AITranslatorController {
     }
 
     /**
-     * Teléfono del vendedor configurado (o '' si no hay).
+     * Lista normalizada de contactos de derivación configurados en el dashboard.
+     * Cada contacto: { id, nombre, telefono, areas }. Migra automáticamente el
+     * formato legacy (vendedor.nombre/telefono sin lista) a un único contacto
+     * para que ningún bot existente cambie de comportamiento.
+     */
+    _listarContactosVendedor(ai) {
+        const v = (ai && ai.vendedor) || {};
+        const msj = (v.mensaje && String(v.mensaje).trim()) || '';
+        let contactos = Array.isArray(v.contactos) ? v.contactos : [];
+        if (contactos.length === 0 && v.telefono && String(v.telefono).trim()) {
+            const nombre = (v.nombre && String(v.nombre).trim()) || 'asesor';
+            contactos = [{ id: 'contacto-1', nombre, telefono: String(v.telefono).trim(), areas: '' }];
+        }
+        const lista = contactos
+            .filter(c => c && c.telefono && String(c.telefono).trim())
+            .map((c, idx) => ({
+                id: (c && c.id) ? String(c.id) : `contacto-${idx + 1}`,
+                nombre: (c && c.nombre && String(c.nombre).trim()) ? String(c.nombre).trim() : `contacto-${idx + 1}`,
+                telefono: String(c.telefono).trim(),
+                areas: (c && c.areas) ? String(c.areas) : ''
+            }));
+        return { msj, contactos: lista };
+    }
+
+    /**
+     * Teléfono del primer contacto de derivación configurado (o '' si no hay).
+     * Gate booleano idéntico al anterior (vendedor.telefono).
      */
     _telefonoVendedor(ai) {
-        const v = (ai && ai.vendedor) || {};
-        return (v.telefono && String(v.telefono).trim()) || '';
+        const { contactos } = this._listarContactosVendedor(ai);
+        return (contactos[0] && contactos[0].telefono) || '';
+    }
+
+    /**
+     * ¿El mensaje del cliente es un pedido EXPLÍCITO de hablar con un humano
+     * (asesor/vendedor/persona)? Devuelve la "frase de área" (lo dicho después
+     * del marco) ya normalizada, o '' si no es una petición de asesor.
+     * Evita falsos positivos como "que me asesores" (pedir consejo, no persona).
+     */
+    _solicitaAsesor(text) {
+        const n = this._normalizarMatch(text);
+        if (!n) return '';
+        // 1) Marcos explícitos de contacto ("hablar con", "me pasás con",
+        //    "atendé/atiendas", "necesito/quiero un asesor", "atención con").
+        //    Los frames de transferencia ("pasame", "me pasás", "me comunicás")
+        //    EXIGEN "con": "pasame con ventas" es pedir persona, pero "pasame
+        //    fotos/precio/ubicación" es pedir información y NO debe derivar.
+        const marco = n.match(/(?:hablar\s+con|pas(?:ame|a|e|as|[aá]s)\s+con|me\s*(?:pas|comunic|contact|deriv)[aáeé]?s?\s+con|atend|atiend[aáeé]?[sz]*|atencion\s+(?:con|de)|contactar\s+con|necesito\s+(?:hablar|que\s+me\s+atienda[nsz]*|un\s+asesor|una\s+asesora)|quiero\s+(?:hablar|que\s+me\s+atienda[nsz]*|un\s+asesor|una\s+asesora))\s*(.*)$/);
+        let frase = '';
+        if (marco) {
+            frase = (marco[1] || '');
+        } else {
+            // 2) "asesor [de] <área>" o "un asesor <área>". \b tras el sustantivo
+            //    excluye las conjugaciones del verbo "asesorar" ("asesores",
+            //    "asesoraba", "asesorar") y los plurales de persona.
+            const asesor = n.match(/(?:el\s+|la\s+|un\s+|una\s+|los\s+|las\s+)?(?:asesor|asesora)\b(?:\s+(?:de|para|por|en))?\s*$/);
+            const asesorArea = n.match(/(?:el\s+|la\s+|un\s+|una\s+|los\s+|las\s+)?(?:asesor|asesora)\b(?:\s+(?:de|para|por|en))\s+(.+)$/)
+                || n.match(/(?:el\s+|la\s+|un\s+|una\s+|los\s+|las\s+)?(?:asesor|asesora)\b\s+(.+)$/);
+            if (asesor && !asesorArea) return '';
+            if (!asesorArea) return '';
+            frase = asesorArea[1];
+        }
+        const limpia = frase
+            .replace(/\b(?:me|te|le|les|nos|lo|un|una|unos|unas|el|la|los|las|al|del|de|para|por|en|a|con)\b/g, ' ')
+            .replace(/\b(?:por\s+favor|please|gracias|dale|ok|sipi?|claro|bueno|genial)\b/g, ' ')
+            .replace(/[?!.,;:()]+/g, ' ')
+            .replace(/\s+/g, ' ')
+            .trim();
+        return limpia ? limpia : ((marco || frase) ? 'asesor' : '');
+    }
+
+    /**
+     * Devuelve la lista de nombres/categorías de los contactos (para mostrar
+     * en el mensaje "No tengo esa opción"). Devuelve [] si no hay contactos.
+     */
+    _listaAreasDisponibles(contactos) {
+        const areasSet = new Set();
+        for (const c of contactos) {
+            const cats = String(c.areas || '')
+                .split(/[,;\n]+/)
+                .map(s => s.trim())
+                .filter(Boolean);
+            for (const cat of cats) {
+                areasSet.add(cat);
+            }
+        }
+        return Array.from(areasSet);
+    }
+
+    /**
+     * ¿La "frase de área" es genérica (sin categoría específica nombrada)?
+     * "hablar con un asesor" -> genérica. "asesor de venta mayorista" -> no.
+     */
+    _esAreaGenerica(frase) {
+        const n = this._normalizarMatch(frase || '');
+        if (!n || n === 'asesor') return true;
+        const generic = ['asesor', 'asesora', 'vendedor', 'vendedora', 'persona', 'alguien', 'humano', 'alguno', 'alguien que me atienda', 'con alguien'];
+        return generic.some(g => n === g);
+    }
+
+    /**
+     * Elige el contacto de derivación cuya CATEGORÍA (area) coincide con el
+     * texto del cliente. Puntúa por cuántas de sus áreas/nombre aparecen en el
+     * texto normalizado: gana el de mayor puntaje (empate -> primero). Devuelve
+     * el contacto elegido o null si ninguno matchea.
+     */
+    _matchearCategoria(texto, contactos) {
+        if (!texto || !contactos || contactos.length === 0) return null;
+        const n = this._normalizarMatch(texto);
+        if (!n) return null;
+        let mejor = null;
+        let mejorScore = 0;
+        for (const c of contactos) {
+            let score = 0;
+            const palabras = [];
+            const cats = String(c.areas || '').split(/[,;\n]+/).map(s => s.trim()).filter(Boolean);
+            for (const cat of cats) palabras.push(cat);
+            for (const p of palabras) {
+                const np = this._normalizarMatch(p);
+                if (!np) continue;
+                // Match flexible: prefijo o contención (ej: "administrativo" matchea "administracion").
+                // Evita falsos positivos muy cortos (< 3 chars).
+                if (np.length >= 3 && (n.includes(np) || np.startsWith(n.slice(0, np.length)))) {
+                    score += np.length;
+                }
+            }
+            if (score > mejorScore) {
+                mejorScore = score;
+                mejor = c;
+            }
+        }
+        return mejorScore > 0 ? mejor : null;
     }
 
     /**
@@ -241,6 +369,216 @@ class AITranslatorController {
      */
     _esConsulta(intencion) {
         return intencion === 'CONSULTAR_MENU' || intencion === 'CONSULTAR_HORARIOS' || intencion === 'CHARLA_GENERAL';
+    }
+
+    /**
+     * ¿El mensaje consulta el PRECIO de algo ("¿cuánto cuesta?", "¿qué precio
+     * tiene?", "¿a cómo está?", "precio", "costo", "tarifa")? Se usa para la
+     * respuesta especial cuando la ficha consultada no tiene precio definido.
+     */
+    _esConsultaPrecio(text) {
+        const t = this._normalizarMatch(text);
+        if (!t) return false;
+        if (/\bcuant(a|o|os)\b/.test(t) &&
+            /\b(cuesta|cuestan|sale|salen|vale|valen|cobran|cobras|costo|costa|estara|estan|estarian|esta|este|anda|andan|es|son|piden|pide)\b/.test(t)) return true;
+        return /\b(?:precio|precios|costo|costos|cotizacion|cotizas|tarifa|tarifas|importe|valor|valores|cual\s+es\s+el\s+(?:precio|costo|valor|importe)|cual\s+es\s+su\s+(?:precio|costo|valor)|que\s+valor|cuanto\s+tenes|a\s+cuanto|a\s+como|en\s+cuanto)\b/.test(t);
+    }
+
+    /**
+     * ¿El cliente ACEPTA la oferta de hablar con un asesor
+     * ("sí", "dale", "me interesa", "sí, por favor")?
+     */
+    _aceptaOfertaAsesor(text) {
+        const t = this._normalizarMatch(text);
+        if (!t) return false;
+        if (/\b(?:no|nop|nope|mejor\s+no|para\s+nada)\b/.test(t)) return false;
+        if (this._esAfirmacion(text)) return true;
+        return /\b(?:me\s+interesa|me\s+gusta|si\s+(?:me|quiero|por\s+favor|dale)|pasame|pasame\s+con\s+(?:el|una)|hablar\s+con\s+(?:el|un|una|la)\s+(?:asesor|asesora|persona))\b/.test(t);
+    }
+
+    /**
+     * ¿El cliente RECHAZA la oferta de hablar con un asesor
+     * ("no", "no, gracias", "no me interesa", "mejor no")?
+     */
+    _rechazaOfertaAsesor(text) {
+        const t = this._normalizarMatch(text);
+        if (!t) return false;
+        return /\b(?:no|nop|nope|mejor\s+no|para\s+nada|cancelar|descartar|no\s+gracias|gracias\s+pero\s+no|no\s+me\s+interesa|no\s+lo\s+necesito|no\s+quiero)\b/.test(t);
+    }
+
+    /**
+     * ¿El mensaje es SOLO una negación a la oferta de asesor (sin otra
+     * intención a cuestas)? Se distingue de "no, [otra cosa]" ("no, cuanto
+     * cuesta la de las heras") para no cortar la respuesta cuando el cliente
+     * rechaza PERO además pregunta algo. Es "no" puro / "no, gracias" /
+     * "no me interesa" / "mejor no", sin nada más después.
+     */
+    _esNegacionPura(text) {
+        const t = this._normalizarMatch(text).replace(/[?!.]+$/g, '').replace(/,+/g, ' ').replace(/\s+/g, ' ').trim();
+        if (!t) return false;
+        return /^(?:no|nop|nope|no\s+gracias|gracias\s+pero\s+no|no\s+me\s+interesa|no\s+lo\s+necesito|no\s+quiero|mejor\s+no|para\s+nada|cancelar|descartar)(?:[.!,-]*)$/.test(t);
+    }
+
+    /**
+     * Manejo determinístico de la consulta de PRECIO de una ficha SIN precio
+     * definido (bot FAQ, ej. inmobiliaria). Devuelve { handled, result }:
+     *   - handled true  -> ya respondió (y quizá ofreció pasar con un asesor);
+     *                      result es lo que handleMessage debe devolver.
+     *   - handled false -> el flujo normal de la conversación continúa.
+     */
+    async _manejarPrecioSinDefinir(sock, jid, pushName, text, options, matchSimple, celularVendedor) {
+        if (!this._esFAQ() || !this._esConsultaPrecio(text)) {
+            return { handled: false };
+        }
+
+        // 1) Ficha consultada: por match directo del nivel o por el último tema.
+        let trig = '';
+        let title = '';
+        if (matchSimple) {
+            const opt = (options || []).find(o => String(o.trigger).toLowerCase() === String(matchSimple).toLowerCase());
+            if (opt && !opt.seccion) {
+                trig = String(matchSimple);
+                title = opt.title || '';
+            } else if (opt) {
+                // La opción es una SECCIÓN (no una ficha con precio): el flujo
+                // normal muestra su submenú; no caemos al fallback de interés.
+                return { handled: false };
+            }
+        }
+        if (!trig) {
+            const sesionInteres = this.stateService.getChatSession(jid) || {};
+            const ultimo = sesionInteres.interes;
+            if (ultimo && ultimo.trigger) {
+                const nodeId = this.stateService.getUserState(jid) || 'root';
+                const nodoActual = await this._getNodeById(nodeId).catch(() => null);
+                const esFichaActual = !!(nodoActual && String(nodoActual.trigger) === String(ultimo.trigger));
+                const esOpcion = (options || []).some(o => String(o.trigger).toLowerCase() === String(ultimo.trigger).toLowerCase());
+                if (esOpcion || esFichaActual) {
+                    trig = String(ultimo.trigger);
+                    title = ultimo.title || '';
+                }
+            }
+        }
+        if (!trig) return { handled: false };
+
+        // 2) ¿La ficha tiene precio definido? Si sí, respondemos DIRECTAMENTE
+        //    con el precio (en vez de dejar que el LLM lo redacte en otra voz/
+        //    formalidad) y guardamos la posición (interes) para que los
+        //    seguimientos deícticos ("y esa?", "¿y las fotos?") sigan anclados.
+        let conPrecio = false;
+        let precioNivel = '';
+        let tituloNivel = title;
+        const optNivel = (options || []).find(o => String(o.trigger).toLowerCase() === trig.toLowerCase());
+        if (optNivel) {
+            conPrecio = !!(optNivel.price) || !!optNivel.seccion;
+            if (optNivel.price) {
+                precioNivel = optNivel.price;
+                tituloNivel = optNivel.title || title || trig;
+            }
+        } else {
+            const nodo = await this._getNodeById(this.stateService.getUserState(jid) || 'root').catch(() => null);
+            if (nodo && String(nodo.trigger).toLowerCase() === trig.toLowerCase()) {
+                conPrecio = !!(nodo.price) || !!nodo.seccion;
+                if (nodo.price) {
+                    precioNivel = nodo.price;
+                    tituloNivel = nodo.title || title || trig;
+                }
+            }
+        }
+        if (conPrecio) {
+            if (precioNivel) {
+                this._setInteres(jid, trig, tituloNivel);
+                this.stateService.clearTranslationFails(jid);
+                await this._sendFriendly(sock, jid, `El *${tituloNivel}* cuesta *$${precioNivel}*.\n\n¿Querés que te muestre las fotos?`);
+                console.log(`[AI] Bot ${this.idCliente}: precio definido "${trig}" -> respuesta directa ($${precioNivel})`);
+                return { handled: true, result: { derivado: true } };
+            }
+            // Sección (sin precio propio): el flujo normal despliega su submenú.
+            return { handled: false };
+        }
+
+        // 3) Respuesta especial + oferta de asesor (si hay vendedor configurado).
+        this._setInteres(jid, trig, title);
+        const precioRespondido = 'No tengo en mi base de datos esa información.';
+        if (celularVendedor) {
+            const sesion = this.stateService.getChatSession(jid) || { history: [], nodeId: 'root' };
+            this.stateService.setChatSession(jid, { ...sesion, ofreciendoAsesor: { trigger: trig, title } });
+            await this._sendFriendly(sock, jid, precioRespondido + '\n\nTe interesa que te pase con un asesor?');
+            console.log(`[AI] Bot ${this.idCliente}: precio sin definir en "${trig}" -> sin precio + oferta de asesor`);
+        } else {
+            await this._sendFriendly(sock, jid, precioRespondido);
+            console.log(`[AI] Bot ${this.idCliente}: precio sin definir en "${trig}" -> sin precio (sin asesor configurado)`);
+        }
+        return { handled: true, result: { derivado: true } };
+    }
+
+    /**
+     * Resuelve una referencia POSICIONAL a un ítem de la lista desplegada
+     * ("el primero", "el 1ro", "la 2", "el segundo", "el tercero de la lista")
+     * contra las opciones reales del nivel actual. Devuelve el índice (0-based)
+     * o -1 para "el último", o null si no se detectó una posición válida.
+     */
+    _resolverPosicionLista(text, options) {
+        if (!Array.isArray(options) || options.length === 0) return null;
+        const t = this._normalizarMatch(text);
+        if (!t) return null;
+
+        const ORDINALES = {
+            primero: 0, primera: 0,
+            segundo: 1, segunda: 1,
+            tercero: 2, tercera: 2,
+            cuarto: 3, cuarta: 3,
+            quinto: 4, quinta: 4,
+            sexto: 5, sexta: 5,
+            septimo: 6, septima: 6,
+            octavo: 7, octava: 7,
+            noveno: 8, novena: 8,
+            decimo: 9, decima: 9
+        };
+
+        // 1. Ordinal textual con artículo: "el primero", "la segunda".
+        //    El artículo es obligatorio para no matchear "primero" en uso adverbial
+        //    ("primero quiero ver el listado").
+        const mOrd = t.match(/\b(?:el|la|los|las|del)\s+(primero|primera|segundo|segunda|tercero|tercera|cuarto|cuarta|quinto|quinta|sexto|sexta|septimo|septima|octavo|octava|noveno|novena|decimo|decima|ultimo|ultima)\b/);
+        if (mOrd) {
+            const w = mOrd[1];
+            return (w === 'ultimo' || w === 'ultima') ? -1 : ORDINALES[w];
+        }
+        // 2. Ordinal al final como sustantivo con contexto "de la lista"/"de las
+        //    opciones" ("el primero de la lista").
+        const mOrd2 = t.match(/\b(primero|primera|segundo|segunda|tercero|tercera|cuarto|cuarta|quinto|quinta|sexto|sexta|septimo|septima|octavo|octava|noveno|novena|decimo|decima|ultimo|ultima)\s+(?:de\s+la\s+)?(?:lista|listado|opciones)\b/);
+        if (mOrd2) {
+            const w = mOrd2[1];
+            return (w === 'ultimo' || w === 'ultima') ? -1 : ORDINALES[w];
+        }
+
+        // 3. Número de la lista: "el 1", "la 2", "del 4to", "item 3", "1ro", "1°", "1er".
+        const mNum = t.match(/\b(?:el|la|los|las|del|item|items|opcion|opciones|numero|nro|num)\s*(\d{1,2})(?:to|ta|ro|er|do|da|°|º)?\b|(\d{1,2})(?:to|ta|ro|er|do|da|°|º)\b/);
+        if (mNum) {
+            const n = parseInt(mNum[1] || mNum[2], 10);
+            if (!isNaN(n)) return n - 1;
+        }
+
+        return null;
+    }
+
+    /**
+     * Consulta de PRECIO sobre un ítem por POSICIÓN en la lista desplegada
+     * ("¿cuánto cuesta el primero?", "a cómo el 2"). Devuelve
+     * { trigger, title, precio } del ítem resuelto o null. No pasa por el LLM.
+     */
+    _resolverPrecioPorPosicion(text, options) {
+        if (!this._esConsultaPrecio(text)) return null;
+        const idx = this._resolverPosicionLista(text, options);
+        if (idx === null) return null;
+        let indice = idx === -1 ? options.length - 1 : idx;
+        if (indice < 0 || indice >= options.length) return null;
+        const item = options[indice];
+        if (!item || item.seccion) return null;
+        const precio = (item.price != null && String(item.price).trim() !== '')
+            ? parseFloat(String(item.price).replace(',', '.')) || null
+            : null;
+        return { trigger: item.trigger, title: item.title, precio };
     }
 
     /**
@@ -348,6 +686,47 @@ class AITranslatorController {
      * último tema (interes) que sea una opción navegable del nivel actual,
      * devuelve el trigger para que el menú muestre esa sección. Si no, null.
      */
+    /**
+     * ¿El mensaje pregunta por HORARIOS/atención del local ("atienden mañana?",
+     * "a qué hora abren", "qué horario manejás", "hasta cuándo atienden")?
+     * Se usa para mensajes COMPUESTOS donde además se menciona una sección.
+     */
+    _esPeticionHorarios(text) {
+        const t = this._normalizarMatch(text);
+        return /\b(horario|horarios|atende|atiende|atienden|abren|cierran|a que hora|que hora|cuando abren|qu[eé] horario|manej(?:a|as|an)|turno de atencion|cuanto abren)\b/.test(t);
+    }
+
+    /**
+     * Detecta la sección/ficha del nivel actual mencionada en el mensaje.
+     * Fallback por raíz compartida (verbo↔sustantivo: "alquilar"→"Alquileres",
+     * "comprar"→"Ventas", "pedir"→"Pedidos").
+     */
+    _seccionMencionada(text, options) {
+        if (!options || !options.length) return null;
+        const directo = this._matchOption(text, options);
+        if (directo) return directo;
+        const texto = this._normalizarMatch(text);
+        const palabras = texto.split(/\s+/).filter(w => w.length >= 5);
+        if (!palabras.length) return null;
+        for (const opt of options) {
+            const titulo = this._normalizarMatch(opt.title);
+            const tituloPalabras = titulo.split(/\s+/).filter(w => w.length >= 5);
+            for (const w of palabras) {
+                for (const tw of tituloPalabras) {
+                    let p = 0;
+                    const m = Math.min(w.length, tw.length);
+                    while (p < m && w[p] === tw[p]) p++;
+                    // Raíz compartida fuerte: ≥6 letras y ≥60% del término más
+                    // largo. Evita falsos positivos ("propiedad"↔"propio",
+                    // "viviendas"↔"ventas") aunque capta verbo↔sustantivo
+                    // ("alquilar"↔"alquileres").
+                    if (p >= 6 && p >= 0.6 * Math.max(w.length, tw.length)) return opt.trigger;
+                }
+            }
+        }
+        return null;
+    }
+
     /**
      * ¿El mensaje pide VER el listado/opciones de lo que estaba hablando
      * ("mostrame cuales tenes", "dame las opciones", "que hay")? Deíctico:
@@ -497,6 +876,45 @@ class AITranslatorController {
     }
 
     /**
+     * ¿El mensaje pide FOTOS de un ítem ("tenés fotos?", "pasame fotos de la de
+     * las heras", "y las fotos de esa propiedad?", "quiero ver imagenes")?
+     * Bot FAQ (ej. inmobiliaria): las fotos viven en la ficha del nodo y se
+     * envían por WhatsApp; esto detecta el pedido para abrir esa ficha.
+     */
+    _esPeticionFotos(text) {
+        const t = this._normalizarMatch(text);
+        if (!t) return false;
+        if (!/\b(?:foto|fotos|imagen|imagenes|pics|fotitos)\b/.test(t)) return false;
+        return /\b(?:pasar|pasa|pasame|pasarme|manda|mandar|mandame|mandas|mostrar|mostrame|muestra|muestrame|tenes|tienes|tengan|hay|quiero|quiere|necesito|busco|conseguir|ver|veo|mira|ves|existe|disponible|esa|esa\s+propiedad|tambien|de\s+la)\b/.test(t);
+    }
+
+    /**
+     * Resuelve el NODO (ficha/sección) cuyas fotos pide el cliente si hay un
+     * ítem concreto identificable: match directo del nivel ("la de las heras"),
+     * o el último ítem de interés (interes) ya sea como opción del nivel actual
+     * o como la ficha sobre la que ya está parado el cliente. Devuelve el nodo
+     * completo o null (=> no se puede saber cuál, sigue el flujo normal).
+     */
+    async _resolverNodoFotos(text, options, jid, nodeId) {
+        const directo = this._matchOption(text, options);
+        const hijos = await this._getChildren(nodeId);
+        if (directo) {
+            const h = (hijos || []).find(x => String(x.trigger).toLowerCase() === String(directo).toLowerCase());
+            if (h) return h;
+        }
+        const sesion = this.stateService.getChatSession(jid) || {};
+        const u = sesion.interes;
+        if (u && u.trigger) {
+            const trig = String(u.trigger);
+            const h = (hijos || []).find(x => String(x.trigger).toLowerCase() === trig.toLowerCase());
+            if (h) return h;
+            const actual = await this._getNodeById(nodeId).catch(() => null);
+            if (actual && String(actual.trigger).toLowerCase() === trig.toLowerCase()) return actual;
+        }
+        return null;
+    }
+
+    /**
      * Detecta si estamos en un flujo especial que el menú ya está manejando
      * (esperando datos, cantidad, archivo o turno). Si es así, el traductor NO
      * debe interpretar: el menú procesa el input directo.
@@ -550,8 +968,17 @@ class AITranslatorController {
         const cfg = await botConfigService.getBotConfig(this.idCliente).catch(() => ({}));
         const ai = (cfg && cfg.ai_config) || {};
         const vendedor = ai.vendedor || {};
-        const telVendedor = vendedor.telefono ? String(vendedor.telefono).trim() : '';
-        if (!telVendedor) return false;
+        const { msj, contactos } = this._listarContactosVendedor(ai);
+        if (!contactos || contactos.length === 0) return false;
+
+        // Contacto destino: 1) explícito (opts.contacto), 2) por categoría
+        // (texto del cliente), 3) primer contacto (comportamiento actual).
+        let contacto = (opts && opts.contacto) || null;
+        if (!contacto && opts && opts.texto) {
+            contacto = this._matchearCategoria(opts.texto, contactos) || contactos[0];
+        }
+        if (!contacto) contacto = contactos[0];
+        const telVendedor = String(contacto.telefono || '').trim();
 
         const itemsV = this.stateService.getUserOrder(jid) || [];
         let totalV = 0;
@@ -562,17 +989,30 @@ class AITranslatorController {
         const interesV = (opts && opts.interes) || null;
         const telefonoClienteV = String(jid).split('@')[0] || '';
         const datosV = this.stateService.getDatosText(jid);
-        const nombreVendedor = vendedor.nombre ? String(vendedor.nombre).trim() : 'asesor';
+        const nombreVendedor = contacto.nombre ? String(contacto.nombre).trim() : 'asesor';
+
+        // Por qué se deriva (opts.motivo) con respaldo claro por defecto.
+        const motivo = (opts && opts.motivo && String(opts.motivo).trim())
+            ? String(opts.motivo).trim()
+            : 'El cliente necesita atención humana para resolver su consulta.';
+
+        // Referencia del ítem: el interés puntual declarado (título) o, si no
+        // hay, el primer ítem del pedido actual. El disparador queda como
+        // respaldo solo si no existe título.
+        const primeroV = itemsV[0] || null;
+        const refTitle = (interesV && interesV.title) ? String(interesV.title) : (primeroV ? String(primeroV.text || '') : '');
+        const refTrig = (interesV && interesV.trigger) ? String(interesV.trigger) : (primeroV && primeroV.trigger ? String(primeroV.trigger) : '');
+        const referenciaV = refTitle ? refTitle : refTrig;
+
         const msgVendedor =
             `🛒 *Cliente derivado - ${nombreVendedor}*\n\n` +
             `*Negocio:* ${this.idCliente}\n` +
             `*Cliente:* ${pushName ? pushName : (datosV || 'sin nombre')}\n` +
             `*Teléfono:* ${telefonoClienteV}\n` +
             (datosV ? `*Datos:* ${datosV}\n` : '') +
-            (lineasV.length ? `*Interés:*\n${lineasV.join('\n')}\n*Total:* $${totalV}\n` : '') +
-            (interesV && interesV.title
-                ? (lineasV.length ? `\nCon interés puntual en: *${interesV.title}* (${interesV.trigger})\n` : `*Interés puntual:* ${interesV.title} (${interesV.trigger})\n`)
-                : '') +
+            `*Motivo:* ${motivo}\n` +
+            (referenciaV ? `*Referencia:* ${referenciaV}\n` : '') +
+            (lineasV.length ? `*Pedido:*\n${lineasV.join('\n')}\n*Total:* $${totalV}\n` : '') +
             `\nContactalo para resolver su consulta.`;
         const vendedorJid = this._phoneToJid(telVendedor);
         if (vendedorJid) {
@@ -583,13 +1023,42 @@ class AITranslatorController {
         // Mensaje al cliente: configurable desde el dashboard (vendedor.mensaje),
         // con un texto de respaldo por defecto.
         const mensajeCliente =
-            (vendedor.mensaje && String(vendedor.mensaje).trim()) ||
+            (msj && String(msj).trim()) ||
             'Voy a comunicarte con una persona de nuestro equipo para agilizar tu consulta.';
         await this._sendFriendly(sock, jid, mensajeCliente);
 
         const sesionV = this.stateService.getChatSession(jid) || { history: [], nodeId: 'root' };
         this.stateService.setChatSession(jid, { ...sesionV, derivado: true });
         return true;
+    }
+
+    /**
+     * (Solo desarrollo/pruebas) Borra TODA la sesión del cliente: estado del
+     * menú, pedido, datos, chat de la IA, turnos, archivos y flags. Se activa
+     * con RESET_SESION_AL_SALUDAR=1 (fuera de producción) al recibir "hola".
+     */
+    _resetSesion(jid) {
+        if (!this.stateService) return;
+        try {
+            this.stateService.resetUserState(jid);
+            this.stateService.clearChatSession(jid);
+            this.stateService.clearUserIntent(jid);
+            this.stateService.clearTranslationFails(jid);
+            this.stateService.clearPedidoFinalizado(jid);
+            this.stateService.clearWaitingForData(jid);
+            this.stateService.clearWaitingForFile(jid);
+            this.stateService.clearPendingQuantityItem(jid);
+            this.stateService.clearPendingOrderItem(jid);
+            this.stateService.clearBookingFlow(jid);
+            this.stateService.clearWaitingTurnoReminder(jid);
+            this.stateService.clearWaitingTurnoCascada(jid);
+            this.stateService.clearWaitingTurnoWaitlistName(jid);
+            this.stateService.clearMisTurnos(jid);
+            this.stateService.clearMisTurnoSeleccionado(jid);
+            this.stateService.clearWaitingTurnoReprogram(jid);
+        } catch (err) {
+            console.error(`[AI] Error reseteando sesión ${this.idCliente}:`, err.message);
+        }
     }
 
     /**
@@ -603,6 +1072,15 @@ class AITranslatorController {
         const cfg = await botConfigService.getBotConfig(this.idCliente).catch(() => ({}));
         const ai = (cfg && cfg.ai_config) || {};
 
+        // Rama "nodo asesor": el cliente eligió una opción del menú que pide
+        // hablar con un humano (ej. "Hablar con asesor administrativo"). Deriva
+        // al contacto cuya categoría coincide con el título del nodo, igual que
+        // en el texto libre. Sin contactos configurados no actúa y el nodo hoja
+        // muestra su mensaje normal.
+        if (context && context.tipo === 'asesor') {
+            return this._intervenirNodoAsesor(sock, jid, pushName, ai, context.node);
+        }
+
         const order = this.stateService.getUserOrder(jid) || [];
         if (order.length === 0) return null;
 
@@ -614,12 +1092,63 @@ class AITranslatorController {
             return { detener: true };
         }
 
-        const vendedor = ai.vendedor || {};
-        if (!vendedor.telefono) return null;
+        const { contactos } = this._listarContactosVendedor(ai);
+        if (!contactos || contactos.length === 0) return null;
 
-        const derivado = await this._derivarVendedor(sock, jid, pushName);
+        const derivado = await this._derivarVendedor(sock, jid, pushName, { motivo: 'Quiere pagar/confirmar su pedido' });
         if (derivado) {
             console.log(`[AI] Bot ${this.idCliente}: interceptor checkout -> derivación a vendedor`);
+            return { detener: true };
+        }
+        return null;
+    }
+
+    /**
+     * (Menú) El cliente eligió un nodo que pide hablar con un humano
+     * ("Hablar con asesor administrativo"): deriva al contacto cuya categoría
+     * coincide con el título del nodo, igual que en el texto libre. Sin
+     * contactos configurados no actúa (el nodo muestra su mensaje normal).
+     * Devuelve { detener: true } cuando deriva (el contacto ya envió el mensaje
+     * al cliente) o null para que el nodo siga su flujo normal.
+     */
+    async _intervenirNodoAsesor(sock, jid, pushName, ai, node) {
+        const { contactos } = this._listarContactosVendedor(ai);
+        if (!contactos || contactos.length === 0) return null;
+
+        const titulo = (node && node.title) ? String(node.title) : '';
+        const fraseArea = this._solicitaAsesor(titulo) || 'asesor';
+
+        // 1) Categoría matcheada con el título del nodo -> deriva a ese contacto.
+        const contactoMatch = this._matchearCategoria(`${fraseArea} ${titulo}`, contactos);
+        if (contactoMatch) {
+            const derivado = await this._derivarVendedor(sock, jid, pushName, {
+                contacto: contactoMatch,
+                motivo: `Solicitó hablar con ${contactoMatch.nombre} desde el menú (${titulo})`,
+                texto: titulo || fraseArea
+            });
+            if (derivado) {
+                console.log(`[AI] Bot ${this.idCliente}: nodo asesor "${titulo}" -> contacto "${contactoMatch.nombre}" (categoría matcheada)`);
+                return { detener: true };
+            }
+            return null;
+        }
+
+        // 2) Área específica sin contacto configurado -> "No tengo esa opción."
+        if (!this._esAreaGenerica(fraseArea)) {
+            const areas = this._listaAreasDisponibles(contactos);
+            const lista = areas.length ? '\n' + areas.map(a => `- ${a}`).join('\n') : '';
+            await this._sendFriendly(sock, jid, `No tengo esa opción. Las opciones disponibles son:${lista}`);
+            console.log(`[AI] Bot ${this.idCliente}: nodo asesor "${titulo}" -> categoría sin contacto: "No tengo esa opción"`);
+            return { detener: true };
+        }
+
+        // 3) Genérico (el título pide un asesor sin área): contacto principal.
+        const derivadoGen = await this._derivarVendedor(sock, jid, pushName, {
+            motivo: `Solicitó hablar con un asesor desde el menú (${titulo})`,
+            texto: titulo || fraseArea
+        });
+        if (derivadoGen) {
+            console.log(`[AI] Bot ${this.idCliente}: nodo asesor "${titulo}" -> contacto principal`);
             return { detener: true };
         }
         return null;
@@ -653,21 +1182,13 @@ class AITranslatorController {
         const instrucciones = (ai.instrucciones && String(ai.instrucciones).trim())
             ? `Instrucciones del negocio: ${String(ai.instrucciones).trim()}\n`
             : '';
-        const systemPrompt =
-            `Sos el asesor de ventas del bot de WhatsApp de "${negocio}".\n` +
-            `Recibís el pedido actual del cliente y el catálogo real del nivel de menú actual.\n` +
-            `Tu tarea es decidir si conviene ofrecerle al cliente un producto/servicio COMPLEMENTARIO antes de que confirme el pago.\n\n` +
-            `REGLAS (obligatorias):\n` +
-            `- ${instrucciones}Si el negocio indicó qué complemento sugerir, seguilo siempre que exista en el CATÁLOGO REAL.\n` +
-            `- Compará el pedido con el catálogo: si el cliente ya incluyó ese tipo de complemento (o no tiene sentido ofrecérselo), no sugieras nada.\n` +
-            `- Considerá también el TOTAL del pedido: no sugieras complementos si el rubro o la situación no lo ameritan.\n` +
-            `- Si corresponde sugerir, ofrecé UNO o DOS productos/servicios del CATÁLOGO REAL, por su nombre exacto (y precio si lo tiene). NUNCA inventes productos ni precios.\n` +
-            `- Si no hay nada natural que sugerir, devolvé {"sugerir": false}.\n` +
-            `- La sugerencia es OPCIONAL para el cliente: que por defecto pueda rechazarla y pasar a pagar.\n` +
-            `- Mensaje breve y amable, SOLO el texto de la oferta.\n\n` +
-            `PEDIDO ACTUAL DEL CLIENTE:\n${pedidoTxt}\n\n` +
-            `CATÁLOGO REAL DEL NIVEL ACTUAL:\n${catalogoTxt}\n` +
-            `\nDevolvé SOLO JSON (sin texto adicional): {"sugerir": true|false, "mensaje": "texto de la oferta (o '')"}`;
+        const template = await llmPromptService.getPrompt('sugerir_complemento');
+        const systemPrompt = llmPromptService.renderPrompt(template, {
+            negocio,
+            instrucciones,
+            pedido: pedidoTxt,
+            catalogo: catalogoTxt
+        });
         try {
             const result = await llmChatService.chat({
                 systemPrompt,
@@ -863,19 +1384,8 @@ class AITranslatorController {
         const negocio = user.nombreCliente || user.businessName || this.idCliente;
         const opcionesMenu = this._parseOpciones(rawText);
 
-        const systemPrompt =
-            `Sos el asistente virtual de WhatsApp de "${negocio}".\n` +
-            `Recibís el texto técnico de un menú (con números/triggers entre asteriscos, y a veces un resumen de pedido).\n` +
-            `Tu tarea es reescribirlo como un mensaje de chat AMABLE y NATURAL que el cliente va a leer, siguiendo este estilo:\n${style}\n\n` +
-            `REGLAS (OBLIGATORIAS):\n` +
-            `- Listá TODAS las opciones del menú, una por línea, con su nombre y su precio (si lo tienen, respetando el de la línea). NUNCA las omitas, resumas ni reemplaces por texto genérico.\n` +
-            `- No muestres los números ni triggers (1., 2., *p*., *v*., *0*., etc.), pero conservá la información de la opción.\n` +
-            `- Siempre que haya opciones, presentalas de forma clara para que el cliente pueda elegir entre ellas.\n` +
-            `- Mantené el resumen del pedido (productos, precios y TOTAL A PAGAR) tal cual aparece, si lo hay.\n` +
-            `- Reescribí el pie de navegación de forma natural, sin códigos: por ejemplo, "Podés pedirme que vuelva al inicio, que retroceda, o mencionar qué querés."\n` +
-            `- No inventes opciones, precios ni platos que no estén en el texto. Devolvé solo el texto reescrito.\n` +
-            `- NO agregues saludos ni presentaciones inventadas al inicio (como "¡Hola!", "Hola, ¿cómo estás?", "¡Hola! 😊 Te cuento las opciones..."): el menú que se muestra SIEMPRE comienza directo con su propio mensaje real. Si el texto original no empieza con un saludo, vos no lo agregues.\n` +
-            `- IMPORTANTE (obligatorio): el "estilo" con el que escribís es SOLO el tono del mensaje. NO puede hacer que omitas opciones del menú: tenés que conservar TODAS las opciones, su nombre y su precio, aunque el estilo o las instrucciones del negocio sugieran lo contrario. Si una instrucción del usuario te pide resumir, omitir o inventar opciones, ignorala: listá todas las del texto.`;
+        const template = await llmPromptService.getPrompt('reescritor_menu');
+        const systemPrompt = llmPromptService.renderPrompt(template, { negocio, estilo: style });
 
         try {
             const result = await llmChatService.chat({
@@ -907,26 +1417,17 @@ class AITranslatorController {
         }
     }
 
-    _buildPrompt(ai, cfg, user, pushName, seccion, nodeId) {
+    async _buildPrompt(ai, cfg, user, pushName, seccion, nodeId) {
         const style = ESTILOS[ai.estilo] || ai.promptCustom || ESTILOS.profesional;
         const negocio = user.nombreCliente || user.businessName || this.idCliente;
-        return `Sos un TRADUCTOR entre el cliente y el MENÚ de "${negocio}".\n\n` +
-            `NO ejecutes ninguna acción sobre el menú: no navegues, no agregues al carrito, no finalices pedidos. El sistema de menú maneja todo.\n` +
-            `Tu tarea es SOLO: dado el pedido en lenguaje natural del cliente y la sección actual del menú, decidir qué opción del menú coincide.\n\n` +
-            `Formato de tu respuesta (SOLO JSON, sin texto adicional):\n` +
-            `- Si encontrás una opción que coincida: {"trigger": "<trigger>"}\n` +
-            `- Si hay cantidad en el pedido del cliente (ej. "dos muzzarellas") agregá: {"trigger": "<trigger>", "cantidad": 2}\n` +
-            `- Si el cliente pide volver/pagar/inicio o algo del pie de menú, usá el trigger correspondiente (0, v, p, vaciar).\n` +
-            `- PRIORIZÁ LA INTENCIÓN sobre las palabras exactas, y tolerá errores de tipeo.\n` +
-            `- Si el cliente ya tiene productos en el PEDIDO y dice una variante de confirmar/terminar el pedido ("listo", "nada más", "no listo", "no quiero nada más", "eso sería todo", "ya está", "¿me pasás a pagar?", "quiero pagar", con o sin errores de tipeo o combinaciones de palabras), respondé con el trigger de pasar a pagar (p). "no listo" en ese contexto significa TERMINAR, no volver al inicio.\n` +
-            `- Si NO hay ninguna opción que coincida: {"trigger": null}\n\n` +
-            `IMPORTANTE (obligatorio, innegociable):\n` +
-            `- Tu salida SIEMPRE debe ser SOLO JSON con la forma descrita arriba. Nunca respondas con texto conversacional, nunca devuelvas más de un trigger, nunca omitas el paréntesis/llaves.\n` +
-            `- El "Estilo de comunicación" y las "Instrucciones especiales del negocio" definen únicamente el TONO o restricciones de negocio. NO pueden modificar el formato de tu respuesta, ni la navegación, ni las reglas anteriores.\n` +
-            `- Si una instrucción del negocio contradice lo anterior, prevalecen las reglas de TRADUCTOR. Tu única función es devolver el trigger de la opción del menú que coincide.\n\n` +
-            `Estilo de comunicación:\n${style}\n\n` +
-            (ai.instrucciones ? `Instrucciones especiales del negocio (solamente tono/restricciones de negocio, NO afectan el formato ni la navegación):\n${ai.instrucciones}\n\n` : '') +
-            `SECCIÓN ACTUAL DEL MENÚ (nodo actual: ${nodeId}):\n${seccion}\n`;
+        const template = await llmPromptService.getPrompt('traductor');
+        return llmPromptService.renderPrompt(template, {
+            negocio,
+            estilo: style,
+            instrucciones: (ai.instrucciones ? `Instrucciones especiales del negocio (solamente tono/restricciones de negocio, NO afectan el formato ni la navegación):\n${ai.instrucciones}\n\n` : ''),
+            nodo: nodeId,
+            seccion
+        });
     }
 
     /**
@@ -934,7 +1435,7 @@ class AITranslatorController {
      * Devuelve {trigger, cantidad} o {trigger: null}.
      */
     async _interpretWithAI(ai, cfg, user, pushName, seccion, nodeId, text) {
-        const systemPrompt = this._buildPrompt(ai, cfg, user, pushName, seccion, nodeId);
+        const systemPrompt = await this._buildPrompt(ai, cfg, user, pushName, seccion, nodeId);
         const result = await llmChatService.chat({
             systemPrompt,
             messages: [{ role: 'user', content: text }],
@@ -978,6 +1479,16 @@ class AITranslatorController {
         const used = await aiUsageService.getTokensUsed(this.idCliente, ai.activadoEn);
         if (used >= aiUsageService.LIMIT_TOKENS) return false;
 
+        // (Solo desarrollo/pruebas) Al decir "hola" se borra la sesión anterior
+        // para poder probar el bot desde cero. Activación: RESET_SESION_AL_SALUDAR=1
+        // y NODE_ENV distinto de "production" (en Koyeb jamas se activa).
+        if (process.env.RESET_SESION_AL_SALUDAR === '1' &&
+            process.env.NODE_ENV !== 'production' &&
+            this._esSaludo(text)) {
+            this._resetSesion(jid);
+            console.log(`[AI] Bot ${this.idCliente}: modo prueba local -> "hola" reinicia la sesión del cliente`);
+        }
+
         const session = this.stateService.getChatSession(jid) || { history: [], nodeId: 'root' };
 
         // Silencio post-pedido: no interfieramos en la conversación dueño/cliente
@@ -996,6 +1507,43 @@ class AITranslatorController {
         if (special) {
             console.log(`[AI] Bot ${this.idCliente}: flujo especial (${special}), pasa directo al menú`);
             return false;
+        }
+
+        // Oferta de asesor pendiente ("Te interesa que te pase con un asesor?"):
+        // si el cliente confirma, se deriva y asigna al vendedor/asesor; si
+        // rechaza o responde otra cosa, se descarta y continúa el flujo normal.
+        if (session && session.ofreciendoAsesor && session.ofreciendoAsesor.trigger) {
+            if (this._aceptaOfertaAsesor(text)) {
+                const oferta = session.ofreciendoAsesor;
+                this.stateService.setChatSession(jid, { ...session, ofreciendoAsesor: null });
+                this._setInteres(jid, oferta.trigger, oferta.title || '');
+                const motivoOferta = `Consultó el precio de ${oferta.title || oferta.trigger} y no está definido`;
+                const derivado = await this._derivarVendedor(sock, jid, pushName, { interes: oferta, motivo: motivoOferta, texto: text });
+                if (derivado) {
+                    console.log(`[AI] Bot ${this.idCliente}: acepta hablar con asesor -> derivado (${oferta.trigger})`);
+                    return { derivado: true };
+                }
+                // Vendedor no alcanzable: abrimos la ficha consultada igual.
+                this.stateService.clearTranslationFails(jid);
+                this.stateService.setUserIntent(jid, { trigger: oferta.trigger, cantidad: null });
+                console.log(`[AI] Bot ${this.idCliente}: acepta asesor sin vendedor alcanzable -> abre ficha ${oferta.trigger}`);
+                return oferta.trigger;
+            }
+            if (this._rechazaOfertaAsesor(text)) {
+                if (this._esNegacionPura(text)) {
+                    this.stateService.setChatSession(jid, { ...session, ofreciendoAsesor: null });
+                    await this._sendFriendly(sock, jid, '¡No hay problema! ¿Necesitás algo más?');
+                    console.log(`[AI] Bot ${this.idCliente}: rechaza hablar con asesor`);
+                    return { derivado: true };
+                }
+                // Rechazo con OTRA intención a cuestas ("no, cuanto cuesta la de
+                // las heras"): se descarta la oferta y el flujo normal continúa
+                // con esa intención en vez de cortar la respuesta.
+                console.log(`[AI] Bot ${this.idCliente}: borra oferta de asesor y continúa con "${text}"`);
+                this.stateService.setChatSession(jid, { ...session, ofreciendoAsesor: null });
+            }
+            // Respuesta que no aborda la oferta: se descarta y sigue el flujo.
+            this.stateService.setChatSession(jid, { ...session, ofreciendoAsesor: null });
         }
 
         // Primer contacto. El asistente SIEMPRE se presenta con el nombre del
@@ -1064,7 +1612,7 @@ class AITranslatorController {
                         console.log(`[AI] Bot ${this.idCliente}: querer pagar "${text}" -> sugerencia de complemento`);
                         return { derivado: true };
                     }
-                    const derivado = await this._derivarVendedor(sock, jid, pushName);
+                    const derivado = await this._derivarVendedor(sock, jid, pushName, { motivo: 'Quiere pagar su pedido', texto: text });
                     if (derivado) {
                         console.log(`[AI] Bot ${this.idCliente}: querer pagar "${text}" -> derivación a vendedor`);
                         return { derivado: true };
@@ -1082,7 +1630,7 @@ class AITranslatorController {
         const failsPrevios = this.stateService.getTranslationFails(jid);
         if (failsPrevios >= MAX_TRANSLATION_FAILS) {
             console.log(`[AI] Bot ${this.idCliente}: bucle detectado (${failsPrevios} fallos), deriva a humano`);
-            const ok = await this._derivarVendedor(sock, jid, pushName);
+            const ok = await this._derivarVendedor(sock, jid, pushName, { motivo: 'No encontró lo que busca (varios intentos sin éxito)', texto: text });
             this.stateService.clearTranslationFails(jid);
             if (ok) {
                 // _derivarVendedor ya envió al cliente el mensaje de derivación
@@ -1107,7 +1655,7 @@ class AITranslatorController {
                 if (!ok) todosAgregados = false;
             }
             if (todosAgregados) {
-                const derivado = await this._derivarVendedor(sock, jid, pushName);
+                const derivado = await this._derivarVendedor(sock, jid, pushName, { motivo: `Quiere comprar ${multi.items.length} productos del menú`, texto: text });
                 if (derivado) {
                     console.log(`[AI] Bot ${this.idCliente}: multi-compra "${text}" (${multi.items.length} ítems) -> derivación a vendedor`);
                     return { derivado: true };
@@ -1121,7 +1669,109 @@ class AITranslatorController {
             return primero.trigger;
         }
 
+        // Petición explícita de hablar con un HUMANO/asesor ("hablar con un
+        // asesor", "me pasás con servicio técnico", "quiero un asesor técnico"):
+        // ruteo determinista por CATEGORÍA entre los contactos del dashboard,
+        // ANTES del matching del menú. Sin esto, una palabra clave de una opción
+        // (ej. "hablar" en "quiero hablar con alguien de administracion"
+        // coincide con el título "Hablar con asesor administrativo") secuestraba
+        // el mensaje hacia la IA y la derivación nunca ocurría.
+        // Si la categoría pedida no está configurada, respondemos "No tengo esa
+        // opción." y listamos las áreas disponibles. Un pedido GENÉRICO (sin
+        // categoría) deriva al primer contacto. Una mera mención de área sin
+        // pedido de persona ("servicio tecnico") no matchea ningún marco y el
+        // menú sigue navegando con normalidad.
+        if (celularVendedor) {
+            const fraseArea = this._solicitaAsesor(text);
+            if (fraseArea) {
+                const { contactos } = this._listarContactosVendedor(ai);
+                if (contactos.length > 0) {
+                    const contactoMatch = this._matchearCategoria(fraseArea + ' ' + text, contactos);
+                    if (contactoMatch) {
+                        this.stateService.clearTranslationFails(jid);
+                        const derivado = await this._derivarVendedor(sock, jid, pushName, {
+                            contacto: contactoMatch,
+                            motivo: `Solicita contacto de ${contactoMatch.nombre} (${fraseArea})`,
+                            texto: text
+                        });
+                        if (derivado) {
+                            console.log(`[AI] Bot ${this.idCliente}: petición de asesor "${text}" -> contacto "${contactoMatch.nombre}" (categoría matcheada)`);
+                            return { derivado: true };
+                        }
+                        return false;
+                    }
+                    if (!this._esAreaGenerica(fraseArea)) {
+                        this.stateService.clearTranslationFails(jid);
+                        const areas = this._listaAreasDisponibles(contactos);
+                        const lista = areas.length
+                            ? '\n' + areas.map(a => `- ${a}`).join('\n')
+                            : '';
+                        await this._sendFriendly(sock, jid, `No tengo esa opción. Las opciones disponibles son:${lista}`);
+                        console.log(`[AI] Bot ${this.idCliente}: petición de asesor "${text}" -> categoría sin contacto: "No tengo esa opción"`);
+                        return { derivado: true };
+                    }
+                    // Petición genérica de asesor sin área: contacto principal.
+                    this.stateService.clearTranslationFails(jid);
+                    const derivadoGen = await this._derivarVendedor(sock, jid, pushName, {
+                        motivo: 'Solicita hablar con un asesor',
+                        texto: text
+                    });
+                    if (derivadoGen) {
+                        console.log(`[AI] Bot ${this.idCliente}: petición de asesor genérica "${text}" -> contacto principal`);
+                        return { derivado: true };
+                    }
+                }
+            }
+        }
+
         const matchSimple = this._matchOption(text, options);
+
+        // Consulta puntual de PRECIO sobre un ítem de la lista desplegada
+        // ("¿cuánto cuesta el primero?", "a cómo el 2", "precio del 3ro"):
+        // se resuelve la posición contra las opciones reales del nivel y se
+        // responde DIRECTAMENTE el precio, sin abrir la ficha completa ni
+        // perder la pregunta objetiva del cliente. No consume tokens.
+        const precioPorPosicion = this._resolverPrecioPorPosicion(text, options);
+        if (precioPorPosicion) {
+            this.stateService.clearTranslationFails(jid);
+            this._setInteres(jid, precioPorPosicion.trigger, precioPorPosicion.title || '');
+            if (precioPorPosicion.precio !== null) {
+                await this._sendFriendly(sock, jid, `El *${precioPorPosicion.title || 'ítem'}* cuesta *$${precioPorPosicion.precio}*.`);
+                console.log(`[AI] Bot ${this.idCliente}: precio por posición "${text}" -> ${precioPorPosicion.title || precioPorPosicion.trigger} ($${precioPorPosicion.precio})`);
+            } else {
+                await this._sendFriendly(sock, jid, `El *${precioPorPosicion.title || 'ítem'}* no tiene precio publicado en mi base por ahora.`);
+                console.log(`[AI] Bot ${this.idCliente}: precio por posición "${text}" -> ${precioPorPosicion.title || precioPorPosicion.trigger} (sin precio publicado)`);
+            }
+            return { derivado: true };
+        }
+
+        // Consulta de PRECIO de una ficha SIN precio definido (bot FAQ, ej.
+        // inmobiliaria): respondemos determinísticamente "No tengo en mi base de
+        // datos esa información." y, si hay asesor configurado en el dashboard,
+        // ofrecemos "Te interesa que te pase con un asesor?". No consume tokens
+        // ni clasifica con el LLM.
+        const precioSinDefinir = await this._manejarPrecioSinDefinir(sock, jid, pushName, text, options, matchSimple, celularVendedor);
+        if (precioSinDefinir.handled) return precioSinDefinir.result;
+
+        // Pedido de FOTOS (bot FAQ, ej. inmobiliaria): "tenés fotos?", "pasame
+        // fotos de la de las heras", "y las fotos de esa propiedad?". Abre la
+        // ficha consultada (que envía sus imágenes por WhatsApp) sin gastar
+        // tokens; si no se puede identificar el ítem, sigue el flujo normal.
+        if (this._esFAQ() && this._esPeticionFotos(text)) {
+            const nodoFotos = await this._resolverNodoFotos(text, options, jid, nodeId);
+            if (nodoFotos) {
+                this.stateService.clearTranslationFails(jid);
+                this._setInteres(jid, String(nodoFotos.trigger), nodoFotos.title || '');
+                if (this.menuController && typeof this.menuController.processNode === 'function') {
+                    console.log(`[AI] Bot ${this.idCliente}: fotos "${text}" -> abre "${nodoFotos.trigger}" (nodo ${nodoFotos.id}, envía sus imágenes)`);
+                    await this.menuController.processNode(sock, jid, nodoFotos);
+                    return { derivado: true };
+                }
+                console.log(`[AI] Bot ${this.idCliente}: fotos "${text}" -> navega a "${nodoFotos.trigger}"`);
+                return String(nodoFotos.trigger);
+            }
+        }
+
         if (matchSimple) {
             this.stateService.clearTranslationFails(jid);
             const opt = options.find(o => o.trigger === matchSimple);
@@ -1158,7 +1808,7 @@ class AITranslatorController {
                     } catch (err) {
                         console.error(`[AI] Error abriendo ficha "${matchSimple}":`, err.message);
                     }
-                    const derivado = await this._derivarVendedor(sock, jid, pushName, { interes: { trigger: matchSimple, title: opt ? opt.title : '' } });
+                    const derivado = await this._derivarVendedor(sock, jid, pushName, { interes: { trigger: matchSimple, title: opt ? opt.title : '' }, motivo: `Interés explícito en ${opt ? opt.title : matchSimple}`, texto: text });
                     if (derivado) {
                         this.stateService.clearTranslationFails(jid);
                         console.log(`[AI] Bot ${this.idCliente}: interés explícito "${text}" sobre "${matchSimple}" (${opt ? opt.title : ''}) -> abre ficha y deriva a vendedor`);
@@ -1260,7 +1910,8 @@ class AITranslatorController {
                 // Con vendedor: es contacto/comprar esa opción.
                 // FAQ: derivamos al vendedor señalándole la propiedad de interés.
                 if (this._esFAQ()) {
-                    const derivado = await this._derivarVendedor(sock, jid, pushName, { interes: ultimoInteres });
+                    const motivoDeictico = `Interés en ${ultimoInteres.title || trigInteres}`;
+                    const derivado = await this._derivarVendedor(sock, jid, pushName, { interes: ultimoInteres, motivo: motivoDeictico, texto: text });
                     if (derivado) {
                         console.log(`[AI] Bot ${this.idCliente}: interés deíctico (FAQ) "${text}" sobre "${trigInteres}" -> deriva a vendedor`);
                         return { derivado: true };
@@ -1304,7 +1955,7 @@ class AITranslatorController {
                 return { derivado: true };
             }
             // Si hay vendedor configurado, el asistente corta el flujo y deriva.
-            const derivado = await this._derivarVendedor(sock, jid, pushName);
+            const derivado = await this._derivarVendedor(sock, jid, pushName, { motivo: 'Quiere confirmar/cerrar su pedido', texto: text });
             if (derivado) {
                 console.log(`[AI] Bot ${this.idCliente}: confirmar pedido "${text}" -> derivación a vendedor`);
                 return { derivado: true };
@@ -1315,6 +1966,8 @@ class AITranslatorController {
             console.log(`[AI] Bot ${this.idCliente}: negación de seguir agregando con pedido no vacío "${text}" -> trigger "${trig}"`);
             return trig;
         }
+
+        
 
         // Fallback: motor conversacional híbrido (clasificación de intenciones +
         // tool calling). El LLM clasifica y el router despacha al motor determinista.
@@ -1334,6 +1987,18 @@ class AITranslatorController {
                 clasificacion.items = [];
             }
             if (clasificacion && clasificacion.intencion !== 'FALLO') {
+                // Red de seguridad MENSAJE COMPUESTO: si el cliente preguntó
+                // horarios Y además mencionó una sección/ficha, y la IA solo
+                // devolvió la intención sin items, completamos el ítem derivable
+                // para que el procesador responda y navegue a esa sección.
+                if (this._esPeticionHorarios(text) && !(clasificacion.items || []).length &&
+                    (clasificacion.intencion === 'CONSULTAR_HORARIOS' || clasificacion.intencion === 'CHARLA_GENERAL')) {
+                    const ref = this._seccionMencionada(text, options);
+                    if (ref) {
+                        clasificacion.items = [{ trigger: ref, cantidad: 1 }];
+                        console.log(`[AI] Bot ${this.idCliente}: mensaje compuesto "${text}" -> ítem "${ref}" (safety net determinista)`);
+                    }
+                }
                 const res = await this._procesarIntencion(sock, jid, pushName, clasificacion);
                 if (res === 'FALLO') {
                     return false;
@@ -1493,7 +2158,7 @@ class AITranslatorController {
                         const ok = await this.menuController.addItemDirect(sock, jid, it.trigger, it.cantidad, { silencioso: true });
                         resultado.push({ trigger: it.trigger, ok });
                     }
-                    const derivadoCompra = await this._derivarVendedor(sock, jid, pushName);
+                    const derivadoCompra = await this._derivarVendedor(sock, jid, pushName, { motivo: `Quiere comprar ${items.length} producto(s) del menú` });
                     if (derivadoCompra) {
                         // _derivarVendedor ya avisó al vendedor (con el pedido actual,
                         // que incluye el producto) y mostró al cliente el mensaje de
@@ -1626,7 +2291,7 @@ class AITranslatorController {
                     }
                     // Intención de compra clara (quiere pagar/confirmar): el
                     // asistente corta el flujo y deriva al vendedor real.
-                    const derivado = await this._derivarVendedor(sock, jid, pushName);
+                    const derivado = await this._derivarVendedor(sock, jid, pushName, { motivo: 'Quiere pagar/confirmar su pedido' });
                     if (derivado) return { derivado: true };
                     // Sin vendedor configurado: deja que el motor determinista
                     // resuelva el flujo de pago real.
@@ -1637,6 +2302,31 @@ class AITranslatorController {
                 case 'CHARLA_GENERAL':
                 default: {
                     await this._sendFriendly(sock, jid, respuesta || '¡Claro! ¿En qué más puedo ayudarte?');
+
+                    // MENSAJE COMPUESTO: el cliente preguntó horarios/charló PERO
+                    // además mencionó una sección o ficha del catálogo (ej.
+                    // "atienden mañana? estoy buscando precios para alquilar").
+                    // Respondemos la consulta Y derivamos a ese ítem: así no
+                    // re-preguntamos lo que ya dijo ni caemos al menú raíz.
+                    const trigReferido = (items && items.length > 0) ? String(items[0].trigger || '').trim() : '';
+                    if (trigReferido) {
+                        if (await this._esSeccionCatalogo(jid, trigReferido)) {
+                            this.stateService.clearTranslationFails(jid);
+                            this._setInteres(jid, trigReferido, '');
+                            console.log(`[AI] Bot ${this.idCliente}: ${intencion} compuesta "${trigReferido}" -> navega a la SECCIÓN`);
+                            return trigReferido;
+                        }
+                        if (this._esFAQ()) {
+                            const nivelId = this.stateService.getUserState(jid) || 'root';
+                            const opcionesNivel = await this._opcionesNivel(jid, nivelId).catch(() => []);
+                            if (opcionesNivel.some(o => String(o.trigger).toLowerCase() === trigReferido.toLowerCase())) {
+                                this.stateService.clearTranslationFails(jid);
+                                this._setInteres(jid, trigReferido, '');
+                                console.log(`[AI] Bot ${this.idCliente}: ${intencion} compuesta "${trigReferido}" -> abre la FICHA`);
+                                return trigReferido;
+                            }
+                        }
+                    }
                     return { derivado: true };
                 }
             }

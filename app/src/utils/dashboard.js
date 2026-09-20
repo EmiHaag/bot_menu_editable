@@ -12,6 +12,7 @@ const {
 
 const orderService = require('../services/orderService');
 const botConfigService = require('../services/botConfigService');
+const llmPromptService = require('../services/llmPromptService');
 const calendarService = require('../services/googleCalendarService');
 const aiUsageService = require('../services/aiUsageService');
 const logService = require('../services/logService');
@@ -239,6 +240,7 @@ class Dashboard {
                                 <button onclick="document.getElementById('addClientModal').style.display='block'" class="btn btn-green">${icon('plus', 'w-4 h-4 inline')} Nuevo Cliente</button>
                                 <a href="/app/admin/logs" class="btn btn-outline">${icon('clipboardDocumentList', 'w-4 h-4 inline')} Logs</a>
                                 <a href="/app/admin/events" class="btn btn-outline">${icon('user', 'w-4 h-4 inline')} Eventos</a>
+                                <a href="/app/admin/prompts" class="btn btn-outline">${icon('sparkles', 'w-4 h-4 inline')} Prompts IA</a>
                                 <a href="/app/" class="btn btn-outline">${icon('arrowLeft', 'w-4 h-4 inline')} Editor</a>
                             </div>
                         </div>
@@ -768,6 +770,128 @@ class Dashboard {
                 </body>
                 </html>
             `);
+        });
+
+        // --- EDITOR DE PROMPTS LLM (solo admin) ---
+
+        router.get('/admin/prompts', async (req, res) => {
+            if (req.user.idCliente !== 'admin') return res.status(403).send('Acceso denegado');
+            try {
+                const prompts = await llmPromptService.getAllPrompts();
+                const rowsHtml = Object.entries(prompts).map(([key, p]) => `
+                    <div style="background:var(--bg-box); border:1px solid var(--border-color); border-radius:8px; padding:16px; margin-bottom:20px;">
+                        <div style="display:flex; align-items:center; justify-content:space-between; gap:10px; flex-wrap:wrap; margin-bottom:8px;">
+                            <div>
+                                <h3 style="margin:0;">${p.label}</h3>
+                                <code style="font-size:12px; color:#888;">${key}</code>
+                                ${p.isCustom ? '<span style="display:inline-block;padding:2px 10px;border-radius:12px;background:#fff7ed;color:#c2410c;font-weight:700;font-size:11px;margin-left:6px;">CUSTOM</span>' : '<span style="display:inline-block;padding:2px 10px;border-radius:12px;background:#f1f5f9;color:#64748b;font-weight:600;font-size:11px;margin-left:6px;">DEFAULT</span>'}
+                            </div>
+                            <div style="display:flex; gap:8px;">
+                                <button class="btn btn-green" onclick="savePrompt('${key}')">Guardar</button>
+                                <button class="btn btn-outline" onclick="resetPrompt('${key}')">Restablecer default</button>
+                            </div>
+                        </div>
+                        <p style="font-size:12px; color:#777; margin:0 0 8px;">Placeholders disponibles: <code>${p.placeholders.map(h => '{' + h + '}').join(' ')}</code></p>
+                        <textarea id="prompt_${key}" rows="12" style="width:100%; padding:10px 12px; border:1px solid var(--border-color); border-radius:6px; font-size:13px; font-family:monospace; box-sizing:border-box; white-space:pre-wrap;">${p.value}</textarea>
+                    </div>
+                `).join('');
+
+                res.send(`
+                    <html>
+                    <head>
+                        <title>Prompts IA - Administración</title>
+                        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+                        <style>
+                            :root { --primary-color: #00bc7d; --bg-white: #ffffff; --bg-box: #fbfbfb; --border-color: #e7e3e4; }
+                            body { font-family: 'Segoe UI', sans-serif; margin: 40px; background: var(--bg-white); }
+                            .header { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+                            .btn { padding: 10px 18px; text-decoration: none; border-radius: 6px; cursor: pointer; font-weight: 600; font-size: 13px; transition: all .15s ease; display: inline-flex; align-items: center; gap: 6px; }
+                            .btn:hover { opacity: .85; }
+                            .btn-green { background: var(--primary-color); color: white; border: none; }
+                            .btn-outline { background: white; color: #555; border: 1px solid var(--border-color); }
+                            .btn-outline:hover { background: #f5f5f5; }
+                            .status { margin-left: 8px; font-size: 13px; }
+                            code { background:#f1f5f9; padding:2px 5px; border-radius:4px; }
+                            @media (max-width: 768px) { body { margin: 16px; } }
+                        </style>
+                    </head>
+                    <body>
+                        <div class="header" style="margin-bottom:20px;">
+                            <a href="/" style="display:block;"><img src="/img/wamenu_logo_name.png" alt="WaMenu" style="width:100%;max-width:8em;height:auto;object-fit:contain;"></a>
+                            <h2 style="flex:1;">Editor de Prompts IA</h2>
+                            <a href="/app/admin" class="btn btn-outline">${icon('arrowLeft', 'w-4 h-4 inline')} Volver al Panel</a>
+                        </div>
+                        <p style="font-size:13px; color:#555; margin:0 0 20px;">
+                            Editás el texto que el LLM usa como instrucciones del sistema y se guarda en Neon (afecta a TODOS los bots).
+                            Los cambios se propagan a producción sin redeploy (caché de 30 seg). Cualquier valor se reemplaza en tiempo de ejecución;
+                            un placeholder desconocido queda visible en lo que recibe el modelo. Con "Restablecer default" volvés al texto original del código.
+                        </p>
+                        <div id="globalStatus" class="status" style="display:none;"></div>
+                        ${rowsHtml}
+                        <script>
+                            async function savePrompt(key) {
+                                const value = document.getElementById('prompt_' + key).value;
+                                const res = await fetch('/app/api/admin/prompts', {
+                                    method: 'POST',
+                                    headers: { 'Content-Type': 'application/json' },
+                                    body: JSON.stringify({ key, value })
+                                });
+                                const data = await res.json();
+                                showStatus(data.ok ? 'Guardado: ' + key : 'Error: ' + (data.error || 'desconocido'), data.ok);
+                                if (data.ok) setTimeout(function(){ location.reload(); }, 400);
+                            }
+                            async function resetPrompt(key) {
+                                if (!confirm('¿Restablecer el prompt "' + key + '" al default del código?')) return;
+                                const res = await fetch('/app/api/admin/prompts', {
+                                    method: 'POST',
+                                    headers: { 'Content-Type': 'application/json' },
+                                    body: JSON.stringify({ key, reset: true })
+                                });
+                                const data = await res.json();
+                                showStatus(data.ok ? 'Restablecido: ' + key : 'Error: ' + (data.error || 'desconocido'), data.ok);
+                                if (data.ok) setTimeout(function(){ location.reload(); }, 400);
+                            }
+                            function showStatus(msg, ok) {
+                                const el = document.getElementById('globalStatus');
+                                el.style.display = 'block';
+                                el.style.color = ok ? 'var(--primary-color)' : '#dc2626';
+                                el.textContent = msg;
+                                setTimeout(function(){ el.style.display = 'none'; }, 4000);
+                            }
+                        </script>
+                    </body>
+                    </html>
+                `);
+            } catch (err) {
+                console.error('[Dashboard] Error en /admin/prompts:', err.message);
+                res.status(500).send('Error cargando editor de prompts.');
+            }
+        });
+
+        // API: Obtener todos los prompts (solo admin)
+        router.get('/api/admin/prompts', async (req, res) => {
+            if (req.user.idCliente !== 'admin') return res.status(403).json({ error: 'Acceso denegado' });
+            try {
+                const prompts = await llmPromptService.getAllPrompts();
+                res.json({ ok: true, prompts });
+            } catch (err) {
+                res.status(500).json({ error: 'Error obteniendo prompts' });
+            }
+        });
+
+        // API: Guardar o restablecer un prompt (solo admin)
+        router.post('/api/admin/prompts', async (req, res) => {
+            if (req.user.idCliente !== 'admin') return res.status(403).json({ error: 'Acceso denegado' });
+            try {
+                const { key, value, reset } = req.body || {};
+                const ok = reset
+                    ? await llmPromptService.resetPrompt(key)
+                    : await llmPromptService.setPrompt(key, value);
+                if (!ok) return res.status(400).json({ error: 'No se pudo guardar (clave inválida o DB no disponible)' });
+                res.json({ ok: true });
+            } catch (err) {
+                res.status(500).json({ error: 'Error guardando prompts' });
+            }
         });
 
         // --- FIN RUTAS ADMINISTRACIÓN ---
@@ -2234,18 +2358,16 @@ ${helpGuideHTML}
                                 <p class="muted" style="margin:4px 0 0;">Cuando el cliente va a confirmar su pedido, el asistente analiza el catálogo real y propone un producto/servicio complementario antes del pago. Podés precisar la regla en "Instrucciones" (ej: "al finalizar, sugerí una bebida" o "sugerí un combo"). El cliente puede rechazarlo y pagar igual.</p>
                             </div>
                             <div style="margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--border-color);">
-                                <label style="font-weight: 700; display:block; margin-bottom: 6px;">Derivar a un vendedor (conversación con humanos)</label>
-                                <p class="muted" style="margin:0 0 8px;">Opcional: si cargás un vendedor, cuando el asistente detecte a un cliente decidido a comprar, le avisa a ese vendedor por WhatsApp con los datos del cliente y le dice que un asesor lo contactará. Solo para bots de pedidos/catálogo.</p>
-                                <div style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-top: 8px;">
-                                    <label style="font-weight: 600; min-width: 200px;">Nombre del vendedor:</label>
-                                    <input type="text" id="aiVendedorNombreInput" placeholder="Ej: Laura" style="width: 280px; padding: 8px 12px; border:1px solid var(--border-color); border-radius:6px; font-size:14px; box-sizing:border-box;">
-                                </div>
-                                <div style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-top: 8px;">
-                                    <label style="font-weight: 600; min-width: 200px;">WhatsApp del vendedor:</label>
-                                    <input type="text" id="aiVendedorTelefonoInput" placeholder="Ej: 5491122334455" style="width: 280px; padding: 8px 12px; border:1px solid var(--border-color); border-radius:6px; font-size:14px; box-sizing:border-box;">
-                                </div>
+                                <label style="font-weight: 700; display:block; margin-bottom: 6px;">Derivar a un humano (asistentes/vendedores por categoría)</label>
+                                <p class="muted" style="margin:0 0 8px;">Opcional: cargá uno o más contactos de derivación. Cada contacto puede tener categorías/áreas (ej: "tecnico, reparaciones"). Cuando el asistente detecte un cliente decidido a comprar o que pide hablar con un asesor, le avisa al contacto cuya categoría coincida (si no coincide ninguna, al primero) por WhatsApp con los datos del cliente y le dice que un asesor lo contactará.</p>
                                 <div style="margin-top: 8px;">
-                                    <label style="font-weight: 600; display:block; margin-bottom: 6px;">¿Cómo querés que el asistente derive al humano?</label>
+                                    <label style="font-weight: 600; display:block; margin-bottom: 6px;">Contactos de derivación:</label>
+                                    <div id="vendedorContactosContainer"></div>
+                                    <button type="button" onclick="agregarVendedorContacto()" style="margin-top:6px; padding:6px 14px; background:var(--primary-color); color:#fff; border:none; border-radius:6px; cursor:pointer; font-size:13px;">+ Agregar contacto</button>
+                                    <p class="muted" style="margin:4px 0 0;">Categorías separadas por coma. El cliente también puede escribir "hablar con un asesor" y el bot lo incluye.</p>
+                                </div>
+                                <div style="margin-top: 12px;">
+                                    <label style="font-weight: 600; display:block; margin-bottom: 6px;">Mensaje que ve el cliente cuando lo derivamos</label>
                                     <textarea id="aiVendedorMensajeInput" rows="3" placeholder="Escribí el mensaje que ve el cliente cuando lo contactás (ej: 'Voy a comunicarte con una persona de nuestro equipo para agilizar tu pedido.')" style="width:100%; padding:8px 12px; border:1px solid var(--border-color); border-radius:6px; font-size:14px; box-sizing:border-box;"></textarea>
                                 </div>
                             </div>
@@ -2915,6 +3037,36 @@ ${helpGuideHTML}
                                 .catch(function(e) { console.error('Error cargando bot config:', e); });
                         }
 
+                         function renderVendedorContactos(contactos) {
+                            const cont = document.getElementById('vendedorContactosContainer');
+                            if (!cont) return;
+                            const lista = contactos || [];
+                            cont.innerHTML = lista.map(function(c, i) {
+                                const n = (c && c.nombre) || '';
+                                const t = (c && c.telefono) || '';
+                                const a = (c && c.areas) || '';
+                                return '<div class="vendedor-contacto-row" style="display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin-bottom:6px; background:#f7f7f8; border:1px solid var(--border-color); border-radius:6px; padding:8px;">'
+                                    + '<input type="text" class="vc-nombre" placeholder="Nombre (ej: Laura)" value="' + n.replace(/"/g, '&quot;') + '" style="width:180px; padding:7px 10px; border:1px solid var(--border-color); border-radius:6px; font-size:13px; box-sizing:border-box;">'
+                                    + '<input type="text" class="vc-telefono" placeholder="WhatsApp (ej: 5491122334455)" value="' + t.replace(/"/g, '&quot;') + '" style="width:200px; padding:7px 10px; border:1px solid var(--border-color); border-radius:6px; font-size:13px; box-sizing:border-box;">'
+                                    + '<input type="text" class="vc-areas" placeholder="Categorías/áreas (ej: tecnico, reparaciones)" value="' + a.replace(/"/g, '&quot;') + '" style="flex:1; min-width:220px; padding:7px 10px; border:1px solid var(--border-color); border-radius:6px; font-size:13px; box-sizing:border-box;">'
+                                    + '<button type="button" onclick="this.parentNode.parentNode.removeChild(this.parentNode)" title="Quitar contacto" style="padding:5px 10px; background:#fee2e2; color:#b91c1c; border:none; border-radius:6px; cursor:pointer; font-size:14px;">×</button>'
+                                    + '</div>';
+                            }).join('');
+                        }
+
+                        function agregarVendedorContacto() {
+                            const cont = document.getElementById('vendedorContactosContainer');
+                            if (!cont) return;
+                            const div = document.createElement('div');
+                            div.className = 'vendedor-contacto-row';
+                            div.style.cssText = 'display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin-bottom:6px; background:#f7f7f8; border:1px solid var(--border-color); border-radius:6px; padding:8px;';
+                            div.innerHTML = '<input type="text" class="vc-nombre" placeholder="Nombre (ej: Laura)" style="width:180px; padding:7px 10px; border:1px solid var(--border-color); border-radius:6px; font-size:13px; box-sizing:border-box;">'
+                                + '<input type="text" class="vc-telefono" placeholder="WhatsApp (ej: 5491122334455)" style="width:200px; padding:7px 10px; border:1px solid var(--border-color); border-radius:6px; font-size:13px; box-sizing:border-box;">'
+                                + '<input type="text" class="vc-areas" placeholder="Categorías/áreas (ej: tecnico, reparaciones)" style="flex:1; min-width:220px; padding:7px 10px; border:1px solid var(--border-color); border-radius:6px; font-size:13px; box-sizing:border-box;">'
+                                + '<button type="button" onclick="this.parentNode.parentNode.removeChild(this.parentNode)" title="Quitar contacto" style="padding:5px 10px; background:#fee2e2; color:#b91c1c; border:none; border-radius:6px; cursor:pointer; font-size:14px;">×</button>';
+                            cont.appendChild(div);
+                        }
+
                          function loadAiConfig(d) {
                             const ai = (d && d.ai_config) || {};
                             const enabled = document.getElementById('aiEnabledInput');
@@ -2922,8 +3074,6 @@ ${helpGuideHTML}
                             const customWrap = document.getElementById('aiCustomWrap');
                             const prompt = document.getElementById('aiPromptCustomInput');
                             const instrucciones = document.getElementById('aiInstruccionesInput');
-                            const vNombre = document.getElementById('aiVendedorNombreInput');
-                            const vTel = document.getElementById('aiVendedorTelefonoInput');
                             const vMensaje = document.getElementById('aiVendedorMensajeInput');
                             if (enabled) enabled.checked = !!ai.enabled;
                             if (estilo) {
@@ -2935,9 +3085,12 @@ ${helpGuideHTML}
                             const sugerirComplemento = document.getElementById('aiSugerirComplementoInput');
                             if (sugerirComplemento) sugerirComplemento.checked = !!ai.sugerirComplemento;
                             const vendedor = ai.vendedor || {};
-                            if (vNombre) vNombre.value = vendedor.nombre || '';
-                            if (vTel) vTel.value = vendedor.telefono || '';
                             if (vMensaje) vMensaje.value = vendedor.mensaje || '';
+                            let contactosV = (vendedor.contactos && vendedor.contactos.length) ? vendedor.contactos : [];
+                            if (contactosV.length === 0 && vendedor.telefono) {
+                                contactosV = [{ nombre: vendedor.nombre || 'asesor', telefono: vendedor.telefono, areas: '' }];
+                            }
+                            renderVendedorContactos(contactosV);
                             loadAiUsage();
                         }
 
@@ -2975,9 +3128,22 @@ ${helpGuideHTML}
                             const promptCustom = document.getElementById('aiPromptCustomInput').value.trim();
                             const instrucciones = document.getElementById('aiInstruccionesInput').value.trim();
                             const sugerirComplemento = !!document.getElementById('aiSugerirComplementoInput').checked;
-                            const vNombre = (document.getElementById('aiVendedorNombreInput') || {}).value || '';
-                            const vTel = (document.getElementById('aiVendedorTelefonoInput') || {}).value || '';
                             const vMensaje = (document.getElementById('aiVendedorMensajeInput') || {}).value || '';
+                            const contactos = [];
+                            const filas = document.querySelectorAll('.vendedor-contacto-row');
+                            filas.forEach(function(fila) {
+                                const n = (fila.querySelector('.vc-nombre') || {}).value || '';
+                                const t = (fila.querySelector('.vc-telefono') || {}).value || '';
+                                const ac = (fila.querySelector('.vc-areas') || {}).value || '';
+                                if (t.trim()) {
+                                    contactos.push({
+                                        id: 'contacto-' + (contactos.length + 1),
+                                        nombre: n.trim() || ('contacto-' + (contactos.length + 1)),
+                                        telefono: t.trim(),
+                                        areas: ac.trim()
+                                    });
+                                }
+                            });
                             const payload = {
                                 botId: botId,
                                 ai_config: {
@@ -2986,7 +3152,7 @@ ${helpGuideHTML}
                                     promptCustom,
                                     instrucciones,
                                     sugerirComplemento,
-                                    vendedor: { nombre: vNombre.trim(), telefono: vTel.trim(), mensaje: vMensaje.trim() }
+                                    vendedor: { mensaje: vMensaje.trim(), contactos: contactos }
                                 }
                             };
                             fetch('/app/api/bot-config', {
