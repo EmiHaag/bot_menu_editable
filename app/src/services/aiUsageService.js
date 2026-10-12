@@ -4,6 +4,10 @@ const sql = process.env.NEON_DATABASE_URL ? neon(process.env.NEON_DATABASE_URL) 
 
 const LIMIT_TOKENS = 1_000_000;
 const WINDOW_DAYS = 30;
+const FLUSH_INTERVAL_MS = 360 * 1000; // 6 min
+
+// Buffer en memoria: { idCliente: { dia: tokensAcumulados } }
+const tokenBuffer = new Map();
 
 async function ensureTable() {
     if (!sql) return;
@@ -59,25 +63,58 @@ async function getTokensUsed(idCliente, activadoEn) {
     }
 }
 
-async function addTokens(idCliente, tokens) {
+/**
+ * Acumula tokens en buffer y hace flush periódico cada 6 min.
+ * @param {string} idCliente
+ * @param {number} tokens
+ */
+function addTokens(idCliente, tokens) {
     if (!sql || !idCliente || !tokens || tokens <= 0) return;
-    try {
-        const dia = _diaKey();
-        await sql`
-            INSERT INTO ai_usage (id_cliente, dia, tokens_used)
-            VALUES (${idCliente}, ${dia}, ${Math.round(tokens)})
-            ON CONFLICT (id_cliente, dia) DO UPDATE SET
-                tokens_used = ai_usage.tokens_used + EXCLUDED.tokens_used
-        `;
-    } catch (err) {
-        console.error('[AIUsageService] Error addTokens:', err.message);
+    const dia = _diaKey();
+    const key = `${idCliente}:${dia}`;
+    const current = tokenBuffer.get(key) || 0;
+    tokenBuffer.set(key, current + Math.round(tokens));
+}
+
+/**
+ * Flush buffer to database. Called periodically and on shutdown.
+ */
+async function flushTokens() {
+    if (!sql || tokenBuffer.size === 0) return;
+    const toFlush = new Map(tokenBuffer);
+    tokenBuffer.clear();
+    for (const [key, tokens] of toFlush) {
+        if (tokens <= 0) continue;
+        const [idCliente, dia] = key.split(':');
+        try {
+            await sql`
+                INSERT INTO ai_usage (id_cliente, dia, tokens_used)
+                VALUES (${idCliente}, ${dia}, ${tokens})
+                ON CONFLICT (id_cliente, dia) DO UPDATE SET
+                    tokens_used = ai_usage.tokens_used + EXCLUDED.tokens_used
+            `;
+        } catch (err) {
+            console.error('[AIUsageService] Error flushTokens:', err.message);
+            // Re-queue failed entries
+            const current = tokenBuffer.get(key) || 0;
+            tokenBuffer.set(key, current + tokens);
+        }
     }
 }
+
+// Auto-flush every 6 minutes
+setInterval(flushTokens, FLUSH_INTERVAL_MS);
+
+// Flush on process exit
+process.on('exit', () => flushTokens());
+process.on('SIGINT', () => { flushTokens(); process.exit(0); });
+process.on('SIGTERM', () => { flushTokens(); process.exit(0); });
 
 module.exports = {
     ensureTable,
     getTokensUsed,
     addTokens,
+    flushTokens,
     LIMIT_TOKENS,
     WINDOW_DAYS
 };

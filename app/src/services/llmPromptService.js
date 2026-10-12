@@ -17,7 +17,7 @@ function hashDefault(key) {
 const PROMPT_KEYS = {
     clasificador: {
         label: 'Clasificador de intenciones',
-        placeholders: ['negocio', 'intenciones', 'reglas_faq', 'reglas_turnos', 'reglas_seccion', 'estilo', 'contexto', 'catalogo']
+        placeholders: ['negocio', 'intenciones', 'reglas_faq', 'reglas_turnos', 'reglas_seccion', 'reglas_navegacion', 'estilo', 'contexto', 'catalogo']
     },
     traductor: {
         label: 'Traductor del menú (lenguaje natural → trigger)',
@@ -51,6 +51,7 @@ REGLAS (obligatorias):
 - CONSULTAR_MENU / CONSULTAR_HORARIOS / VER_CARRITO / CHARLA_GENERAL: para consultas o charla. "respuesta_conversacional" debe ser breve y amigable, SIEMPRE en el estilo: {estilo}
 - NUNCA inventes precios, productos, horarios ni descuentos. Si no lo sabés, no lo afirmes.
 - Si el mensaje no encaja con certeza alta o no se entiende, usá intencion "FALLO".
+{reglas_navegacion}
 
 {contexto}
 

@@ -1,4 +1,16 @@
 require('dotenv').config();
+
+// Baileys/libsignal imprime la sesión cifrada completa en cada mensaje
+// ("Closing session: SessionEntry { _chains: { ... } }"), lo que inunda la
+// consola. Dejamos solo el mensaje, sin volcar el objeto SessionEntry.
+const _consoleInfo = console.info.bind(console);
+console.info = (...args) => {
+    if (typeof args[0] === 'string' && args[0].indexOf('Closing session') === 0) {
+        return _consoleInfo('Closing session:');
+    }
+    return _consoleInfo(...args);
+};
+
 const express = require('express');
 const session = require('express-session');
 const FileStore = require('session-file-store')(session);

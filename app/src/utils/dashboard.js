@@ -1203,8 +1203,25 @@ class Dashboard {
                         ? `<div><span style="color: #999; font-size: 11px; font-style: italic;">[${parentTitle}]</span><br><span class="connector" style="color: #999;">${connector}</span><b>${displayTrigger}</b></div>`
                         : `<span class="connector" style="color: #999;">${connector}</span><b>${displayTrigger}</b>`)
                     : `<b>${displayTrigger}</b>`;
+
+                const sinFuncion = !node.funcion || !String(node.funcion).trim();
+
+                const metaJson = JSON.stringify({
+                    id: node.id,
+                    trigger: node.trigger,
+                    title: node.title,
+                    precio: node.price || '',
+                    mensaje: cleanMessage,
+                    funcion: node.funcion || '',
+                    sinFuncion: sinFuncion,
+                    parentTitle: parentTitle,
+                    redirigirA: node.redirigirA || '',
+                    disponible: node.disponible === 'false' ? 'No disponible' : 'Disponible',
+                    tags: [isOrder ? 'PEDIDO' : null, isQty ? 'CANTIDAD' : null, isFinal ? 'FINALIZAR' : null, isData ? 'DATOS' : null, isArchivo ? 'ARCHIVO' : null, isPagar ? 'PAGAR' : null].filter(Boolean)
+                }).replace(/'/g, '&#39;');
+
                 return `
-                <tr>
+                <tr data-meta='${metaJson}'${sinFuncion ? ' class="row-sin-funcion"' : ''}>
                     <td${indent}>${triggerCell}</td>
                     <td>${displayTitle}</td>
                     <td style="max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${cleanMessage}</td>
@@ -1283,6 +1300,15 @@ class Dashboard {
                             padding: 4px 6px; 
                             border: 1px solid var(--border-color); 
                             text-align: left; 
+                        }
+
+                        tbody tr.row-sin-funcion,
+                        tbody tr.row-sin-funcion td {
+                            background-color: #efebff !important;
+                        }
+                        tbody tr.row-sin-funcion:hover,
+                        tbody tr.row-sin-funcion:hover td {
+                            background-color: #e2dcff !important;
                         }
 
                         th { 
@@ -1527,6 +1553,19 @@ class Dashboard {
                             background: #dc2626 !important;
                             color: white !important;
                             border-color: #dc2626 !important;
+                        }
+                        .btn-ai {
+                            background: linear-gradient(135deg, #8b5cf6, #6366f1) !important;
+                            color: white !important;
+                            border: none !important;
+                        }
+                        .btn-ai:hover {
+                            background: linear-gradient(135deg, #7c3aed, #4f46e5) !important;
+                            box-shadow: 0 2px 8px rgba(99, 102, 241, 0.4);
+                        }
+                        .btn-ai:disabled {
+                            opacity: 0.6;
+                            cursor: not-allowed;
                         }
                         
                         select { 
@@ -1989,7 +2028,7 @@ ${helpGuideCSS}
                         <div style="display: flex; align-items: center; gap: 15px;">
                             <a href="/" style="display:block;"><img src="/img/wamenu_logo_name.png" alt="WaMenu Banner" style="width:100%;max-width:10em;height:auto;margin-bottom:10px;display:block;margin-left:auto;margin-right:auto;object-fit:contain;"></a>
                             <div>
-                                <h3 style="margin:0;">(Modo: Editor)</h3>
+                                <h3 style="margin:0;">(Modo: Editor) · Plan ${(((targetUser && targetUser.plan) || (req.user && req.user.plan) || 'estandar') === 'premium') ? 'Premium' : 'Estándar'}</h3>
                                 <div class="status-box" id="statusBox"><span class="status-dot off" id="statusDot"></span> <span id="statusLabel">Verificando...</span><span class="status-help" id="statusHelp" style="display:none;position:relative;cursor:pointer;margin-left:6px;font-size:13px;color:#888;border:1px solid #ccc;border-radius:50%;width:18px;height:18px;line-height:18px;text-align:center;font-weight:700;">?<span class="status-help-tip" style="display:none;position:absolute;top:calc(100% + 8px);left:50%;transform:translateX(-50%);background:#333;color:#fff;padding:10px 14px;border-radius:8px;font-size:12px;font-weight:400;line-height:1.5;white-space:normal;width:240px;text-align:left;z-index:9999;box-shadow:0 2px 8px rgba(0,0,0,.15);"></span></span></div>
                             </div>
                         </div>
@@ -2463,6 +2502,19 @@ ${helpGuideHTML}
                                                 </label>
                                                 <textarea id="addMessage" name="message" rows="3" placeholder="Mensaje que enviará el bot..." oninput="updatePreview('add')"></textarea>
                                             </div>
+                                            <div class="form-group" id="addFuncionGroup">
+                                                <label style="display: flex; align-items: center;">
+                                                    Qué función cumple esta opción?<span style="color:#dc3545;margin-left:3px;">*</span>
+                                                    <span class="info-icon">i
+                                                        <span class="tooltip">Ayuda a la IA a entender para qué sirve esta opción (ej: "Mostrar alquileres de autos", "Ficha con fotos de una propiedad"). Obligatorio: escribila o usá "Sugerir con IA".</span>
+                                                    </span>
+                                                </label>
+                                                <div style="display:flex;gap:8px;align-items:flex-start;">
+                                                    <textarea id="addFuncion" name="funcion" rows="2" placeholder="ej: Enviar la carta de menús semanales" style="flex:1;" required></textarea>
+                                                    <button type="button" class="btn btn-ai" style="padding:8px 14px;white-space:nowrap;min-width:120px;" onclick="sugerirFuncion('add')">✦ Sugerir con IA</button>
+                                                </div>
+                                                <small id="addFuncionMsg" style="color:#888;"></small>
+                                            </div>
                                             <div class="form-group" style="margin-bottom: 12px;">
                                                 <label style="display: flex; align-items: center;">Imágenes del catálogo
                                                     <span class="info-icon">i
@@ -2649,6 +2701,19 @@ ${helpGuideHTML}
                                                 </span>
                                             </label>
                                             <textarea id="editMessage" name="message" rows="4" oninput="updatePreview('edit')"></textarea>
+                                        </div>
+                                        <div class="form-group" id="editFuncionGroup">
+                                            <label style="display: flex; align-items: center;">
+                                                Qué función cumple esta opción?<span style="color:#dc3545;margin-left:3px;">*</span>
+                                                <span class="info-icon">i
+                                                    <span class="tooltip">Ayuda a la IA a entender para qué sirve esta opción (ej: "Mostrar alquileres de autos", "Ficha con fotos de una propiedad"). Obligatorio: escribila o usá "Sugerir con IA".</span>
+                                                </span>
+                                            </label>
+                                            <div style="display:flex;gap:8px;align-items:flex-start;">
+                                                <textarea id="editFuncion" name="funcion" rows="2" placeholder="ej: Enviar la carta de menús semanales" style="flex:1;" required></textarea>
+                                                <button type="button" class="btn btn-ai" style="padding:8px 14px;white-space:nowrap;min-width:120px;" onclick="sugerirFuncion('edit')">✦ Sugerir con IA</button>
+                                            </div>
+                                            <small id="editFuncionMsg" style="color:#888;"></small>
                                         </div>
                                         <div class="form-group" style="margin-bottom: 12px;">
                                             <label style="display: flex; align-items: center;">Imágenes del catálogo
@@ -3413,7 +3478,7 @@ ${helpGuideJS}
                                         return '<tr>' +
                                             '<td style="padding:8px 10px; border-bottom:1px solid #eee;">' + fmtFechaPago(f.createdAt) + '</td>' +
                                             '<td style="padding:8px 10px; border-bottom:1px solid #eee;">' + tipo + '</td>' +
-                                            '<td style="padding:8px 10px; border-bottom:1px solid #eee;">' + fmtPeriodo(f.periodoDesde) + ' ${icon('arrowRight', 'w-4 h-4 inline')} ' + fmtPeriodo(f.periodoHasta) + '</td>' +
+                                            '<td style="padding:8px 10px; border-bottom:1px solid #eee;">' + fmtPeriodo(f.periodoDesde) + ' ' + icon('arrowRight', 'w-4 h-4 inline') + ' ' + fmtPeriodo(f.periodoHasta) + '</td>' +
                                             '<td style="padding:8px 10px; border-bottom:1px solid #eee; text-align:right; font-weight:600;">' + fmtMoney(f.monto) + '</td>' +
                                             '<td style="padding:8px 10px; border-bottom:1px solid #eee;">' + (factura || '—') + '</td>' +
                                             '</tr>';
@@ -3442,6 +3507,35 @@ ${helpGuideJS}
                             isFaq: false
                         };
 
+                        // Genera un node_id único para el prefijo dado, evitando colisiones
+                        // con nodos ya existentes o con otros creados en la misma corrida.
+                        function siguienteNodeId(prefix, usados) {
+                            const base = prefix + '_opcion';
+                            const re = new RegExp('^' + base + '([0-9]+)$');
+                            let max = 0;
+                            (menuData || []).forEach(function (n) {
+                                if (!n || !n.id) return;
+                                const m = String(n.id).match(re);
+                                if (m) max = Math.max(max, parseInt(m[1], 10));
+                            });
+                            (usados || []).forEach(function (id) {
+                                const m = String(id).match(re);
+                                if (m) max = Math.max(max, parseInt(m[1], 10));
+                            });
+                            return base + (max + 1);
+                        }
+
+                        // Próximo disparador numérico libre entre los hijos directos del padre.
+                        function siguienteTrigger(parentId) {
+                            let max = 0;
+                            (menuData || []).forEach(function (n) {
+                                if (!n || n.parentId !== parentId) return;
+                                const t = parseInt(n.trigger, 10);
+                                if (!isNaN(t) && t > max) max = t;
+                            });
+                            return max + 1;
+                        }
+
                         function openAddModal(idx) {
                             imgSubidasSesion = [];
                             const parent = menuData[idx] || { title: 'Raíz', id: 'root' };
@@ -3450,10 +3544,9 @@ ${helpGuideJS}
 
                             // Setup full form
                             document.getElementById('addParentId').value = parentId;
-                            const childrenCount = menuData.filter(n => n.parentId === parentId).length;
-                            const nextNumber = childrenCount + 1;
+                            const nextNumber = siguienteTrigger(parentId);
                             const prefix = parentId === 'root' ? 'menu' : parentId;
-                            const newId = prefix + '_opcion' + nextNumber;
+                            const newId = siguienteNodeId(prefix);
                             document.getElementById('addId').value = newId;
                             document.getElementById('addTrigger').value = nextNumber;
                             document.getElementById('addPrice').value = '';
@@ -3741,10 +3834,12 @@ ${helpGuideJS}
                             let parentId = wizardState.parentId;
                             const prefix = wizardState.prefix;
                             let trigger = wizardState.nextTrigger;
+                            const usados = [];
 
                             // If parent is root, create category node first
                             if (wizardState.parentId === 'root') {
-                                const catId = prefix + '_opcion' + (trigger);
+                                const catId = siguienteNodeId(prefix, usados);
+                                usados.push(catId);
                                 document.getElementById('wizProgress').textContent = 'Creando categor\u00eda...';
                                 let catMessage = '';
                                 if (wizardState.addPagar) {
@@ -3775,7 +3870,8 @@ ${helpGuideJS}
 
                             for (let i = 0; i < items.length; i++) {
                                 const item = items[i];
-                                const nodeId = prefix + '_opcion' + (trigger);
+                                const nodeId = siguienteNodeId(prefix, usados);
+                                usados.push(nodeId);
                                 document.getElementById('wizProgress').textContent = '(' + (i+1) + '/' + (items.length) + ')';
 
                                 let message;
@@ -3813,7 +3909,8 @@ ${helpGuideJS}
                             }) : null;
                             if (isCartFlow && !existingFinal) {
                                 document.getElementById('wizProgress').textContent = '(' + (items.length + 1) + '/' + (items.length + 1) + ') - Creando Finalizar...';
-                                const finalId = prefix + '_opcion' + (trigger);
+                                const finalId = siguienteNodeId(prefix, usados);
+                                usados.push(finalId);
                                 let finalMessage = '##FINALIZAR##';
                                 if (wizardState.addArchivo) {
                                     finalMessage = 'Enviame captura de comprobante de pago por favor.\\n\\n##FINALIZAR##\\n\\n##ARCHIVO##';
@@ -3866,9 +3963,9 @@ ${helpGuideJS}
                             if (items.length > 0) {
                                 const nextNum = wizardState.nextTrigger + items.length;
                                 if (wizardState.isTurno) {
-                                    content += '<div class="wa-bubble" style="background: #f0fdf4; border: 1px dashed #86efac;">${icon('calendar', 'w-4 h-4 inline')} Reservar turno (' + nextNum + ')</div>\\n';
+                                    content += '<div class="wa-bubble" style="background: #f0fdf4; border: 1px dashed #86efac;">' + icon('calendar', 'w-4 h-4 inline') + ' Reservar turno (' + nextNum + ')</div>\\n';
                                 } else if (!wizardState.isFaq) {
-                                    content += '<div class="wa-bubble" style="background: #f3f0ff; border: 1px dashed #d1d1ff;">${icon('checkCircle', 'w-4 h-4 inline text-green-400')} Finalizar (' + nextNum + ')</div>\\n';
+                                    content += '<div class="wa-bubble" style="background: #f3f0ff; border: 1px dashed #d1d1ff;">' + icon('checkCircle', 'w-4 h-4 inline text-green-400') + ' Finalizar (' + nextNum + ')</div>\\n';
                                 }
                             }
 
@@ -3885,7 +3982,7 @@ ${helpGuideJS}
                                 items.forEach((item, i) => {
                                     const num = wizardState.nextTrigger + i;
                                     const isCurrent = i === wizardState.currentItemIdx;
-                                    const qtyBadge = item.askQty ? ' <span style="background: #eefbff; padding: 1px 6px; border-radius: 4px; font-size: 10px;">${icon('hashtag', 'w-4 h-4 inline')} cant.</span>' : '';
+                                    const qtyBadge = item.askQty ? ' <span style="background: #eefbff; padding: 1px 6px; border-radius: 4px; font-size: 10px;">' + icon('hashtag', 'w-4 h-4 inline') + ' cant.</span>' : '';
                                     listHtml += '<div style="display: flex; align-items: center; gap: 8px; padding: 6px 0; ' + (isCurrent ? 'background: #f0fdf4; margin: 0 -8px; padding: 6px 8px; border-radius: 6px;' : '') + '">' +
                                         '<span style="background: ' + (isCurrent ? 'var(--primary-color)' : '#e9ecef') + '; color: ' + (isCurrent ? 'white' : '#666') + '; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 600;">' + num + '</span>' +
                                         '<span style="flex: 1; font-size: 13px;">' + item.title + '</span>' +
@@ -3896,13 +3993,106 @@ ${helpGuideJS}
                                 if (!wizardState.isFaq) {
                                     listHtml += '<div style="border-top: 1px dashed var(--border-color); margin-top: 6px; padding-top: 6px; display: flex; align-items: center; gap: 8px;">' +
                                         '<span style="background: #e9ecef; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 600; color: #666;">' + (wizardState.nextTrigger + items.length) + '</span>' +
-                                        '<span style="flex: 1; font-size: 13px; color: ' + (wizardState.isTurno ? '#166534' : '#6f42c1') + ';">' + (wizardState.isTurno ? '${icon('calendar', 'w-4 h-4 inline')} Reservar turno (auto)' : '${icon('checkCircle', 'w-4 h-4 inline text-green-400')} Finalizar (auto)') + '</span>' +
+                                        '<span style="flex: 1; font-size: 13px; color: ' + (wizardState.isTurno ? '#166534' : '#6f42c1') + ';">' + (wizardState.isTurno ? icon('calendar', 'w-4 h-4 inline') + ' Reservar turno (auto)' : icon('checkCircle', 'w-4 h-4 inline text-green-400') + ' Finalizar (auto)') + '</span>' +
                                         '</div>';
                                 }
                                 listHtml += '</div>';
                                 listContainer.innerHTML = listHtml;
                             }
                         }
+
+                        async function sugerirFuncion(type) {
+                            const msgEl = document.getElementById(type + 'FuncionMsg');
+                            const ta = document.getElementById(type + 'Funcion');
+                            const btn = event && event.currentTarget;
+                            if (btn) btn.disabled = true;
+                            if (msgEl) msgEl.textContent = 'Generando sugerencia con IA...';
+
+                            const parentId = (document.getElementById(type + 'ParentId') || {}).value || '';
+                            const parentNode = menuData.find(function(n) { return n.id === parentId; }) || null;
+                            const siblings = menuData
+                                .filter(function(n) { return n.parentId === parentId && n.id !== 'root'; })
+                                .map(function(n) { return (n.title || n.trigger || '') + (n.funcion ? ' (' + n.funcion + ')' : ''); })
+                                .filter(Boolean);
+
+                            const payload = {
+                                type: type,
+                                id: (document.getElementById(type + 'Id') || {}).value || '',
+                                parentId: parentId,
+                                trigger: (document.getElementById(type + 'Trigger') || {}).value || '',
+                                title: (document.getElementById(type + 'Title') || {}).value || '',
+                                price: (document.getElementById(type + 'Price') || {}).value || '',
+                                message: stripTagsFromMessage((document.getElementById(type + 'Message') || {}).value || ''),
+                                rawMessage: (document.getElementById(type + 'Message') || {}).value || '',
+                                categoria: parentNode ? parentNode.title : '',
+                                catFuncion: parentNode ? (parentNode.funcion || '') : '',
+                                hermanos: siblings
+                            };
+
+                            try {
+                                const res = await fetch('/app/api/suggest-funcion', {
+                                    method: 'POST',
+                                    headers: { 'Content-Type': 'application/json' },
+                                    body: JSON.stringify(payload)
+                                });
+                                const data = await res.json();
+                                if (!res.ok || !data.suggestion) {
+                                    throw new Error(data.error || 'Sin sugerencia');
+                                }
+                                ta.value = data.suggestion;
+                                if (msgEl) msgEl.textContent = 'Sugerencia generada. Podés editarla o guardarla.';
+                            } catch (err) {
+                                console.error('Error al sugerir función:', err);
+                                if (msgEl) msgEl.textContent = 'No se pudo generar la sugerencia. ' + (err.message || '');
+                            } finally {
+                                if (btn) btn.disabled = false;
+                            }
+                            updatePreview(type);
+                        }
+
+                        function hideNodeMetaTooltip() {
+                            const tip = document.getElementById('nodeMetaTooltip');
+                            if (tip) tip.style.display = 'none';
+                        }
+
+                        function positionNodeMetaTooltip(e, tip) {
+                            const pad = 14;
+                            tip.style.left = Math.min(e.clientX + pad, window.innerWidth - tip.offsetWidth - pad) + 'px';
+                            tip.style.top = Math.min(e.clientY + pad, window.innerHeight - tip.offsetHeight - pad) + 'px';
+                        }
+
+                        document.addEventListener('mouseover', function(e) {
+                            const tr = e.target && e.target.closest && e.target.closest('tr[data-meta]');
+                            if (!tr) { hideNodeMetaTooltip(); return; }
+                            let meta = null;
+                            try { meta = JSON.parse(tr.getAttribute('data-meta') || 'null'); } catch (err) { meta = null; }
+                            if (!meta) { hideNodeMetaTooltip(); return; }
+                            let tip = document.getElementById('nodeMetaTooltip');
+                            if (!tip) {
+                                tip = document.createElement('div');
+                                tip.id = 'nodeMetaTooltip';
+                                tip.style.cssText = 'position:fixed; z-index:99999; background:#1f2937; color:#f9fafb; padding:10px 12px; border-radius:8px; font-size:12px; line-height:1.5; max-width:340px; box-shadow:0 8px 24px rgba(0,0,0,0.25); pointer-events:none; display:none; white-space:pre-wrap;';
+                                document.body.appendChild(tip);
+                            }
+                            tip.style.border = meta.sinFuncion ? '2px solid #a78bfa' : 'none';
+                            tip.textContent = meta.sinFuncion
+                                ? '⚠️ Falta indicar el motivo de este mensaje, hacé clic en Editar.'
+                                : (meta.funcion || '—');
+                            tip.style.display = 'block';
+                            positionNodeMetaTooltip(e, tip);
+                        });
+
+                        document.addEventListener('mousemove', function(e) {
+                            const tip = document.getElementById('nodeMetaTooltip');
+                            if (tip && tip.style.display === 'block' && e.target && e.target.closest && e.target.closest('tr[data-meta]')) {
+                                positionNodeMetaTooltip(e, tip);
+                            }
+                        });
+
+                        document.addEventListener('mouseout', function(e) {
+                            const tr = e.target && e.target.closest && e.target.closest('tr[data-meta]');
+                            if (!tr) hideNodeMetaTooltip();
+                        });
 
                         function openEditModal(idx) {
                             imgSubidasSesion = [];
@@ -3923,6 +4113,8 @@ ${helpGuideJS}
                             document.getElementById('editTitle').value = node.title;
                             document.getElementById('editMessage').value = stripTagsFromMessage(node.message || '');
                             document.getElementById('editPrice').value = node.price || '';
+                            document.getElementById('editFuncion').value = node.funcion || '';
+                            document.getElementById('editFuncionMsg').textContent = '';
                             document.getElementById('editIsOrder').checked = isOrder;
                             document.getElementById('editIsQty').checked = isQty;
                             document.getElementById('editIsFinal').checked = isFinal;
@@ -4574,8 +4766,13 @@ ${helpGuideJS}
                     strictTrigger,
                     redirigirA,
                     disponible,
-                    imagenes
+                    imagenes,
+                    funcion
                 } = req.body;
+
+                if (!funcion || !String(funcion).trim()) {
+                    return res.status(400).send('El campo "Qué función cumple esta opción?" es obligatorio. Escribila o usá "Sugerir con IA".');
+                }
 
                 await service.updateNode(index, {
                     id,
@@ -4587,7 +4784,8 @@ ${helpGuideJS}
                     strictTrigger,
                     redirigirA,
                     disponible: disponible || 'true',
-                    imagenes
+                    imagenes,
+                    funcion
                 });
                 res.redirect(`/app/?botId=${encodeURIComponent(botId)}`);
             } catch (error) {
@@ -4597,10 +4795,26 @@ ${helpGuideJS}
         });
 
         // Ruta JSON API para agregar nodo (usado por el wizard)
+        const funcionPorDefecto = (data) => {
+            const msg = (data && data.message) || '';
+            const title = ((data && data.title) || '').trim();
+            if (msg.includes('##TURNO##')) return title ? `Reservar turno para ${title}` : 'Reservar un turno';
+            if (msg.includes('##FINALIZAR##')) return msg.includes('##ARCHIVO##') ? 'Finalizar el pedido y pagar (con comprobante)' : 'Finalizar el pedido y pagar';
+            if (msg.includes('##ARCHIVO##')) return 'Recibir comprobante o archivo del cliente';
+            if (msg.includes('##DATOS##')) return 'Capturar datos del cliente';
+            if (msg.includes('##PAGAR##')) return 'Ir a pagar el pedido';
+            if (msg.includes('##CANTIDAD##')) return `Agregar ${title || 'el item'} al pedido (preguntando cantidad)`;
+            if (msg.includes('##PEDIDO##')) return `Agregar ${title || 'el item'} al pedido`;
+            if (data && data.parentId === 'root') return `Navegar a la sección ${title || 'principal'}`;
+            const textoLimpio = msg.replace(/##[A-Z_]+##/g, '').trim();
+            if (textoLimpio) return textoLimpio.slice(0, 60);
+            return title ? `Mostrar ${title}` : 'Opción del menú';
+        };
+
         router.post('/api/add-node', async (req, res) => {
             try {
                 const { service } = await getServiceInfo(req);
-                const { id, parentId, trigger, title, message, price, redirigirA, disponible, imagenes } = req.body;
+                const { id, parentId, trigger, title, message, price, redirigirA, disponible, imagenes, funcion } = req.body;
 
                 await service.addNode({
                     id,
@@ -4611,12 +4825,62 @@ ${helpGuideJS}
                     price,
                     redirigirA,
                     disponible: disponible || 'true',
-                    imagenes
+                    imagenes,
+                    funcion: (funcion && String(funcion).trim()) || funcionPorDefecto({ ...req.body })
                 });
 
                 res.json({ success: true });
             } catch (error) {
                 console.error('Error al agregar nodo via API:', error);
+                res.status(500).json({ success: false, error: error.message });
+            }
+        });
+
+        // Ruta JSON API para sugerir la "función" de un nodo con IA (campo de metadatos)
+        router.post('/api/suggest-funcion', async (req, res) => {
+            try {
+                const { title, trigger, price, message, rawMessage, categoria, catFuncion, hermanos } = req.body;
+                const texto = [title, message, categoria, rawMessage].filter(Boolean).join(' ').trim();
+                if (!texto) {
+                    return res.status(400).json({ success: false, error: 'Completá al menos el título o el mensaje para poder sugerir.' });
+                }
+
+                const contexto = [];
+                if (title) contexto.push(`Título: ${title}`);
+                if (trigger) contexto.push(`Disparador: ${trigger}`);
+                if (price) contexto.push(`Precio: ${price}`);
+                if (categoria) contexto.push(`Sección padre: ${categoria}${catFuncion ? ` (sirve para: ${catFuncion})` : ''}`);
+                if (rawMessage) contexto.push(`Mensaje del bot: ${rawMessage}`);
+                if (hermanos && hermanos.length) contexto.push(`Opciones hermanas del mismo nivel: ${hermanos.join(' | ')}`);
+
+                const systemPrompt = [
+                    'Sos un asistente de un editor de menús de WhatsApp para comercios.',
+                    'Generás el campo "función" de una opción del menú: una frase corta (máximo 12 palabras, en español) que describe QUÉ HACE esa opción para el cliente.',
+                    'Ejemplos: "Mostrar alquileres de autos disponibles", "Enviar la carta de menús semanales", "Ficha con fotos de la propiedad y su precio".',
+                    'La función se le muestra a la IA clasificadora para que entienda el propósito de la opción.',
+                    'Reglas:',
+                    '- Máximo 12 palabras, una sola frase, sin punto final.',
+                    '- Describí la acción concreta, no el texto del mensaje (si el nodo tiene tags ##PEDIDO##/##CANTIDAD##/##FINALIZAR##, describí su efecto real).',
+                    '- Si tiene precio y no es una sección, es un producto: indicá qué es o su variante si se deduce del contexto.',
+                    '- No inventes información que no esté en el contexto.',
+                    '- Respondé ÚNICAMENTE con la frase, sin comillas ni prefijos.'
+                ].join('\n');
+
+                const { chat } = require('../services/llmChatService');
+                const result = await chat({
+                    systemPrompt,
+                    messages: [{ role: 'user', content: 'Escribí la función de esta opción del menú:\n' + contexto.join('\n') }],
+                    tools: [],
+                    temperature: 0.3
+                });
+
+                const suggestion = (result.content || '').trim();
+                if (!suggestion) {
+                    return res.status(500).json({ success: false, error: 'No se pudo generar una sugerencia.' });
+                }
+                res.json({ success: true, suggestion });
+            } catch (error) {
+                console.error('[SuggestFuncion] Error:', error.message);
                 res.status(500).json({ success: false, error: error.message });
             }
         });
@@ -4637,8 +4901,13 @@ ${helpGuideJS}
                     price,
                     redirigirA,
                     disponible,
-                    imagenes
+                    imagenes,
+                    funcion
                 } = req.body;
+
+                if (!funcion || !String(funcion).trim()) {
+                    return res.status(400).send('El campo "Qué función cumple esta opción?" es obligatorio. Escribila o usá "Sugerir con IA".');
+                }
 
                 await service.addNode({
                     id,
@@ -4649,7 +4918,8 @@ ${helpGuideJS}
                     price,
                     redirigirA,
                     disponible: disponible || 'true',
-                    imagenes
+                    imagenes,
+                    funcion
                 });
 
                 res.redirect(`/app/?botId=${encodeURIComponent(botId)}`);

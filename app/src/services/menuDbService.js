@@ -67,6 +67,7 @@ function mapRow(row) {
         strictTrigger: row.strict_trigger ? 'true' : 'false',
         redirigirA: row.redirigir_a || '',
         disponible: row.disponible === false ? 'false' : 'true',
+        funcion: row.funcion || '',
         imagenes,
         rowIndex: row.row_index != null ? row.row_index : row.id
     };
@@ -116,6 +117,9 @@ async function ensureMenuTables() {
         `;
         await sql`
             ALTER TABLE menu_nodos ADD COLUMN IF NOT EXISTS imagenes JSONB NOT NULL DEFAULT '[]'::jsonb
+        `;
+        await sql`
+            ALTER TABLE menu_nodos ADD COLUMN IF NOT EXISTS funcion TEXT NOT NULL DEFAULT ''
         `;
         await sql`
             ALTER TABLE bots ADD COLUMN IF NOT EXISTS nombre_negocio VARCHAR(100) NOT NULL DEFAULT ''
@@ -304,6 +308,7 @@ class MenuDbService {
                     strict_trigger = ${parseBool(data.strictTrigger)},
                     redirigir_a = ${data.redirigirA || null},
                     disponible = ${data.disponible === 'false' ? false : true},
+                    funcion = ${data.funcion || ''},
                     imagenes = ${imagenesToDb(data.imagenes)}::jsonb,
                     updated_at = NOW()
                 WHERE comercio_id = ${this.clientId} AND node_id = ${id}
@@ -320,6 +325,7 @@ class MenuDbService {
                     strict_trigger = ${parseBool(data.strictTrigger)},
                     redirigir_a = ${data.redirigirA || null},
                     disponible = ${data.disponible === 'false' ? false : true},
+                    funcion = ${data.funcion || ''},
                     imagenes = ${imagenesToDb(data.imagenes)}::jsonb,
                     updated_at = NOW()
                 WHERE comercio_id = ${this.clientId} AND row_index = ${Number(index)}
@@ -332,11 +338,15 @@ class MenuDbService {
     async addNode(nodeData) {
         if (!sql) return;
         const data = nodeData || {};
-        await sql`
-            INSERT INTO menu_nodos (comercio_id, node_id, parent_node_id, titulo, mensaje, trigger, precio, strict_trigger, redirigir_a, disponible, imagenes)
-            VALUES (${this.clientId}, ${data.id || ''}, ${data.parentId || null}, ${data.title || ''}, ${data.message || ''}, ${data.trigger || ''}, ${precioToDb(data.price)}, ${parseBool(data.strictTrigger)}, ${data.redirigirA || null}, ${data.disponible === 'false' ? false : true}, ${imagenesToDb(data.imagenes)}::jsonb)
+        const insertados = await sql`
+            INSERT INTO menu_nodos (comercio_id, node_id, parent_node_id, titulo, mensaje, trigger, precio, strict_trigger, redirigir_a, disponible, funcion, imagenes)
+            VALUES (${this.clientId}, ${data.id || ''}, ${data.parentId || null}, ${data.title || ''}, ${data.message || ''}, ${data.trigger || ''}, ${precioToDb(data.price)}, ${parseBool(data.strictTrigger)}, ${data.redirigirA || null}, ${data.disponible === 'false' ? false : true}, ${data.funcion || ''}, ${imagenesToDb(data.imagenes)}::jsonb)
             ON CONFLICT (comercio_id, node_id) DO NOTHING
+            RETURNING node_id
         `;
+        if (!insertados || insertados.length === 0) {
+            console.warn(`[MenuDb] addNode ignorado: ya existe node_id "${data.id}" (comercio ${this.clientId})`);
+        }
         this.clearCache();
     }
 

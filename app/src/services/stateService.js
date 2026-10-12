@@ -324,6 +324,21 @@ class StateService {
         this.cache.del(this._getKey(jid) + ':pedido_finalizado');
     }
 
+    // Silencio tras derivar a un asesor/vendedor humano: el bot no responde nada
+    // (ni el menú ni la IA) durante ttlSegundos, para dejar la conversación al
+    // humano. En producción se usa hasta el final del día; en local, unos minutos.
+    setSilencioAsesor(jid, ttlSegundos) {
+        this.cache.set(this._getKey(jid) + ':silencio_asesor', true, ttlSegundos);
+    }
+
+    getSilencioAsesor(jid) {
+        return !!this.cache.get(this._getKey(jid) + ':silencio_asesor');
+    }
+
+    clearSilencioAsesor(jid) {
+        this.cache.del(this._getKey(jid) + ':silencio_asesor');
+    }
+
     // Cache de intención del traductor IA: recuerda lo que pidió el usuario
     // (producto, cantidad, contexto) para resolver pasos siguientes del menú.
     setUserIntent(jid, intent) {

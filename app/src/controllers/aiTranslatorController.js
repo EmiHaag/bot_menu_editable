@@ -3,7 +3,7 @@ const botConfigService = require('../services/botConfigService');
 const aiUsageService = require('../services/aiUsageService');
 const llmChatService = require('../services/llmChatService');
 const llmPromptService = require('../services/llmPromptService');
-const IntentRouterService = require('../services/intentRouterService');
+const jevService = require('../services/jevService');
 
 const ESTILOS = {
     profesional: 'Cordial y profesional, usando "usted", con tono respetuoso y claro. Sin emojis excesivos.',
@@ -15,6 +15,20 @@ const TAGS = ['##TURNO##', '##PEDIDO##', '##CANTIDAD##', '##DATOS##', '##ARCHIVO
 
 // Umbral de fallos consecutivos de traducción antes de derivar a un humano
 const MAX_TRANSLATION_FAILS = 3;
+
+// Tope de candidatos de navegación que Jev puede elegir (nivel actual +
+// hermanos + menú principal + ramas profundas). Limita el prompt y mantiene la
+// confianza alta.
+const MAX_CANDIDATOS_NAVEGACION = 45;
+
+// Profundidad de ramas que se despliegan como candidatos para Jev (hijos,
+// nietos, ...). Si en el primer nivel no hay coincidencia fuerte, Jev puede
+// elegir un nodo más profundo del subárbol del nivel actual. Configurable por
+// entorno (JEV_PROFUNDIDAD_NAVEGACION).
+const PROFUNDIDAD_NAVEGACION = (() => {
+    const n = Number(process.env.JEV_PROFUNDIDAD_NAVEGACION);
+    return (Number.isInteger(n) && n >= 1 && n <= 6) ? n : 3;
+})();
 
 class AITranslatorController {
     /**
@@ -43,10 +57,8 @@ class AITranslatorController {
         this.menuController = menuController || null;
         // Circuit breaker en memoria: si OpenAI devuelve 429 (insufficient_quota),
         // dejamos de golpear la API y pasamos a modo menú hasta reiniciar.
+        // OpenAI solo se usa para reformular a lenguaje natural (reformulate).
         this.quotaBlocked = false;
-        // Motor conversacional híbrido (clasificación de intenciones + tool calling).
-        // Se instancia con callbacks que construyen el catálogo y el contexto reales.
-        this.intentRouter = null;
         // Tipo de bot según la config (CARRITO/TURNOS/FAQ). Se actualiza en cada
         // handleMessage; la IA lo usa para saber si existe o no el flujo de carrito.
         this._botType = 'CARRITO';
@@ -55,23 +67,6 @@ class AITranslatorController {
     /**
      * Inicializa (lazy) el router de intenciones con el catálogo/contexto reales.
      */
-    _getIntentRouter(user, ai) {
-        if (this.intentRouter) return this.intentRouter;
-        this.intentRouter = new IntentRouterService({
-            idCliente: this.idCliente,
-            stateService: this.stateService,
-            menuController: this.menuController,
-            orderService: this.orderService,
-            buildCatalogo: (jid) => this._buildCatalogo(jid),
-            buildContexto: (jid) => this._buildContexto(jid),
-            ai,
-            negocio: user.nombreCliente || user.businessName || this.idCliente,
-            sinCarrito: this._botType === 'FAQ',
-            tipoBot: this._botType
-        });
-        return this.intentRouter;
-    }
-
     _delay(ms) {
         return new Promise((resolve) => setTimeout(resolve, ms));
     }
@@ -229,6 +224,33 @@ class AITranslatorController {
     }
 
     /**
+     * ¿El bot NO tiene carrito de compras? FAQ y TURNOS no venden productos ni
+     * arman pedidos: navegan/abren fichas. Se usa para que la clasificación de
+     * Jev y el procesador de intenciones no intenten agregar/quitar/finalizar.
+     */
+    _esSinCarrito() {
+        return this._esFAQ() || this._botType === 'TURNOS';
+    }
+
+    /**
+     * Tipo de bot en curso (CARRITO/TURNOS/FAQ). Se actualiza en cada mensaje.
+     * Lo usa app.js para NO interpretar los triggers devueltos como "agregar al
+     * carrito" en bots sin carrito (FAQ/TURNOS), donde son navegación/ficha/turno.
+     */
+    get botType() {
+        return this._botType || 'CARRITO';
+    }
+
+    /**
+     * Registra la razón por la que el traductor resolvió el mensaje SIN consultar
+     * a Jev, para mostrarla en la línea [Jev][skip] de observabilidad.
+     */
+    _setJevRazon(jid, razon) {
+        if (!this._jevSkipRazon) this._jevSkipRazon = {};
+        this._jevSkipRazon[jid] = razon;
+    }
+
+    /**
      * Lista normalizada de contactos de derivación configurados en el dashboard.
      * Cada contacto: { id, nombre, telefono, areas }. Migra automáticamente el
      * formato legacy (vendedor.nombre/telefono sin lista) a un único contacto
@@ -240,7 +262,7 @@ class AITranslatorController {
         let contactos = Array.isArray(v.contactos) ? v.contactos : [];
         if (contactos.length === 0 && v.telefono && String(v.telefono).trim()) {
             const nombre = (v.nombre && String(v.nombre).trim()) || 'asesor';
-            contactos = [{ id: 'contacto-1', nombre, telefono: String(v.telefono).trim(), areas: '' }];
+            contactos = [{ id: 'contacto-1', nombre, telefono: String(v.telefono).trim(), areas: '', palabrasClave: '' }];
         }
         const lista = contactos
             .filter(c => c && c.telefono && String(c.telefono).trim())
@@ -248,7 +270,8 @@ class AITranslatorController {
                 id: (c && c.id) ? String(c.id) : `contacto-${idx + 1}`,
                 nombre: (c && c.nombre && String(c.nombre).trim()) ? String(c.nombre).trim() : `contacto-${idx + 1}`,
                 telefono: String(c.telefono).trim(),
-                areas: (c && c.areas) ? String(c.areas) : ''
+                areas: (c && c.areas) ? String(c.areas) : '',
+                palabrasClave: (c && c.palabrasClave) ? String(c.palabrasClave) : ''
             }));
         return { msj, contactos: lista };
     }
@@ -276,7 +299,7 @@ class AITranslatorController {
         //    Los frames de transferencia ("pasame", "me pasás", "me comunicás")
         //    EXIGEN "con": "pasame con ventas" es pedir persona, pero "pasame
         //    fotos/precio/ubicación" es pedir información y NO debe derivar.
-        const marco = n.match(/(?:hablar\s+con|pas(?:ame|a|e|as|[aá]s)\s+con|me\s*(?:pas|comunic|contact|deriv)[aáeé]?s?\s+con|atend|atiend[aáeé]?[sz]*|atencion\s+(?:con|de)|contactar\s+con|necesito\s+(?:hablar|que\s+me\s+atienda[nsz]*|un\s+asesor|una\s+asesora)|quiero\s+(?:hablar|que\s+me\s+atienda[nsz]*|un\s+asesor|una\s+asesora))\s*(.*)$/);
+        const marco = n.match(/(?:hablar\s+con|pas(?:ame|a|e|as|[aá]s)\s+con|me\s*(?:pas|comunic|contact|deriv)[aáeé]?s?\s+con|atend|atiend[aáeé]?[sz]*|atencion\s+(?:con|de)|contactar\s+con|necesito\s+(?:hablar|que\s+me\s+atienda[nsz]*|un\s+asesor|una\s+asesora|una\s+visita|agendar\s+visita|coordinar\s+visita|programar\s+visita|solicitar\s+visita|pedir\s+visita|reservar\s+visita)|quiero\s+(?:hablar|que\s+me\s+atienda[nsz]*|un\s+asesor|una\s+asesora|una\s+visita|visitar|agendar\s+visita|coordinar\s+visita|programar\s+visita|solicitar\s+visita|pedir\s+visita|reservar\s+visita)|agendar\s+visita|coordinar\s+visita|programar\s+visita|solicitar\s+visita|pedir\s+visita|reservar\s+visita)\s*(.*)$/);
         let frase = '';
         if (marco) {
             frase = (marco[1] || '');
@@ -301,7 +324,7 @@ class AITranslatorController {
     }
 
     /**
-     * Devuelve la lista de nombres/categorías de los contactos (para mostrar
+     * Devuelve la lista de áreas/palabras clave de los contactos (para mostrar
      * en el mensaje "No tengo esa opción"). Devuelve [] si no hay contactos.
      */
     _listaAreasDisponibles(contactos) {
@@ -313,6 +336,13 @@ class AITranslatorController {
                 .filter(Boolean);
             for (const cat of cats) {
                 areasSet.add(cat);
+            }
+            const keys = String(c.palabrasClave || '')
+                .split(/[,;\n]+/)
+                .map(s => s.trim())
+                .filter(Boolean);
+            for (const key of keys) {
+                areasSet.add(key);
             }
         }
         return Array.from(areasSet);
@@ -330,10 +360,10 @@ class AITranslatorController {
     }
 
     /**
-     * Elige el contacto de derivación cuya CATEGORÍA (area) coincide con el
-     * texto del cliente. Puntúa por cuántas de sus áreas/nombre aparecen en el
-     * texto normalizado: gana el de mayor puntaje (empate -> primero). Devuelve
-     * el contacto elegido o null si ninguno matchea.
+     * Elige el contacto de derivación cuya CATEGORÍA (area) o PALABRAS CLAVE
+     * coinciden con el texto del cliente. Puntúa por cuántas de sus áreas/palabras
+     * clave aparecen en el texto normalizado: gana el de mayor puntaje
+     * (empate -> primero). Devuelve el contacto elegido o null si ninguno matchea.
      */
     _matchearCategoria(texto, contactos) {
         if (!texto || !contactos || contactos.length === 0) return null;
@@ -346,6 +376,8 @@ class AITranslatorController {
             const palabras = [];
             const cats = String(c.areas || '').split(/[,;\n]+/).map(s => s.trim()).filter(Boolean);
             for (const cat of cats) palabras.push(cat);
+            const keys = String(c.palabrasClave || '').split(/[,;\n]+/).map(s => s.trim()).filter(Boolean);
+            for (const key of keys) palabras.push(key);
             for (const p of palabras) {
                 const np = this._normalizarMatch(p);
                 if (!np) continue;
@@ -368,7 +400,10 @@ class AITranslatorController {
      * se responden conversacionalmente: no agregan al carrito ni derivan.
      */
     _esConsulta(intencion) {
-        return intencion === 'CONSULTAR_MENU' || intencion === 'CONSULTAR_HORARIOS' || intencion === 'CHARLA_GENERAL';
+        // CONSULTAR_MENU ya NO es una "consulta conversacional": es la intención
+        // de NAVEGAR a una opción del menú. Solo horarios/charla general se
+        // responden conversando.
+        return intencion === 'CONSULTAR_HORARIOS' || intencion === 'CHARLA_GENERAL';
     }
 
     /**
@@ -387,13 +422,34 @@ class AITranslatorController {
     /**
      * ¿El cliente ACEPTA la oferta de hablar con un asesor
      * ("sí", "dale", "me interesa", "sí, por favor")?
+     * Primero los heurísticos deterministas (rápidos, sin costo); si no son
+     * concluyentes, Jev decide con un noul (probabilidad calibrada de sí), y
+     * solo se acepta si supera el umbral seguro (>= 0.85). Ante cualquier
+     * error de Jev se mantiene el comportamiento tradicional (rechazo).
      */
-    _aceptaOfertaAsesor(text) {
+    async _aceptaOfertaAsesor(text) {
         const t = this._normalizarMatch(text);
         if (!t) return false;
         if (/\b(?:no|nop|nope|mejor\s+no|para\s+nada)\b/.test(t)) return false;
         if (this._esAfirmacion(text)) return true;
-        return /\b(?:me\s+interesa|me\s+gusta|si\s+(?:me|quiero|por\s+favor|dale)|pasame|pasame\s+con\s+(?:el|una)|hablar\s+con\s+(?:el|un|una|la)\s+(?:asesor|asesora|persona))\b/.test(t);
+        if (/\b(?:me\s+interesa|me\s+gusta|si\s+(?:me|quiero|por\s+favor|dale)|pasame|pasame\s+con\s+(?:el|una)|hablar\s+con\s+(?:el|un|una|la)\s+(?:asesor|asesora|persona))\b/.test(t)) return true;
+        // Heurísticos no concluyentes: Jev evalúa (noul) si el cliente acepta.
+        try {
+            const respuesta = await jevService.consultarJev({
+                oferta: 'El asistente del negocio recién preguntó al cliente: "Te interesa que te pase con un asesor?"',
+                respuesta_cliente: text
+            }, {
+                acepta: { type: 'noul', instructions: '¿El cliente ACEPTA hablar ahora con un asesor humano (sí/confirmación clara), en lugar de rechazarlo o desviar la conversación?' }
+            });
+            const noul = jevService.obtenerNoul(respuesta, 'acepta');
+            if (typeof noul !== 'number') return false;
+            const acepta = noul >= jevService.UMBRAL_CONFIANZA;
+            console.log(`[Jev] ${this.idCliente}: oferta asesor -> noul ${noul.toFixed(2)} (${acepta ? 'acepta' : 'rechaza'}) | msg: "${text}"`);
+            return acepta;
+        } catch (err) {
+            console.error(`[Jev] Error _aceptaOfertaAsesor ${this.idCliente}:`, err.message);
+            return false;
+        }
     }
 
     /**
@@ -582,24 +638,229 @@ class AITranslatorController {
     }
 
     /**
-     * Clasifica el mensaje con el router de intenciones (IA). Devuelve la
-     * clasificación o null si es FALLO/error/cuota (quien llama decide el
-     * fallback seguro).
+     * Fast-path de clasificación con Jev (System One).
+     *
+     * Jev evalúa el estado del mensaje y devuelve DOS decisiones tipadas
+     * (choice) en un solo POST rápido y barato:
+     *   1. `intencion`: qué quiere lograr el cliente.
+     *   2. `categoria_seleccionada`: a qué categoría/sección del menú se refiere
+     *      (candidatos extraídos dinámicamente del menú actual + hermanos +
+     *      menú principal + default MENU_PRINCIPAL).
+     *
+     * Si la confianza supera el umbral seguro (JEV_UMBRAL, default 0.85) se
+     * usa el destino de Jev (incluso en otro nivel) y se navega directo a la
+     * sección elegida; si la consulta es amplia/general (MENU_PRINCIPAL), si la
+     * confianza es baja o si el ítem no se resuelve contra el catálogo real,
+     * devolvemos null y quien llama muestra el menú determinista con opciones
+     * numeradas. OpenAI NO participa en la clasificación.
+     *
+     * @returns {Promise<Object|null>} { intencion, items, respuesta_conversacional }
+     *   o null para hacer fallback al menú.
+     */
+    async _clasificarConJev(jid, text, onTokens) {
+        if (this._jevConsultadoPorJid) this._jevConsultadoPorJid[jid] = true;
+        try {
+            const nodeId = this.stateService.getUserState(jid) || 'root';
+            const options = await this._opcionesNivel(jid, nodeId).catch(() => []);
+
+            const esFAQ = this._esFAQ();
+            // Bots sin carrito (FAQ y TURNOS) solo NAVEGAN entre las opciones
+            // del menú: la única pregunta de Jev es a qué nodo ir.
+            const soloNavega = esFAQ || this._botType === 'TURNOS';
+            const intencionesPermitidas = soloNavega
+                ? ['CONSULTAR_MENU']
+                : ['AGREGAR_AL_CARRITO', 'QUITAR_DEL_CARRITO', 'CONSULTAR_MENU',
+                   'CONSULTAR_HORARIOS', 'VER_CARRITO', 'FINALIZAR_PEDIDO',
+                   'CHARLA_GENERAL'];
+
+            const DESCRIPCIONES = {
+                AGREGAR_AL_CARRITO: 'el cliente pide comprar, agregar, pedir o encargar un producto del nivel actual',
+                QUITAR_DEL_CARRITO: 'el cliente pide quitar, sacar o borrar algo de su pedido actual',
+                CONSULTAR_MENU: 'el cliente quiere ver el menú, entrar a una sección, ver una ficha/propiedad, o consultar las opciones disponibles',
+                CONSULTAR_HORARIOS: 'el cliente pregunta por horarios de atención, días que abren o cierran, o turnos disponibles',
+                VER_CARRITO: 'el cliente quiere ver su pedido actual / lo que ya agregó',
+                FINALIZAR_PEDIDO: 'el cliente quiere pagar, finalizar, confirmar o cerrar su pedido',
+                CHARLA_GENERAL: 'el cliente saluda, agradece o conversa en general sin pedir algo del menú'
+            };
+            const criteria = {};
+            for (const i of intencionesPermitidas) {
+                criteria[i] = DESCRIPCIONES[i] || null;
+            }
+
+            const nodoActual = await this._getNodeById(nodeId).catch(() => null);
+            const modo = this._esFAQ()
+                ? 'BOT DE CONSULTAS (FAQ): no vende ni tiene carrito; solo informa fichas del catálogo y navega el menú.'
+                : (this._botType === 'TURNOS'
+                    ? 'BOT DE TURNOS: gestiona reservas de turnos; no tiene carrito de compras.'
+                    : 'BOT DE VENTAS: vende productos del menú y tiene carrito.');
+            const nivel = nodoActual && nodoActual.title
+                ? `PANTALLA ACTUAL: "${nodoActual.title}"`
+                : 'PANTALLA ACTUAL: menú raíz';
+
+            // Candidatos de navegación: nivel actual + menú principal + hermanos.
+            const candidatos = await this._candidatosNavegacion(jid, nodeId, options);
+            const padreHermanos = (nodoActual && nodoActual.parentId && nodoActual.parentId !== 'root')
+                ? ((await this._getNodeById(nodoActual.parentId).catch(() => null)) || {}).title || ''
+                : '';
+            const listaCandidatos = candidatos.length
+                ? 'OPCIONES DE NAVEGACIÓN (clave→título):\n' + candidatos.map((c) => `  ${c.key}→${this._describirCandidato(c, padreHermanos)}`).join('\n')
+                : 'OPCIONES DE NAVEGACIÓN: (ninguna)';
+            const order = this.stateService.getUserOrder(jid) || [];
+            const pedidoTxt = order.length
+                ? 'PEDIDO EN CURSO: ' + order.map(it => `${it.quantity}x${it.text}`).join(', ')
+                : 'PEDIDO EN CURSO: (vacío)';
+
+            const state = [
+                `PEDIDO DEL CLIENTE: "${text}"`,
+                modo,
+                nivel,
+                listaCandidatos,
+                pedidoTxt
+            ].join('\n');
+
+            const nodoCriteria = {};
+            for (const c of candidatos) {
+                nodoCriteria[c.key] = this._describirCandidato(c, padreHermanos);
+            }
+            // Categoría por defecto: cuando la consulta NO apunta a ninguna
+            // categoría/sección concreta (consulta amplia/general), Jev elige
+            // MENU_PRINCIPAL con alta confianza y el bot responde el menú general.
+            nodoCriteria.MENU_PRINCIPAL = 'La consulta es amplia o general y no apunta a ninguna categoría/sección concreta del menú';
+
+            console.log(`[Jev][ctx] ${this.idCliente}: estado enviado a Jev =>\n${state}\n[Jev][ctx] intención: ${soloNavega ? '(no aplica: el bot solo navega entre opciones del menú)' : Object.keys(criteria).join(' | ')}\n[Jev][ctx] criterios navegación (${Object.keys(nodoCriteria).length}): ${Object.keys(nodoCriteria).join(' | ')}`)
+
+            const preguntasJev = {
+                categoria_seleccionada: {
+                    type: 'choice',
+                    instructions: 'Determiná a cuál de las categorías/secciones/fichas del menú (claves de OPCIONES DE NAVEGACIÓN) se refiere el usuario basándote en SU CONSULTA. Incluso las consultas amplias o de búsqueda (ej. "qué opciones tenés para X?", "tenés algo de Y?") apuntan a UNA opción concreta si una encaja por tema; elegí EXACTAMENTE la clave de esa opción (puede ser de otro nivel o de una rama profunda: el bot navega allí). Si NINGUNA opción trata el tema pedido, NO fuerces una: elegí MENU_PRINCIPAL. Si el cliente pide ver, consultar o preguntar por SUS turnos o reservas YA hechos (ej. "mis turnos", "cuáles son mis turnos", "qué turnos tengo", "ver mis reservas"), elegí SIEMPRE la opción titulada "Mis turnos" (NO "Reservar turno" ni "Horarios").',
+                    criteria: nodoCriteria
+                }
+            };
+            // Los bots sin carrito (FAQ y TURNOS) solo NAVEGAN entre las opciones del
+            // menú: no hay pregunta de intención (horarios/charla general quedan
+            // fuera); la navegación la resuelve la categoría. El bot de ventas
+            // sí clasifica la intención (comprar, quitar, pagar...).
+            if (!soloNavega) {
+                preguntasJev.intencion = {
+                    type: 'choice',
+                    instructions: '¿Cuál es la intención principal del mensaje del cliente? Elegí UNA. Si el pedido no encaja en ninguna opción del nivel actual sino en otra sección del menú, usá la intención que mejor describa lo que el cliente quiere lograr (ajustar por contexto).',
+                    criteria
+                };
+            }
+
+            const respuesta = await jevService.consultarJev(state, preguntasJev);
+
+            const usage = jevService.tokensUsados(respuesta);
+            if (usage > 0 && typeof onTokens === 'function') {
+                onTokens(usage);
+            }
+
+            const _ic = jevService.obtenerChoice(respuesta, 'intencion');
+            const _cc = jevService.obtenerChoice(respuesta, 'categoria_seleccionada');
+            console.log(`[Jev][resp] ${this.idCliente}: intención=${_ic ? `${_ic.choice} (${Number(_ic.confidence || 0).toFixed(2)})` : '—'} | categoría=${_cc ? `${_cc.choice} (${Number(_cc.confidence || 0).toFixed(2)})` : '—'}`)
+            console.log(`[Jev][resp] probabilidades intención: ${_ic && _ic.probabilities ? JSON.stringify(_ic.probabilities) : '—'}`)
+            console.log(`[Jev][resp] probabilidades categoría: ${_cc && _cc.probabilities ? JSON.stringify(_cc.probabilities) : '—'}`)
+
+            const choice = jevService.obtenerChoice(respuesta, 'intencion');
+            let intencion;
+            let confianzaIntencion;
+            if (soloNavega) {
+                // Sin carrito (FAQ/TURNOS): la única decisión es a qué opción del
+                // menú navegar. No hay pregunta de intención; la navegación la
+                // resuelve la categoría.
+                intencion = 'CONSULTAR_MENU';
+                confianzaIntencion = 1;
+            } else {
+                if (!choice || typeof choice.confidence !== 'number') {
+                    console.log(`[Jev] ${this.idCliente}: sin intención resuelta (sin respuesta) -> menú | msg: "${text}"`);
+                    return null;
+                }
+                intencion = choice.choice;
+                if (!intencionesPermitidas.includes(intencion)) return null;
+
+                // Para NAVEGAR el menú exigimos el umbral laxo
+                // (UMBRAL_NAVEGACION): el cliente quiere que el bot siempre entre
+                // y baje a la rama que mejor encaja. Para ACCIONES
+                // (agregar/quitar/pagar) mantenemos el umbral estricto.
+                const umbralIntencion = (intencion === 'CONSULTAR_MENU')
+                    ? jevService.UMBRAL_NAVEGACION
+                    : jevService.UMBRAL_CONFIANZA;
+                if (choice.confidence < umbralIntencion) {
+                    console.log(`[Jev] ${this.idCliente}: confianza intención ${choice.confidence.toFixed(2)} < ${umbralIntencion} -> menú | msg: "${text}"`);
+                    return null;
+                }
+                confianzaIntencion = choice.confidence;
+            }
+
+            // Resolución del ítem/destino: Jev decide a qué categoría/sección ir
+            // (segunda decisión `categoria_seleccionada`, en el MISMO POST). Si
+            // la CONFIANZA DE NAVEGACIÓN (laxa) se alcanza y la clave es un
+            // candidato real, ese es el ítem destino (puede estar en otro nivel:
+            // 'raiz'/'hermano'): el bot entra y baja a esa rama. Si elige
+            // MENU_PRINCIPAL (consulta amplia/general), el menú general responde.
+            // Si no alcanza ni el umbral laxo, cae al match determinista.
+            const items = [];
+            if (intencion === 'CONSULTAR_MENU' || intencion === 'AGREGAR_AL_CARRITO' || intencion === 'QUITAR_DEL_CARRITO') {
+                const catChoice = jevService.obtenerChoice(respuesta, 'categoria_seleccionada');
+                const umbralCategoria = (intencion === 'CONSULTAR_MENU')
+                    ? jevService.UMBRAL_NAVEGACION
+                    : jevService.UMBRAL_CONFIANZA;
+                const catConfiable = catChoice && typeof catChoice.confidence === 'number' &&
+                    catChoice.confidence >= umbralCategoria && catChoice.choice &&
+                    nodoCriteria[catChoice.choice];
+                if (catConfiable && catChoice.choice === 'MENU_PRINCIPAL') {
+                    console.log(`[Jev] ${this.idCliente}: destino MENU_PRINCIPAL (confianza ${catChoice.confidence.toFixed(2)}) -> menú general | msg: "${text}"`);
+                    return null;
+                }
+                if (catConfiable) {
+                    const cand = candidatos.find((c) => c.key === catChoice.choice);
+                    if (cand) {
+                        const cantidad = (intencion === 'CONSULTAR_MENU') ? 1 : this._detectarCantidad(text);
+                        items.push({ trigger: cand.trigger, scope: cand.scope, nodeId: cand.nodeId || '', cantidad });
+                        console.log(`[Jev] ${this.idCliente}: destino "${cand.key}" (confianza categoría ${catChoice.confidence.toFixed(2)}) | msg: "${text}"`);
+                    }
+                }
+                if (!items.length) {
+                    const match = this._matchOption(text, options);
+                    if (match) {
+                        const cantidad = (intencion === 'CONSULTAR_MENU') ? 1 : this._detectarCantidad(text);
+                        items.push({ trigger: match, scope: 'actual', cantidad });
+                    } else if (intencion === 'AGREGAR_AL_CARRITO' || intencion === 'QUITAR_DEL_CARRITO') {
+                        // Compra/quito SIN producto concreto identifiable: no resuelto.
+                        console.log(`[Jev] ${this.idCliente}: intención ${intencion} sin ítem determinista -> menú | msg: "${text}"`);
+                        return null;
+                    }
+                    // CONSULTAR_MENU sin match: items vacíos => el menú re-muestra opciones.
+                }
+            }
+
+            console.log(`[Jev] ${this.idCliente}: intención "${intencion}" (confianza ${Number(confianzaIntencion).toFixed(2)}${items.length ? ', items: ' + items.map(i => `${i.cantidad}x${i.scope}:${i.trigger}`).join('+') : ''}) -> acción determinista | msg: "${text}"`);
+            return { intencion, items, respuesta_conversacional: '' };
+        } catch (err) {
+            console.error(`[Jev] Error en _clasificarConJev ${this.idCliente}:`, err.message);
+            return null;
+        }
+    }
+
+    /**
+     * Clasifica el mensaje con Jev (System One). Devuelve la clasificación
+     * resuelta por confianza o null si Jev no tiene certeza / no está
+     * disponible (sin TYPESAFE_API_KEY, timeout, error). Cuando devuelve null,
+     * quien llama deriva SIEMPRE al menú determinista (opciones numeradas):
+     * OpenAI ya no participa en la clasificación, solo reformula a lenguaje
+     * natural la salida del menú (ver reformulate()).
      */
     async _clasificarConLaIA(user, ai, jid, text) {
         if (this.quotaBlocked) return null;
         try {
-            const router = this._getIntentRouter(user, ai);
-            const clasificacion = await router.clasificar(jid, text, (t) => {
+            return await this._clasificarConJev(jid, text, (t) => {
                 aiUsageService.addTokens(this.idCliente, t || 0);
             });
-            if (!clasificacion || clasificacion.intencion === 'FALLO') return null;
-            return clasificacion;
         } catch (err) {
-            console.error(`[AI] Error en router de intenciones ${this.idCliente}:`, err.message);
+            console.error(`[Jev] Error en clasificación ${this.idCliente}:`, err.message);
             if (err && err.isQuotaExceeded) {
                 this.quotaBlocked = true;
-                console.warn(`[AI] Bot ${this.idCliente}: router bloqueado por cuota (menú directo)`);
+                console.warn(`[Jev] Bot ${this.idCliente}: bloqueado por cuota (menú directo)`);
             }
             return null;
         }
@@ -870,9 +1131,179 @@ class AITranslatorController {
             } catch (err) {
                 esSeccion = false;
             }
-            res.push({ trigger: c.trigger, title: c.title, price: c.price, seccion: esSeccion });
+            res.push({ trigger: c.trigger, title: c.title, price: c.price, seccion: esSeccion, funcion: c.funcion || '' });
+        }
+        // "Mis turnos" NO es un nodo de la tabla: el menú lo agrega de forma
+        // dinámica para bots de TURNOS con la opción habilitada (input 'm').
+        // Lo exponemos a Jev como opción del nivel raíz para que "ver mis turnos"
+        // navegue a él en vez de caer en "Reservar turno".
+        const cc = this._calendarConfig || {};
+        if (this._botType === 'TURNOS' && nodeId === 'root' &&
+            cc.mis_turnos_enabled !== false &&
+            !res.some(o => String(o.trigger).toLowerCase() === 'm')) {
+            res.push({ trigger: 'm', title: 'Mis turnos', price: '', seccion: false, funcion: 'Ver los turnos/reservas ya reservados por el cliente' });
         }
         return res;
+    }
+
+    /**
+     * Filtro de nodos "navegables" para presentárselos a Jev (mismas reglas
+     * que _opcionesNivel: sin pasos de finalización ocultos, sin no-disponibles).
+     */
+    _filtrarNavegables(nodes, hasPagar, jid) {
+        const order = this.stateService.getUserOrder(jid) || [];
+        const res = [];
+        for (const c of nodes || []) {
+            if (c.message && c.message.includes('##FINALIZAR##')) {
+                if (hasPagar) continue;
+                if (order.length === 0) continue;
+            }
+            if (c.disponible === 'false') continue;
+            res.push(c);
+        }
+        return res;
+    }
+
+    /**
+     * Arma los candidatos de navegación que Jev puede elegir como destino:
+     * opciones del nivel actual (scope 'actual') + secciones del menú principal
+     * (scope 'raiz') + secciones hermanas de la sección donde está el cliente
+     * (scope 'hermano'). Cada candidato lleva un key único {scope}:{trigger}
+     * para que Jev pueda referenciar sin ambigüedad incluso si dos niveles
+     * comparten el mismo trigger.
+     */
+    async _candidatosNavegacion(jid, nodeId, optionsActual) {
+        const nodoActual = await this._getNodeById(nodeId).catch(() => null);
+        const candidatos = [];
+        const vistos = new Set();
+
+        const agregar = (scope, trigger, title, price, seccion, funcion, ruta, nodeIdCand) => {
+            const t = trigger == null ? '' : String(trigger).trim();
+            if (!t) return;
+            const key = (scope === 'nodo' && nodeIdCand) ? `nodo:${nodeIdCand}` : `${scope}:${t}`;
+            if (vistos.has(key)) return;
+            vistos.add(key);
+            candidatos.push({
+                key, scope, trigger: t, title: title || '', price: price || '',
+                seccion: !!seccion, funcion: funcion || '', ruta: ruta || '', nodeId: nodeIdCand || ''
+            });
+        };
+
+        // Nivel actual (lo que el cliente ve en pantalla).
+        for (const o of optionsActual || []) {
+            agregar('actual', o.trigger, o.title, o.price, o.seccion, o.funcion, '', '');
+        }
+
+        // "Mis turnos" (bots de TURNOS): no es un nodo de la tabla, el menú lo
+        // resuelve con el input 'm'. Se lo exponemos a Jev como candidato en
+        // TODOS los niveles (no solo root) para que frases como "cuáles son mis
+        // turnos" naveguen a él en vez de confundirse con "Reservar turno". En
+        // root ya entra como 'actual:m' vía _opcionesNivel; el guard evita el
+        // duplicado.
+        const ccTurnos = this._calendarConfig || {};
+        if (this._botType === 'TURNOS' && ccTurnos.mis_turnos_enabled !== false &&
+            !candidatos.some((c) => String(c.trigger).toLowerCase() === 'm')) {
+            agregar('especial', 'm', 'Mis turnos', '', false,
+                'Ver los turnos/reservas ya reservados por el cliente', '', '');
+        }
+
+        // Ramas profundas: BFS del subárbol del nodo actual hasta
+        // PROFUNDIDAD_NAVEGACION. El nivel 1 ya quedó como 'actual'; desde el
+        // nivel 2 cada nodo se agrega con scope 'nodo' y su id, para que Jev
+        // pueda elegir una coincidencia que no está en el primer nivel (hijos,
+        // nietos, ...) y el bot navegue directo a ese nodo. Aplica a los bots
+        // sin carrito (FAQ y TURNOS): navegan entre las ramas del menú. En el
+        // bot de ventas (CARRITO) un ítem profundo debe agregarse al carrito,
+        // no navegarse al abrir la categoría, así que se deja fuera.
+        if (this._esFAQ() || this._botType === 'TURNOS') {
+            let pendientes = (await this._getChildren(nodeId).catch(() => [])).map((n) => ({ node: n, ruta: [] }));
+            for (let d = 2; d <= PROFUNDIDAD_NAVEGACION && candidatos.length < MAX_CANDIDATOS_NAVEGACION; d++) {
+                const siguientes = [];
+                for (const { node: padre, ruta } of pendientes) {
+                    const tienePagar = !!(padre.message && padre.message.includes('##PAGAR##'));
+                    const hijos = this._filtrarNavegables(await this._getChildren(padre.id).catch(() => []), tienePagar, jid);
+                    for (const h of hijos) {
+                        const rutaHijo = [...ruta, padre.title].filter(Boolean);
+                        const hijosH = await this._getChildren(h.id).catch(() => []);
+                        // Los pasos de checkout solo se listan si tienen sub-ramas.
+                        if (this._esPasoCheckout(h) && hijosH.length === 0) continue;
+                        const esSeccion = hijosH.some((x) => !this._esPasoCheckout(x));
+                        agregar('nodo', h.trigger, h.title, h.price, esSeccion, h.funcion, rutaHijo, h.id);
+                        siguientes.push({ node: h, ruta: rutaHijo });
+                        if (candidatos.length >= MAX_CANDIDATOS_NAVEGACION) break;
+                    }
+                    if (candidatos.length >= MAX_CANDIDATOS_NAVEGACION) break;
+                }
+                pendientes = siguientes;
+                if (!pendientes.length) break;
+            }
+        }
+
+        // Menú principal: secciones raíz navegables. SOLO cuando estamos en un
+        // nivel distinto a root (si está parado en root, actual ya las lista y
+        // duplicarlas dividiría la probabilidad de Jev en dos claves iguales).
+        const rootNode = await this._getNodeById('root').catch(() => ({ message: '' }));
+        const raiz = await this._getChildren('root').catch(() => []);
+        const rootTienePagar = rootNode && rootNode.message && rootNode.message.includes('##PAGAR##');
+        if (String(nodeId) !== 'root') {
+            const raizFiltrada = this._filtrarNavegables(raiz, rootTienePagar, jid);
+            for (const c of raizFiltrada) {
+                agregar('raiz', c.trigger, c.title, c.price, true, c.funcion || '', '', '');
+            }
+        }
+
+        // Hermanos: si el cliente está dentro de una sección, sus secciones vecinas.
+        if (nodoActual && nodoActual.parentId && nodoActual.parentId !== 'root') {
+            const padre = await this._getNodeById(nodoActual.parentId).catch(() => null);
+            const tienePagar = padre && padre.message && padre.message.includes('##PAGAR##');
+            const hermanos = await this._getChildren(nodoActual.parentId).catch(() => []);
+            for (const c of this._filtrarNavegables(hermanos, tienePagar, jid)) {
+                agregar('hermano', c.trigger, c.title, c.price, true, c.funcion || '', '', '');
+            }
+        }
+
+        return candidatos.slice(0, MAX_CANDIDATOS_NAVEGACION);
+    }
+
+    /**
+     * Descripción humana de cada candidato para el criteria `categoria_seleccionada`
+     * de Jev: título (+ precio si tiene), la función declarada (si existe), la
+     * ruta dentro del menú (para los nodos de ramas profundas) y el indicador
+     * del nivel al que pertenece.
+     */
+    _describirCandidato(cand, nombrePadre) {
+        const precio = cand.price ? ` ($${cand.price})` : '';
+        const funcion = cand.funcion ? ` — ${cand.funcion}` : '';
+        let nivel = '';
+        if (cand.scope === 'raiz') nivel = ' [menú principal]';
+        if (cand.scope === 'hermano') nivel = nombrePadre ? ` [sección ${nombrePadre}]` : ' [sección vecina]';
+        const ruta = (cand.ruta && cand.ruta.length) ? `${cand.ruta.join(' › ')} › ` : '';
+        return `${ruta}${cand.title || cand.trigger}${precio}${funcion}${nivel}`.trim();
+    }
+
+    /**
+     * Resuelve el NODO completo de un candidato de navegación (scope + trigger,
+     * o su id para los nodos de ramas profundas) para poder saltar a otro nivel
+     * con processNode. Devuelve el nodo o null.
+     */
+    async _resolverNodoPorCandidato(jid, scope, trigger, nodeIdCand) {
+        if (nodeIdCand) {
+            const n = await this._getNodeById(String(nodeIdCand)).catch(() => null);
+            if (n) return n;
+        }
+        const nodeId = this.stateService.getUserState(jid) || 'root';
+        const t = String(trigger || '').trim().toLowerCase();
+        let pool = [];
+        if (scope === 'raiz') {
+            pool = await this._getChildren('root').catch(() => []);
+        } else if (scope === 'hermano') {
+            const nodoActual = await this._getNodeById(nodeId).catch(() => null);
+            const parentId = nodoActual && nodoActual.parentId ? nodoActual.parentId : 'root';
+            pool = await this._getChildren(parentId).catch(() => []);
+        } else {
+            pool = await this._getChildren(nodeId).catch(() => []);
+        }
+        return pool.find((n) => String(n.trigger || '').trim().toLowerCase() === t) || null;
     }
 
     /**
@@ -920,20 +1351,37 @@ class AITranslatorController {
      * debe interpretar: el menú procesa el input directo.
      * Devuelve 'datos' | 'archivo' | 'cantidad' | 'turno' | null.
      */
-    _detectSpecialFlow(jid) {
+    _detectSpecialFlow(jid, text) {
         if (this.stateService.getWaitingForData(jid)) return 'datos';
         if (this.stateService.getWaitingForFile(jid)) return 'archivo';
         if (this.stateService.getPendingQuantityItem(jid)) return 'cantidad';
+        // "Mis turnos" y la confirmación del turno seleccionado son estados de
+        // "teclado": SOLO bloquean el flujo si el cliente responde una selección
+        // (número, confirmar/cancelar o salir/volver). Si pregunta otra cosa, lo
+        // dejamos pasar para que la IA pueda responderle sin quedar atrapado en
+        // la lista o en el detalle del turno.
+        if (this.stateService.getMisTurnos(jid) && this._esSeleccionListaTurnos(text)) return 'turno';
+        if (this.stateService.getMisTurnoSeleccionado(jid) && this._esAccionTurnoSeleccionado(text)) return 'turno';
         if (this.stateService.getWaitingTurnoDate(jid) ||
             this.stateService.getWaitingTurnoSlot(jid) ||
             this.stateService.getWaitingTurnoConfirm(jid) ||
             this.stateService.getWaitingTurnoReminder(jid) ||
             this.stateService.getWaitingTurnoCascada(jid) ||
             this.stateService.getWaitingTurnoWaitlistName(jid) ||
-            this.stateService.getMisTurnos(jid) ||
-            this.stateService.getMisTurnoSeleccionado(jid) ||
             this.stateService.getWaitingTurnoReprogram(jid)) return 'turno';
         return null;
+    }
+
+    /** ¿El texto es una selección válida dentro de la lista de "mis turnos"? */
+    _esSeleccionListaTurnos(text) {
+        const t = String(text || '').trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+        return /^\d+$/.test(t) || /^(0|v|salir|volver|volver atras|atras|regresar|inicio|menu|menu principal)$/.test(t);
+    }
+
+    /** ¿El texto es una acción válida sobre el turno seleccionado (1/2/0)? */
+    _esAccionTurnoSeleccionado(text) {
+        const t = String(text || '').trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+        return /^\d+$/.test(t) || /^(0|v|salir|volver|volver atras|atras|regresar|inicio|menu|menu principal|si|s|no|n|ok|dale|confirmar|confirmo|aceptar|acepto|cancelar|cancelo|anular|pasar|pasarlo|siguiente|listo|dejarlo|dejar)$/.test(t);
     }
 
     /**
@@ -1029,7 +1477,29 @@ class AITranslatorController {
 
         const sesionV = this.stateService.getChatSession(jid) || { history: [], nodeId: 'root' };
         this.stateService.setChatSession(jid, { ...sesionV, derivado: true });
+
+        // El bot queda en silencio tras derivar: deja la conversación en manos
+        // del asesor. En producción hasta el final del día (no responde más ese
+        // día); en local, unos minutos (para poder seguir probando).
+        const ttlSilencio = this._ttlSilencioAsesor();
+        this.stateService.setSilencioAsesor(jid, ttlSilencio);
+        console.log(`[AI] Bot ${this.idCliente}: derivado a asesor -> bot en silencio ${ttlSilencio}s`);
         return true;
+    }
+
+    /**
+     * Duración (segundos) del silencio del bot tras derivar a un asesor humano.
+     * Producción: hasta la próxima medianoche (no vuelve a responder ese día).
+     * Local/dev: 5 minutos.
+     */
+    _ttlSilencioAsesor() {
+        if (process.env.NODE_ENV === 'production') {
+            const ahora = new Date();
+            const manana = new Date(ahora);
+            manana.setHours(24, 0, 0, 0); // próxima medianoche (hora local)
+            return Math.max(60, Math.floor((manana.getTime() - ahora.getTime()) / 1000));
+        }
+        return 5 * 60;
     }
 
     /**
@@ -1045,6 +1515,7 @@ class AITranslatorController {
             this.stateService.clearUserIntent(jid);
             this.stateService.clearTranslationFails(jid);
             this.stateService.clearPedidoFinalizado(jid);
+            this.stateService.clearSilencioAsesor(jid);
             this.stateService.clearWaitingForData(jid);
             this.stateService.clearWaitingForFile(jid);
             this.stateService.clearPendingQuantityItem(jid);
@@ -1362,6 +1833,15 @@ class AITranslatorController {
     }
 
     /**
+     * Detecta los mensajes de "teclado" de los flujos de turno: piden una
+     * respuesta literal (número o palabra clave) y NO deben reformularse.
+     */
+    _esPromptTeclado(rawText) {
+        const t = String(rawText || '');
+        return /Escribí el número|Respondé \*1\*|¿Qué querés hacer\?|Aceptar \/ confirmar|Cancelar turno|¿Confirmás la reserva\?|¿Querés confirmar tu asistencia\?|¿Lo querés para vos\?|reprogramar|Recordatorio de tu turno|Confirmar asistencia|Tus turnos:|Horarios disponibles/i.test(t);
+    }
+
+    /**
      * (PÚBLICO) Reformula un mensaje de SALIDA del menú hacia el cliente:
      * si parece un menú con opciones numeradas, lo reescribe en tono amable
      * y SIN los números/triggers. Si no parece un menú, devuelve el texto tal cual.
@@ -1369,6 +1849,14 @@ class AITranslatorController {
      */
     async reformulate(rawText, jid) {
         if (!rawText || typeof rawText !== 'string') return rawText;
+
+        // Los prompts de "teclado" de los flujos de turno (confirmar/cancelar,
+        // elegir horario, mis turnos, lista de espera, recordatorio) esperan que
+        // el cliente responda un NÚMERO y el menú lo interpreta literal. Si los
+        // reescribimos "amablemente" pierden los números y el cliente queda sin
+        // saber qué responder (pedía "respondé 1" cuando nunca mostró el 1).
+        if (this._esPromptTeclado(rawText)) return rawText;
+
         const tieneNodos = /[\s\S]*\*[^\*]+\*[\.\)]?\s/.test(rawText) &&
             /(?:^|\n)\*[a-z0-9]+\*\.\s+\S+/i.test(rawText);
         if (!tieneNodos) return rawText;
@@ -1401,6 +1889,7 @@ class AITranslatorController {
             // determinística (lista por nombre/precio) para que el cliente SIEMPRE
             // las vea y el bot no parezca vacío.
             if (content && this._opcionesPresentes(content, opcionesMenu)) {
+                console.log(`[OpenAI] ${this.idCliente}: reformuló menú a lenguaje natural (${opcionesMenu.length} opciones)`);
                 return opcionesMenu.length > 0 ? this._recortarSaludoInventado(content) : content;
             }
             if (opcionesMenu.length > 0) {
@@ -1464,20 +1953,62 @@ class AITranslatorController {
      *   - { derivado: true }: el traductor ya derivó a un humano (y escribió respuesta)
      */
     async handleMessage(sock, jid, text, opts) {
-        if (!text || typeof text !== 'string') return false;
+        // Observabilidad: registra si Jev fue consultado en esta resolución. Si
+        // un fast-path determinista resuelve el mensaje antes de llegar a Jev,
+        // se emite una línea [Jev][skip] con el resultado (el motivo concreto es
+        // la línea [AI] inmediatamente anterior en el log).
+        if (!this._jevConsultadoPorJid) this._jevConsultadoPorJid = {};
+        if (!this._jevSkipMuted) this._jevSkipMuted = {};
+        if (!this._jevSkipRazon) this._jevSkipRazon = {};
+        this._jevConsultadoPorJid[jid] = false;
+        let resultado;
+        try {
+            resultado = await this._handleMessageInner(sock, jid, text, opts);
+        } finally {
+            // Los mensajes de un flujo especial en curso (ej. agenda de turnos:
+            // fecha/horario/confirmación) pasan al menú por diseño y NO deben
+            // ensuciar el log con [Jev][skip].
+            const mute = !!this._jevSkipMuted[jid];
+            if (this._jevConsultadoPorJid[jid] === false && !mute) {
+                const resumen = resultado === false
+                    ? 'menú/flujo normal'
+                    : (resultado && typeof resultado === 'object'
+                        ? JSON.stringify(resultado)
+                        : `trigger "${resultado}"`);
+                const razon = this._jevSkipRazon[jid] ? ` | razón: ${this._jevSkipRazon[jid]}` : '';
+                console.log(`[Jev][skip] ${this.idCliente}: no consultado -> resuelto por fast-path determinista (${resumen})${razon}`);
+            }
+            delete this._jevConsultadoPorJid[jid];
+            delete this._jevSkipMuted[jid];
+            delete this._jevSkipRazon[jid];
+        }
+        return resultado;
+    }
+
+    async _handleMessageInner(sock, jid, text, opts) {
+        if (!text || typeof text !== 'string') { this._setJevRazon(jid, 'texto inválido'); return false; }
         const pushName = (opts && opts.pushName) ? String(opts.pushName) : '';
+
+        // Silencio por derivación a un asesor humano: el bot no interviene.
+        if (this.stateService.getSilencioAsesor(jid)) {
+            console.log(`[AI] Bot ${this.idCliente}: silencio por derivación a asesor, no interviene`);
+            this._setJevRazon(jid, 'silencio por derivación a asesor');
+            return false;
+        }
 
         // Gates premium + toggle + cuota + límite (igual que el agente anterior)
         const user = await userService.getUserByIdCliente(this.idCliente).catch(() => null);
-        if (!user || user.plan !== 'premium') return false;
+        if (!user || user.plan !== 'premium') { this._setJevRazon(jid, 'cuenta no premium'); return false; }
         const cfg = await botConfigService.getBotConfig(this.idCliente);
         this._botType = cfg.bot_type || 'CARRITO';
+        this._menuConfig = cfg.menu_config || {};
+        this._calendarConfig = cfg.calendar_config || {};
         const ai = cfg.ai_config || {};
         const celularVendedor = this._telefonoVendedor(ai);
-        if (!ai.enabled) return false;
-        if (this.quotaBlocked) return false;
+        if (!ai.enabled) { this._setJevRazon(jid, 'asistente IA desactivado'); return false; }
+        if (this.quotaBlocked) { this._setJevRazon(jid, 'cuota bloqueada'); return false; }
         const used = await aiUsageService.getTokensUsed(this.idCliente, ai.activadoEn);
-        if (used >= aiUsageService.LIMIT_TOKENS) return false;
+        if (used >= aiUsageService.LIMIT_TOKENS) { this._setJevRazon(jid, 'límite de tokens alcanzado'); return false; }
 
         // (Solo desarrollo/pruebas) Al decir "hola" se borra la sesión anterior
         // para poder probar el bot desde cero. Activación: RESET_SESION_AL_SALUDAR=1
@@ -1494,26 +2025,37 @@ class AITranslatorController {
         // Silencio post-pedido: no interfieramos en la conversación dueño/cliente
         if (this.stateService.getPedidoFinalizado(jid)) {
             console.log(`[AI] Bot ${this.idCliente}: silencio post-pedido activo, no interviene`);
+            this._setJevRazon(jid, 'silencio post-pedido');
             return false;
         }
         if (session.derivado) {
             console.log(`[AI] Bot ${this.idCliente}: cliente derivado a vendedor, modo menú`);
+            this._setJevRazon(jid, 'cliente derivado a vendedor (modo menú)');
             return false;
         }
 
         // Flujo especial: el menú ya está esperando un dato/cantidad/archivo/turno.
         // El traductor NO interpreta; el menú procesa el input tal cual.
-        const special = this._detectSpecialFlow(jid);
+        const special = this._detectSpecialFlow(jid, text);
         if (special) {
+            // En el flujo de turnos (fecha/horario/confirmación) este pasaje al
+            // menú es lo esperado: no se emite [Jev][skip].
+            if (special === 'turno' && this._jevSkipMuted) this._jevSkipMuted[jid] = true;
             console.log(`[AI] Bot ${this.idCliente}: flujo especial (${special}), pasa directo al menú`);
+            this._setJevRazon(jid, `flujo especial (${special})`);
             return false;
         }
+        // Estando en "mis turnos" (lista o confirmación) el cliente pidió OTRA
+        // cosa: salimos de ese contexto para que la IA/menú puedan responderle
+        // sin quedar atrapado.
+        if (this.stateService.getMisTurnos(jid)) this.stateService.clearMisTurnos(jid);
+        if (this.stateService.getMisTurnoSeleccionado(jid)) this.stateService.clearMisTurnoSeleccionado(jid);
 
         // Oferta de asesor pendiente ("Te interesa que te pase con un asesor?"):
         // si el cliente confirma, se deriva y asigna al vendedor/asesor; si
         // rechaza o responde otra cosa, se descarta y continúa el flujo normal.
         if (session && session.ofreciendoAsesor && session.ofreciendoAsesor.trigger) {
-            if (this._aceptaOfertaAsesor(text)) {
+            if (await this._aceptaOfertaAsesor(text)) {
                 const oferta = session.ofreciendoAsesor;
                 this.stateService.setChatSession(jid, { ...session, ofreciendoAsesor: null });
                 this._setInteres(jid, oferta.trigger, oferta.title || '');
@@ -1698,6 +2240,7 @@ class AITranslatorController {
                             console.log(`[AI] Bot ${this.idCliente}: petición de asesor "${text}" -> contacto "${contactoMatch.nombre}" (categoría matcheada)`);
                             return { derivado: true };
                         }
+                        this._setJevRazon(jid, 'petición de asesor: sin contacto alcanzable');
                         return false;
                     }
                     if (!this._esAreaGenerica(fraseArea)) {
@@ -1830,9 +2373,10 @@ class AITranslatorController {
             if (!cls) {
                 // Sin certeza (FALLO/error/cuota): seguro, el menú responde normal y NO deriva.
                 console.log(`[AI] Bot ${this.idCliente}: match simple "${text}" -> IA sin certeza, menú normal (sin derivar)`);
+                this._setJevRazon(jid, 'match simple: Jev sin certeza');
                 return false;
             }
-            if (this._esConsulta(cls.intencion)) {
+            if (this._esConsulta(cls.intencion) && !(cls.items && cls.items.length)) {
                 // Consulta: se responde conversacional, sin agregar al carrito ni derivar.
                 this._setInteres(jid, matchSimple, opt ? opt.title : '');
                 const texto = cls.respuesta_conversacional || '¡Claro! ¿En qué puedo ayudarte con eso?';
@@ -1842,7 +2386,7 @@ class AITranslatorController {
             }
             // Compra/acción: delega al procesador (agrega silencioso + deriva si corresponde).
             const res = await this._procesarIntencion(sock, jid, pushName, cls);
-            if (res === 'FALLO') return false;
+            if (res === 'FALLO') { this._setJevRazon(jid, 'procesar intención FALLO (match simple)'); return false; }
             if (typeof res === 'string') {
                 this.stateService.clearTranslationFails(jid);
                 console.log(`[AI] Bot ${this.idCliente}: match simple "${text}" (con vendedor) -> intención "${cls.intencion}" -> trigger "${res}"`);
@@ -1858,7 +2402,13 @@ class AITranslatorController {
         // sus opciones reales. Sin tokens y sin derivar (solo navegación).
         // También manejamos afirmaciones simples ("si", "dale", "ok") cuando el
         // asistente ofreció mostrar el listado (ej. "¿Le muestro las propiedades?").
-        if (this._esPeticionListado(text) || this._esAfirmacion(text)) {
+        //
+        // EXCEPCIÓN: si el mensaje NOMBRA una opción del nivel actual (ej. "y para
+        // alquilar qué tenés?" → Alquileres), NO lo resolvemos con el último tema
+        // visto: lo dejamos pasar para que lo decida Jev, que además considera la
+        // función declarada de cada opción. Si no, navegaría al tema anterior.
+        const opcionNombrada = this._seccionMencionada(text, options);
+        if (!opcionNombrada && (this._esPeticionListado(text) || this._esAfirmacion(text))) {
             const sesion = this.stateService.getChatSession(jid) || {};
             const interes = sesion.interes;
             if (interes && interes.trigger) {
@@ -1907,13 +2457,13 @@ class AITranslatorController {
                     console.log(`[AI] Bot ${this.idCliente}: interés deíctico "${text}" sobre ficha "${trigInteres}" (${ultimoInteres.title}) -> abre la ficha`);
                     return trigInteres;
                 }
-                // Con vendedor: es contacto/comprar esa opción.
-                // FAQ: derivamos al vendedor señalándole la propiedad de interés.
-                if (this._esFAQ()) {
+                // Sin carrito (FAQ/TURNOS): derivamos al vendedor señalándole la
+                // propiedad/ítem de interés.
+                if (this._esSinCarrito()) {
                     const motivoDeictico = `Interés en ${ultimoInteres.title || trigInteres}`;
                     const derivado = await this._derivarVendedor(sock, jid, pushName, { interes: ultimoInteres, motivo: motivoDeictico, texto: text });
                     if (derivado) {
-                        console.log(`[AI] Bot ${this.idCliente}: interés deíctico (FAQ) "${text}" sobre "${trigInteres}" -> deriva a vendedor`);
+                        console.log(`[AI] Bot ${this.idCliente}: interés deíctico (${this._botType}) "${text}" sobre "${trigInteres}" -> deriva a vendedor`);
                         return { derivado: true };
                     }
                     // Sin vendedor alcanzable: abrimos la ficha.
@@ -1971,45 +2521,55 @@ class AITranslatorController {
 
         // Fallback: motor conversacional híbrido (clasificación de intenciones +
         // tool calling). El LLM clasifica y el router despacha al motor determinista.
+        // Loop de navegación: si el LLM usa NAVEGAR_A, re-clasificamos con el nuevo contexto.
         try {
-            if (this.quotaBlocked) return false;
-            const router = this._getIntentRouter(user, ai);
-            const clasificacion = await router.clasificar(jid, text, (t) => {
-                aiUsageService.addTokens(this.idCliente, t || 0);
-            });
-            // Safety net: si el LLM clasificó como AGREGAR_AL_CARRITO pero el
-            // mensaje es claramente una pregunta/negación ("no tenés más?",
-            // "qué más tenés", "otras opciones?"), forzamos CONSULTAR_MENU
-            // para evitar agregar al carrito por error.
-            if (clasificacion && clasificacion.intencion === 'AGREGAR_AL_CARRITO' && this._esConsultaImplicita(text)) {
-                console.log(`[AI] Bot ${this.idCliente}: safety net "${text}" -> AGREGAR_AL_CARRITO forzado a CONSULTAR_MENU (pregunta/negación detectada)`);
-                clasificacion.intencion = 'CONSULTAR_MENU';
-                clasificacion.items = [];
-            }
-            if (clasificacion && clasificacion.intencion !== 'FALLO') {
-                // Red de seguridad MENSAJE COMPUESTO: si el cliente preguntó
-                // horarios Y además mencionó una sección/ficha, y la IA solo
-                // devolvió la intención sin items, completamos el ítem derivable
-                // para que el procesador responda y navegue a esa sección.
+            if (this.quotaBlocked) { this._setJevRazon(jid, 'cuota bloqueada (fallback)'); return false; }
+
+            let clasificacion = await this._clasificarConLaIA(user, ai, jid, text);
+
+            // Loop de navegación invisible (máx 3 vueltas)
+            for (let vuelta = 0; vuelta < 3; vuelta++) {
+                // Safety net: si el LLM clasificó como AGREGAR_AL_CARRITO pero el
+                // mensaje es claramente una pregunta/negación, forzamos CONSULTAR_MENU
+                if (clasificacion && clasificacion.intencion === 'AGREGAR_AL_CARRITO' && this._esConsultaImplicita(text)) {
+                    console.log(`[AI] Bot ${this.idCliente}: safety net "${text}" -> AGREGAR_AL_CARRITO forzado a CONSULTAR_MENU`);
+                    clasificacion.intencion = 'CONSULTAR_MENU';
+                    clasificacion.items = [];
+                }
                 if (this._esPeticionHorarios(text) && !(clasificacion.items || []).length &&
                     (clasificacion.intencion === 'CONSULTAR_HORARIOS' || clasificacion.intencion === 'CHARLA_GENERAL')) {
                     const ref = this._seccionMencionada(text, options);
                     if (ref) {
                         clasificacion.items = [{ trigger: ref, cantidad: 1 }];
-                        console.log(`[AI] Bot ${this.idCliente}: mensaje compuesto "${text}" -> ítem "${ref}" (safety net determinista)`);
+                        console.log(`[AI] Bot ${this.idCliente}: mensaje compuesto "${text}" -> ítem "${ref}"`);
                     }
                 }
+                if (!clasificacion || clasificacion.intencion === 'FALLO') {
+                    break; // sale al fallback final
+                }
+
                 const res = await this._procesarIntencion(sock, jid, pushName, clasificacion);
                 if (res === 'FALLO') {
+                    this._setJevRazon(jid, 'procesar intención FALLO (fallback)');
                     return false;
                 }
                 if (typeof res === 'string') {
-                    // Devolvió un trigger (ej. 'p' para finalizar): debe procesarse en app.js.
+                    // NAVEGAR_A devolvió un trigger: re-clasificamos con NUEVO contexto
+                    if (clasificacion.intencion === 'NAVEGAR_A') {
+                        this.stateService.clearTranslationFails(jid);
+                        console.log(`[AI] Bot ${this.idCliente}: navegación a "${res}" -> re-clasificando`);
+                        // El menú ya navegó internamente; actualizamos options y re-clasificamos
+                        const newNodeId = this.stateService.getUserState(jid) || 'root';
+                        options.splice(0, options.length, ...await this._opcionesNivel(jid, newNodeId).catch(() => []));
+                        clasificacion = await this._clasificarConLaIA(user, ai, jid, text);
+                        continue; // siguiente vuelta del loop con contexto fresco
+                    }
+                    // Otros triggers (sección, ficha, pagar, etc.): delegamos al menú
                     this.stateService.clearTranslationFails(jid);
                     console.log(`[AI] Bot ${this.idCliente}: intención "${clasificacion.intencion}" -> trigger "${res}"`);
                     return res;
                 }
-                // { derivado: true } -> el router ya respondió/ejecutó.
+                // { derivado: true } -> el router ya respondió/ejecutó
                 this.stateService.clearTranslationFails(jid);
                 return res;
             }
@@ -2018,13 +2578,15 @@ class AITranslatorController {
             if (err && err.isQuotaExceeded) {
                 this.quotaBlocked = true;
                 console.warn(`[AI] Bot ${this.idCliente}: router bloqueado por cuota (menú directo)`);
+                this._setJevRazon(jid, 'cuota excedida (router)');
                 return false;
             }
         }
 
-        // No hay coincidencia: contamos el fallo y el menú re-muestra sus opciones.
+        // No hay coincidencia tras navegación o fallo: menú re-muestra opciones.
         const fails = this.stateService.incrementTranslationFails(jid);
         console.log(`[AI] Bot ${this.idCliente}: sin coincidencia (fallo ${fails}/${MAX_TRANSLATION_FAILS})`);
+        this._setJevRazon(jid, 'sin coincidencia tras clasificación');
         return false;
     }
 
@@ -2081,14 +2643,30 @@ class AITranslatorController {
     }
 
     /**
-     * Contexto adicional (pedido actual + posición) para el router de intenciones.
+     * Contexto adicional (pedido actual + posición + navegación) para el router de intenciones.
+     * El LLM puede usar NAVEGAR_A para moverse silenciosamente en la jerarquía del menú.
      */
     async _buildContexto(jid) {
         const nodeId = this.stateService.getUserState(jid) || 'root';
-        let contexto = `NODO ACTUAL DEL USUARIO: ${nodeId}\n`;
+        const nodoActual = await this._getNodeById(nodeId).catch(() => null);
         const sesion = this.stateService.getChatSession(jid) || {};
+
+        // Construir estructura de navegación
+        const nav = await this._construirNavContexto(nodeId, nodoActual);
+
+        let contexto = `NODO ACTUAL: ${nodeId} (${nodoActual?.title || 'sin título'})\n`;
+        contexto += `TRIGGER ACTUAL: ${nodoActual?.trigger || 'root'}\n`;
+        contexto += `MENSAJE ACTUAL: ${nodoActual?.message ? String(nodoActual.message).slice(0, 200) : '(sin mensaje)'}\n`;
+        contexto += `OPCIONES DISPONIBLES: ${nav.actualChildren.map(c => `${c.trigger}→${c.title}`).join(', ') || '(ninguna)'}\n`;
+        if (nav.padre) {
+            contexto += `PADRE: ${nav.padre.id} (${nav.padre.title}) [trigger: ${nav.padre.trigger}]\n`;
+            contexto += `HERMANOS: ${nav.hermanos.map(h => `${h.trigger}→${h.title}`).join(', ') || '(ninguno)'}\n`;
+        }
+        contexto += `RAÍZ: ${nav.raiz.id} (${nav.raiz.title}) [trigger: ${nav.raiz.trigger}]\n`;
+        contexto += `RUTA: ${nav.ruta.join(' > ')}\n`;
+
         if (sesion.interes && sesion.interes.trigger) {
-            contexto += `ÚLTIMO TEMA DEL CLIENTE: ${sesion.interes.title || sesion.interes.trigger} (trigger "${sesion.interes.trigger}" del menú actual)\n`;
+            contexto += `ÚLTIMO TEMA: ${sesion.interes.title || sesion.interes.trigger} (trigger "${sesion.interes.trigger}")\n`;
         }
         const order = this.stateService.getUserOrder(jid) || [];
         if (order && order.length > 0) {
@@ -2098,11 +2676,60 @@ class AITranslatorController {
                 total += sub;
                 return `- ${it.quantity} x ${it.text}` + (it.price ? ` ($${sub})` : '');
             });
-            contexto += `PEDIDO ACTUAL:\n${lines.join('\n')}\nTOTAL ACTUAL: $${total}\n`;
+            contexto += `PEDIDO ACTUAL:\n${lines.join('\n')}\nTOTAL: $${total}\n`;
         } else {
-            contexto += `(el cliente todavía no tiene ítems en el pedido)\n`;
+            contexto += `(sin pedido en curso)\n`;
+        }
+
+        // Contactos de derivación con áreas y palabras clave (para LLM)
+        const cfg = await botConfigService.getBotConfig(this.idCliente).catch(() => ({}));
+        const ai = (cfg && cfg.ai_config) || {};
+        const { contactos } = this._listarContactosVendedor(ai);
+        if (contactos && contactos.length > 0) {
+            contexto += `CONTACTOS DE DERIVACIÓN:\n`;
+            for (const c of contactos) {
+                const areas = String(c.areas || '').split(/[,;\n]+/).map(s => s.trim()).filter(Boolean).join(', ');
+                const keys = String(c.palabrasClave || '').split(/[,;\n]+/).map(s => s.trim()).filter(Boolean).join(', ');
+                contexto += `- ${c.nombre} [trigger: ${c.id}]: áreas=[${areas || '—'}], keywords=[${keys || '—'}]\n`;
+            }
         }
         return contexto;
+    }
+
+    /**
+     * Construye el contexto de navegación (padre, hermanos, raíz, ruta) para un nodo.
+     */
+    async _construirNavContexto(nodeId, nodoActual) {
+        const raiz = await this._getNodeById('root').catch(() => ({ id: 'root', title: 'Inicio', trigger: '0', children: [] }));
+        let padre = null;
+        let hermanos = [];
+        let ruta = [raiz.title || 'Inicio'];
+
+        if (nodoActual && nodoActual.parentId && nodoActual.parentId !== 'root') {
+            padre = await this._getNodeById(nodoActual.parentId).catch(() => null);
+            if (padre) {
+                ruta.push(padre.title);
+                hermanos = await this._getChildren(padre.id).catch(() => []);
+            }
+        } else if (nodoActual && nodoActual.parentId === 'root') {
+            padre = raiz;
+            hermanos = await this._getChildren('root').catch(() => []);
+        }
+
+        if (nodoActual) {
+            ruta.push(nodoActual.title);
+        }
+
+        const actualChildren = await this._getChildren(nodeId).catch(() => []);
+
+        return {
+            actual: nodoActual || { id: nodeId, title: '', trigger: '', children: [] },
+            actualChildren,
+            padre,
+            hermanos,
+            raiz,
+            ruta
+        };
     }
 
     /**
@@ -2132,6 +2759,20 @@ class AITranslatorController {
                     // el cliente quiere EXPLORAR esa sección, no comprarla como
                     // si fuera un producto vendible. Navegamos a ella.
                     const trigPrimero = String(items[0].trigger || '').trim();
+                    const scopePrimero = items[0].scope || 'actual';
+                    // Navegación CRUZADA decidida por Jev: el producto/sección
+                    // pedido está en OTRO nivel del menú; navegamos allí en vez
+                    // de intentar agregar (sin carrito aplica igual: abre la ficha).
+                    if (scopePrimero !== 'actual' && trigPrimero) {
+                        const nodoDestino = await this._resolverNodoPorCandidato(jid, scopePrimero, trigPrimero, items[0].nodeId);
+                        if (nodoDestino) {
+                            this.stateService.clearTranslationFails(jid);
+                            this._setInteres(jid, trigPrimero, nodoDestino.title || '');
+                            console.log(`[Jev] ${this.idCliente}: compra sobre ítem de OTRO nivel "${trigPrimero}" (${scopePrimero}) -> navega (no agrega)`);
+                            await this.menuController.processNode(sock, jid, nodoDestino);
+                            return { derivado: true };
+                        }
+                    }
                     if (trigPrimero && await this._esSeccionCatalogo(jid, trigPrimero)) {
                         this.stateService.clearTranslationFails(jid);
                         this._setInteres(jid, trigPrimero, '');
@@ -2141,10 +2782,10 @@ class AITranslatorController {
                     // FAQ/consulta: NO existe carrito. El ítem (ficha/propiedad) se
                     // abre como información completa (fotos + descripción) para que
                     // el cliente consulte, jamás se agrega a un pedido.
-                    if (this._esFAQ()) {
+                    if (this._esSinCarrito()) {
                         this.stateService.clearTranslationFails(jid);
                         this._setInteres(jid, trigPrimero, '');
-                        console.log(`[AI] Bot ${this.idCliente}: intención de compra (FAQ) "${items[0].trigger}" -> abre la ficha, sin carrito`);
+                        console.log(`[AI] Bot ${this.idCliente}: intención de compra (${this._botType}) "${items[0].trigger}" -> abre la ficha, sin carrito`);
                         return trigPrimero;
                     }
                     // Intención de compra concreta: el cliente pidió UN producto o
@@ -2183,14 +2824,29 @@ class AITranslatorController {
                 }
 
                 case 'QUITAR_DEL_CARRITO': {
-                    // FAQ: no hay carrito; el cliente solo puede consultar fichas.
-                    if (this._esFAQ()) {
+                    // Bots sin carrito (FAQ/TURNOS): no hay cartón; solo se consultan fichas.
+                    if (this._esSinCarrito()) {
                         await this._sendFriendly(sock, jid, 'En esta cuenta no hay un carrito de compras: soy un asistente de consultas. ¿Sobre qué propiedad querés saber más?');
                         return { derivado: true };
                     }
                     if (!items.length) {
                         await this._sendFriendly(sock, jid, respuesta || '¿Qué producto querés quitar del pedido?');
                         return { derivado: true };
+                    }
+                    // Navegación CRUZADA: el ítem a quitar está en OTRO nivel del
+                    // menú (decidido por Jev). En lugar de quitar algo que no está
+                    // en este nivel, navegamos para mostrar de qué se habla.
+                    const trigQuitar = String(items[0].trigger || '').trim();
+                    const scopeQuitar = items[0].scope || 'actual';
+                    if (scopeQuitar !== 'actual' && trigQuitar) {
+                        const nodoDestino = await this._resolverNodoPorCandidato(jid, scopeQuitar, trigQuitar, items[0].nodeId);
+                        if (nodoDestino) {
+                            this.stateService.clearTranslationFails(jid);
+                            this._setInteres(jid, trigQuitar, nodoDestino.title || '');
+                            console.log(`[Jev] ${this.idCliente}: quitar sobre ítem de OTRO nivel "${trigQuitar}" (${scopeQuitar}) -> navega`);
+                            await this.menuController.processNode(sock, jid, nodoDestino);
+                            return { derivado: true };
+                        }
                     }
                     let quitado = false;
                     for (const it of items) {
@@ -2218,8 +2874,8 @@ class AITranslatorController {
                 }
 
                 case 'VER_CARRITO': {
-                    // FAQ: no hay carrito; remitimos al catálogo/consultas.
-                    if (this._esFAQ()) {
+                    // Bots sin carrito (FAQ/TURNOS): no hay pedido; remitimos al catálogo/consultas.
+                    if (this._esSinCarrito()) {
                         await this._sendFriendly(sock, jid, 'No tenés ningún pedido: en esta cuenta solo hay consultas sobre el catálogo. ¿Qué te gustaría ver?');
                         return { derivado: true };
                     }
@@ -2245,16 +2901,40 @@ class AITranslatorController {
                     // (ej. "quiero alquilar" -> sección "Alquileres"), navegamos a
                     // ella directamente en vez de re-mostrar el menú raíz.
                     const trigConsulta = (items && items.length > 0) ? String(items[0].trigger || '').trim() : '';
+                    const scopeConsulta = (items && items[0]) ? (items[0].scope || 'actual') : 'actual';
+                    // "Mis turnos" (bots de TURNOS): Jev eligió la opción especial.
+                    // No es un nodo de la tabla; se resuelve con el input 'm', que el
+                    // menú atiende desde cualquier nivel (menuController).
+                    if (this._botType === 'TURNOS' && trigConsulta.toLowerCase() === 'm') {
+                        this.stateService.clearTranslationFails(jid);
+                        console.log(`[Jev] ${this.idCliente}: "mis turnos" (Jev) -> abre mis turnos`);
+                        return 'm';
+                    }
+                    // Navegación CRUZADA decidida por Jev (segunda decisión `nodo`):
+                    // el destino está en OTRO nivel del menú (sección raíz o hermana).
+                    // handleIncomingMessage solo matchea hijos del nivel actual, así
+                    // que resolvemos el nodo completo y navegamos con processNode.
+                    if (scopeConsulta !== 'actual' && trigConsulta) {
+                        const nodoDestino = await this._resolverNodoPorCandidato(jid, scopeConsulta, trigConsulta, items[0].nodeId);
+                        if (nodoDestino) {
+                            this.stateService.clearTranslationFails(jid);
+                            this._setInteres(jid, trigConsulta, nodoDestino.title || '');
+                            console.log(`[Jev] ${this.idCliente}: consulta de sección "${trigConsulta}" (${scopeConsulta}) -> navega directo`);
+                            await this.menuController.processNode(sock, jid, nodoDestino);
+                            return { derivado: true };
+                        }
+                    }
                     if (trigConsulta && await this._esSeccionCatalogo(jid, trigConsulta)) {
                         this.stateService.clearTranslationFails(jid);
                         this._setInteres(jid, trigConsulta, '');
                         console.log(`[AI] Bot ${this.idCliente}: consulta de SECCIÓN "${items[0].trigger}" -> navega`);
                         return trigConsulta;
                     }
-                    // FAQ/consulta: si el ítem pedido es una ficha del nivel actual
-                    // (no una sección), abrimos la ficha completa (fotos + descripción)
-                    // en vez de re-mostrar el listado.
-                    if (this._esFAQ() && trigConsulta) {
+                    // Sin carrito (FAQ/TURNOS): si el ítem pedido es una ficha del nivel
+                    // actual (no una sección), abrimos la ficha completa (fotos +
+                    // descripción, o el flujo del servicio) en vez de re-mostrar el
+                    // listado.
+                    if (this._esSinCarrito() && trigConsulta) {
                         const nivelId = this.stateService.getUserState(jid) || 'root';
                         const opcionesNivel = await this._opcionesNivel(jid, nivelId).catch(() => []);
                         const existeFicha = opcionesNivel.some(o => String(o.trigger).toLowerCase() === trigConsulta.toLowerCase());
@@ -2272,8 +2952,8 @@ class AITranslatorController {
                 }
 
                 case 'FINALIZAR_PEDIDO': {
-                    // FAQ: no hay pedidos ni pago; respondemos como consulta.
-                    if (this._esFAQ()) {
+                    // Bots sin carrito (FAQ/TURNOS): no hay pedidos ni pago; respondemos como consulta.
+                    if (this._esSinCarrito()) {
                         await this._sendFriendly(sock, jid, 'Acá no hay un carrito ni pago: soy un asistente de consultas sobre el catálogo. ¿En qué más puedo ayudarte?');
                         return { derivado: true };
                     }
@@ -2298,6 +2978,17 @@ class AITranslatorController {
                     return 'p';
                 }
 
+                case 'NAVEGAR_A': {
+                    // Navegación silenciosa decidida por el LLM. Devuelve el trigger
+                    // destino para que el menú navegue sin mostrar mensaje de transición.
+                    const { triggerDestino } = clasificacion;
+                    if (triggerDestino && typeof triggerDestino === 'string') {
+                        console.log(`[AI] Bot ${this.idCliente}: NAVEGAR_A -> ${triggerDestino} (${clasificacion.razon || 'sin razón'})`);
+                        return triggerDestino;
+                    }
+                    return { derivado: true };
+                }
+
                 case 'CONSULTAR_HORARIOS':
                 case 'CHARLA_GENERAL':
                 default: {
@@ -2316,7 +3007,7 @@ class AITranslatorController {
                             console.log(`[AI] Bot ${this.idCliente}: ${intencion} compuesta "${trigReferido}" -> navega a la SECCIÓN`);
                             return trigReferido;
                         }
-                        if (this._esFAQ()) {
+                        if (this._esSinCarrito()) {
                             const nivelId = this.stateService.getUserState(jid) || 'root';
                             const opcionesNivel = await this._opcionesNivel(jid, nivelId).catch(() => []);
                             if (opcionesNivel.some(o => String(o.trigger).toLowerCase() === trigReferido.toLowerCase())) {

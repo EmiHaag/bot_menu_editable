@@ -1238,6 +1238,14 @@ async function startBot(botConfig, forceStart = false) {
                                     continue;
                                 }
                                 if (typeof traduccion === 'string' && traduccion) {
+                                    const sinCarrito = (aiTranslatorController.botType || 'CARRITO') !== 'CARRITO';
+                                    if (sinCarrito) {
+                                        // Bots sin carrito (FAQ/TURNOS): el trigger devuelto NO es un
+                                        // producto a agregar, sino una opción a navegar/abrir (ficha,
+                                        // sección o inicio del flujo de turno). Lo procesa el menú.
+                                        stateService.clearUserIntent(jid);
+                                        await menuController.handleIncomingMessage(sock, jid, traduccion);
+                                    } else {
                                     // Si el traductor ya detectó la cantidad en el lenguaje
                                     // natural ("una muzarella y una coca"), agregamos DIRECTO y
                                     // en silencio (solo "✅ Añadido: N x Producto"), sin el prompt
@@ -1287,6 +1295,7 @@ async function startBot(botConfig, forceStart = false) {
                                         });
                                         const resumen = `Tu pedido por ahora:\n${lineas.join('\n')}\n💰 Total: $${total}\n\n¿Querés sumar algo más? Decime el producto, o escribí "nada más" / "listo" para pasar a pagar.`;
                                         await sock.sendMessage(jid, { text: resumen }).catch(() => {});
+                                    }
                                     }
                                 } else {
                                     await menuController.handleIncomingMessage(sock, jid, text);
@@ -1949,10 +1958,10 @@ async function main() {
                         if (pollingIntervals.length > 0) return;
                         botIds.forEach(id => {
                             updateBotStatus(id);
-                            const interval = setInterval(() => updateBotStatus(id), 5000);
+                            const interval = setInterval(() => updateBotStatus(id), 60 * 60 * 1000); // 60 min
                             pollingIntervals.push(interval);
                         });
-                        console.log('Polling started');
+                        console.log('Polling started (60 min interval)');
                     }
 
                     async function stopPolling() {

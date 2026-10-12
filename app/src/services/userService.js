@@ -200,10 +200,16 @@ class UserService {
     async getUserByIdCliente(idCliente) {
         if (!sql || !idCliente) return null;
 
+        const cacheKey = `user_by_id_${idCliente}`;
+        const cached = cache.get(cacheKey);
+        if (cached) return cached;
+
         try {
             const rows = await sql`SELECT * FROM users WHERE id_cliente = ${idCliente}`;
             if (rows.length === 0) return null;
-            return mapRow(rows[0]);
+            const user = mapRow(rows[0]);
+            cache.set(cacheKey, user, 1200); // 20 min TTL
+            return user;
         } catch (error) {
             console.error('[UserService] Error fetching user by idCliente:', error.message);
             return null;
@@ -228,7 +234,7 @@ class UserService {
 
         try {
             await sql`UPDATE users SET password = ${newPassword} WHERE id_cliente = ${idCliente}`;
-            this.clearCache();
+            cache.del(`user_by_id_${idCliente}`);
             return true;
         } catch (error) {
             console.error('[UserService] Error updating password:', error.message);
@@ -242,7 +248,7 @@ class UserService {
 
         try {
             await sql`UPDATE users SET plan = ${normalized} WHERE id_cliente = ${idCliente}`;
-            this.clearCache();
+            cache.del(`user_by_id_${idCliente}`);
             return true;
         } catch (error) {
             console.error('[UserService] Error updating plan:', error.message);

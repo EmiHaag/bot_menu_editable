@@ -70,6 +70,12 @@ class MenuController {
      *                          [Error/Root]   [Enviar Menú]
      */
     async handleIncomingMessage(sock, jid, text, media = null) {
+        // Silencio por derivación a un asesor humano: el menú tampoco responde,
+        // para no interferir en la conversación cliente/asesor.
+        if (this.stateService.getSilencioAsesor(jid)) {
+            console.log(`[Menu] silencio por derivación a asesor, no responde (${jid})`);
+            return;
+        }
         const currentStateId = this.stateService.getUserState(jid);
 
         // PRIORIDAD -1: ¿EL BOT ESTÁ FUERA DEL HORARIO DE ATENCIÓN?
@@ -155,12 +161,22 @@ class MenuController {
             return;
         }
         if (this.stateService.getMisTurnoSeleccionado(jid)) {
-            await this._handleMisTurnosAccion(sock, jid, input);
-            return;
+            if (this._esAccionTurno(input)) {
+                await this._handleMisTurnosAccion(sock, jid, input);
+                return;
+            }
+            // El cliente pidió otra cosa estando en la confirmación: salimos de
+            // ese estado y seguimos el flujo normal (no lo dejamos atrapado).
+            this.stateService.clearMisTurnoSeleccionado(jid);
         }
         if (this.stateService.getMisTurnos(jid)) {
-            await this._handleMisTurnos(sock, jid, input);
-            return;
+            if (this._esSeleccionTurno(input)) {
+                await this._handleMisTurnos(sock, jid, input);
+                return;
+            }
+            // Pidió otra cosa estando en la lista de turnos: salimos del listado
+            // y seguimos el flujo normal (ej. "mis turnos" la reabre más abajo).
+            this.stateService.clearMisTurnos(jid);
         }
         if (this.stateService.getWaitingTurnoReprogram(jid)) {
             await this._handleTurnoReprogram(sock, jid, input);
@@ -291,8 +307,10 @@ class MenuController {
             }
         }
 
-        // PRIORIDAD 3.5: "Mis turnos" desde el menú principal (config de turnos)
-        if (currentStateId === 'root' && /^(mis turnos|m)$/i.test(input)) {
+        // PRIORIDAD 3.5: "Mis turnos" (config de turnos). Se acepta desde
+        // CUALQUIER nivel: si el cliente lo pide estando dentro de una sección o
+        // una ficha, igual lo llevamos a la lista de sus turnos reservados.
+        if (/^(mis turnos|m)$/i.test(input)) {
             try {
                 const cfg = await botConfigService.getBotConfig(this.stateService.clientId);
                 const cc = cfg.calendar_config || {};
@@ -372,14 +390,73 @@ class MenuController {
                     await this.sendMenu(sock, jid, 'root');
                 }
             } else {
-                //console.log("opcion no valida #174");
-                await this.sendPresenceTyping(sock, jid);
-                await sock.sendMessage(jid, {
-                    text: 'Opción no válida.'
-                });
-                await this.sendMenu(sock, jid, currentStateId); // Re-mostrar opciones
+                // Input no reconocido en el nivel actual: en vez de mostrar
+                // "opción no válida" de una, buscamos la opción en TODO el menú
+                // partiendo desde root (el cliente puede estar pidiendo algo de
+                // otra rama, ej. "mis turnos" desde una ficha). Si la encontramos,
+                // navegamos/abrimos allí. Si no, recién ahí cae al "no válida".
+                const encontrado = await this._buscarNodoGlobal(input);
+                if (encontrado) {
+                    await this.processNode(sock, jid, encontrado);
+                } else {
+                    await this.sendPresenceTyping(sock, jid);
+                    await sock.sendMessage(jid, {
+                        text: 'Opción no válida.'
+                    });
+                    await this.sendMenu(sock, jid, currentStateId); // Re-mostrar opciones
+                }
             }
         }
+    }
+
+    /**
+     * Búsqueda global en el menú (partiendo desde root) del nodo cuyo trigger o
+     * título matchea el input. Último recurso antes de responder "opción no
+     * válida": si el cliente pide algo que no está en el nivel actual pero sí en
+     * otra rama del menú, lo llevamos allí. Prioriza coincidencia exacta de
+     * trigger, luego de título, y el nodo más cercano a root (menor profundidad).
+     *
+     * Se ignoran los inputs que son posiciones de nivel (números cortos) o
+     * comandos de pie (0, v, p, pagar, etc.): esos son siempre locales al nivel
+     * y no deben "saltar" a otra rama por coincidir con un trigger homónimo.
+     */
+    async _buscarNodoGlobal(input) {
+        const raw = String(input || '').trim().toLowerCase();
+        if (!raw) return null;
+        if (/^\d{1,3}$/.test(raw)) return null;
+        if (/^(0|p|v|inicio|atras|atrás|pagar|pago|menu|menú|ver mas|ver más|siguiente|vaciar|limpiar)$/.test(raw)) return null;
+
+        const menu = await this.googleSheetsService.getMenuData().catch(() => []);
+        const nodos = (menu || []).filter(n => n && n.id && n.id !== 'root' && n.disponible !== 'false');
+        if (!nodos.length) return null;
+
+        const byId = new Map(nodos.map(n => [String(n.id), n]));
+        const profundidad = (n) => {
+            let d = 0, cur = n, guard = 0;
+            while (cur && cur.parentId && guard++ < 50) {
+                d++;
+                cur = byId.get(String(cur.parentId));
+                if (!cur) break;
+            }
+            return d;
+        };
+        const ordenarPorProfundidad = (arr) => [...arr].sort((a, b) => profundidad(a) - profundidad(b));
+        const norm = (s) => String(s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
+
+        // 1) Coincidencia EXACTA de trigger (ej. "mis turnos", "alquileres").
+        const triggerExacto = nodos.filter(n => n.trigger && String(n.trigger).trim().toLowerCase() === raw);
+        if (triggerExacto.length) return ordenarPorProfundidad(triggerExacto)[0];
+
+        // 2) Coincidencia EXACTA de título.
+        const tituloExacto = nodos.filter(n => n.title && norm(n.title) === norm(raw));
+        if (tituloExacto.length) return ordenarPorProfundidad(tituloExacto)[0];
+
+        // 3) El input está contenido en el título, pero solo si es inequívoco
+        //    (un único nodo), para no navegar a un destino dudoso.
+        const tituloContiene = nodos.filter(n => n.title && norm(n.title).includes(norm(raw)));
+        if (tituloContiene.length === 1) return tituloContiene[0];
+
+        return null;
     }
 
     /**
@@ -1247,6 +1324,11 @@ class MenuController {
             return;
         }
 
+        // El nombre ya está cargado: lo que sigue es la confirmación (1/2).
+        // El wrapper del asistente reescribe el resumen SIN números, así que
+        // aceptamos "sí"/"confirmar"/"cancelar"/"no" además de "1"/"2".
+        text = this._normalizarTeclado(text) || text;
+
         if (text === '1') {
             this.stateService.clearBookingFlow(jid);
             try {
@@ -1315,10 +1397,43 @@ class MenuController {
         this.stateService.setWaitingTurnoReprogram(jid, { nodeId: nodeId || 'root' });
     }
 
+    /** ¿El input es una selección válida de la lista de "mis turnos"? */
+    _esSeleccionTurno(input) {
+        const t = String(input || '').trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+        return /^\d+$/.test(t) || /^(0|v|salir|volver|volver atras|atras|regresar|inicio|menu|menu principal)$/.test(t);
+    }
+
+    /** ¿El input es una acción válida sobre el turno seleccionado (1/2/0)? */
+    _esAccionTurno(input) {
+        return this._esSeleccionTurno(input) || this._normalizarTeclado(input) !== null;
+    }
+
+    /**
+     * Normaliza respuestas de los flujos de turno que usan un "teclado" 1/2/0.
+     * El wrapper del asistente (reformulate) reescribe esos mensajes SIN los
+     * números, así que además de "1"/"2"/"0" aceptamos palabras equivalentes
+     * ("confirmar", "cancelar", "sí", "no", "pasar", etc.). Devuelve el dígito
+     * ('1'|'2'|'0') o null si no se reconoce.
+     */
+    _normalizarTeclado(text) {
+        const t = String(text || '').trim().toLowerCase()
+            .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+            .replace(/[.?!¡¿]+$/g, '').trim();
+        if (!t) return null;
+        if (t === '0') return '0';
+        if (t === '1') return '1';
+        if (t === '2') return '2';
+        if (/^(salir|volver|volver atras|volver al menu|regresar|atras|v|menu|menu principal|inicio|ir al inicio)$/.test(t)) return '0';
+        if (/^(si|s|ok|dale|confirmar|confirmas|confirmo|aceptar|acepta|acepto|afirmativo|quiero|lo quiero|me lo quedo|quedarmelo|listo|de acuerdo|perfecto|correcto)$/.test(t)) return '1';
+        if (/^(no|n|nop|nope|no gracias|cancelar|cancela|cancelo|anular|anula|pasar|paso|pasarlo|pasar al siguiente|siguiente|descartar|rechazar)$/.test(t)) return '2';
+        return null;
+    }
+
     /**
      * Procesa la respuesta a la oferta de reprogramar: 1 = sí (arranca reserva), 2 = no (termina).
      */
     async _handleTurnoReprogram(sock, jid, text) {
+        text = this._normalizarTeclado(text) || text;
         const data = this.stateService.getWaitingTurnoReprogram(jid);
         const nodeId = (data && data.nodeId) || 'root';
 
@@ -1401,6 +1516,7 @@ class MenuController {
      * Procesa la respuesta al recordatorio: 1 = confirmar, 2 = cancelar (libera y dispara cascada).
      */
     async _handleTurnoReminder(sock, jid, text) {
+        text = this._normalizarTeclado(text) || text;
         const data = this.stateService.getWaitingTurnoReminder(jid);
         const proximidad = data && data.proximidad;
         const cancelar = data && data.cancelar;
@@ -1435,6 +1551,7 @@ class MenuController {
      * Procesa la respuesta a la oferta de la lista de espera: 1 = aceptar, 2 = pasar al siguiente.
      */
     async _handleTurnoCascada(sock, jid, text) {
+        text = this._normalizarTeclado(text) || text;
         const data = this.stateService.getWaitingTurnoCascada(jid);
 
         if (text === '0') {
@@ -1554,7 +1671,8 @@ class MenuController {
     async _handleMisTurnos(sock, jid, text) {
         const turnos = this.stateService.getMisTurnos(jid);
 
-        if (text === '0' || text === 'v') {
+        const salir = String(text || '').trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+        if (text === '0' || text === 'v' || /^(salir|volver|volver atras|atras|regresar|inicio|menu|menu principal)$/.test(salir)) {
             this.stateService.clearMisTurnos(jid);
             await this.sendMenu(sock, jid, 'root');
             return;
@@ -1576,25 +1694,26 @@ class MenuController {
         await this.sendPresenceTyping(sock, jid);
         if (await this._misTurnosCancelarHabilitado()) {
             await sock.sendMessage(jid, {
-                text: `📅 *${fecha} a las ${hora}*\n\n¿Qué querés hacer?\n\n*1*. Aceptar / confirmar\n*2*. Cancelar turno`
+                text: `📅 *${fecha} a las ${hora}*\n\n¿Qué querés hacer?\n\n*1*. Dejarlo así\n*2*. Cancelar turno`
             });
         } else {
             await sock.sendMessage(jid, {
-                text: `📅 *${fecha} a las ${hora}*\n\n¿Querés confirmar tu asistencia?\n\n*1*. Sí, confirmar\n*0*. Salir`
+                text: `📅 *${fecha} a las ${hora}*\n\nTu turno está reservado. Escribí *0* para volver al menú principal.`
             });
         }
     }
 
     async _handleMisTurnosAccion(sock, jid, text) {
+        text = this._normalizarTeclado(text) || text;
         const data = this.stateService.getMisTurnoSeleccionado(jid);
 
         if (text === '1') {
-            await botConfigService.actualizarEstadoTurno(data.eventId, 'confirmado');
-            this.stateService.clearMisTurnos(jid);
+            // "Dejarlo así": el turno ya quedó reservado cuando se creó, así que
+            // no hacemos ningún cambio. Solo avisamos y volvemos a la lista.
             this.stateService.clearMisTurnoSeleccionado(jid);
             await this.sendPresenceTyping(sock, jid);
-            await sock.sendMessage(jid, { text: `✅ Turno *${data.fecha} a las ${data.hora}* confirmado. Te esperamos!` });
-            await this.sendMenu(sock, jid, 'root');
+            await sock.sendMessage(jid, { text: `👍 Listo, dejamos tu turno del *${data.fecha} a las ${data.hora}* como está.` });
+            await this._mostrarMisTurnos(sock, jid, null);
             return;
         }
 
@@ -1623,7 +1742,7 @@ class MenuController {
 
         await this.sendPresenceTyping(sock, jid);
         const cancelar = await this._misTurnosCancelarHabilitado();
-        await sock.sendMessage(jid, { text: cancelar ? '❌ Respondé *1* para confirmar o *2* para cancelar.' : '❌ Respondé *1* para confirmar o *0* para salir.' });
+        await sock.sendMessage(jid, { text: cancelar ? '❌ Respondé *1* para dejarlo así o *2* para cancelar.' : '❌ Escribí *0* para volver al menú principal.' });
     }
 
     async _misTurnosCancelarHabilitado() {
