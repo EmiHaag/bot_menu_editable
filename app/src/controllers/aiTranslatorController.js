@@ -30,6 +30,16 @@ const PROFUNDIDAD_NAVEGACION = (() => {
     return (Number.isInteger(n) && n >= 1 && n <= 6) ? n : 3;
 })();
 
+// Cantidad máxima de niveles que Jev puede "descender" dentro de una sección
+// elegida. Si la opción destino es una sección con sub-opciones, se evalúan
+// esas sub-opciones: si alguna coincide con confianza de navegación, se navega
+// a ella (y se repite, hasta este tope). Si ninguna coincide, se queda en la
+// sección elegida.
+const MAX_DESCENSO_NAVEGACION = (() => {
+    const n = Number(process.env.JEV_DESCENSO_NAVEGACION);
+    return (Number.isInteger(n) && n >= 0 && n <= 5) ? n : 3;
+})();
+
 class AITranslatorController {
     /**
      * @param {Object} opts
@@ -813,8 +823,15 @@ class AITranslatorController {
                     return null;
                 }
                 if (catConfiable) {
-                    const cand = candidatos.find((c) => c.key === catChoice.choice);
+                    let cand = candidatos.find((c) => c.key === catChoice.choice);
                     if (cand) {
+                        // El destino puede ser una sección con sub-opciones y el
+                        // cliente estar buscando algo puntual DENTRO de ella. Si
+                        // una sub-opción coincide con confianza de navegación,
+                        // bajamos a esa en vez de detenernos en la sección.
+                        if (intencion === 'CONSULTAR_MENU') {
+                            cand = await this._descenderCandidato(jid, text, cand, onTokens);
+                        }
                         const cantidad = (intencion === 'CONSULTAR_MENU') ? 1 : this._detectarCantidad(text);
                         items.push({ trigger: cand.trigger, scope: cand.scope, nodeId: cand.nodeId || '', cantidad });
                         console.log(`[Jev] ${this.idCliente}: destino "${cand.key}" (confianza categoría ${catChoice.confidence.toFixed(2)}) | msg: "${text}"`);
@@ -1304,6 +1321,99 @@ class AITranslatorController {
             pool = await this._getChildren(nodeId).catch(() => []);
         }
         return pool.find((n) => String(n.trigger || '').trim().toLowerCase() === t) || null;
+    }
+
+    /**
+     * Si el destino elegido por Jev es una SECCIÓN con sub-opciones, evalúa esas
+     * sub-opciones con Jev: el cliente puede estar buscando algo puntual DENTRO
+     * de la sección (p. ej. un artículo concreto) y no la sección en sí. Si una
+     * sub-opción coincide con la confianza de navegación, se navega a ella (y se
+     * repite mientras siga habiendo una coincidencia fuerte, hasta
+     * MAX_DESCENSO_NAVEGACION niveles). Si ninguna coincide, se mantiene el
+     * destino original.
+     */
+    async _descenderCandidato(jid, text, cand, onTokens, profundidad = 0) {
+        if (profundidad >= MAX_DESCENSO_NAVEGACION) return cand;
+        try {
+            const nodo = await this._resolverNodoPorCandidato(jid, cand.scope, cand.trigger, cand.nodeId);
+            if (!nodo || !nodo.id) return cand;
+
+            const tienePagar = !!(nodo.message && nodo.message.includes('##PAGAR##'));
+            const hijos = await this._getChildren(nodo.id).catch(() => []);
+            const navegables = this._filtrarNavegables(hijos, tienePagar, jid);
+
+            const subCands = [];
+            for (const h of navegables) {
+                const t = String(h.trigger || '').trim();
+                if (!t) continue;
+                const nietos = await this._getChildren(h.id).catch(() => []);
+                subCands.push({
+                    key: `sub:${t}`,
+                    trigger: t,
+                    title: h.title || t,
+                    nodeId: h.id,
+                    funcion: h.funcion || '',
+                    seccion: nietos.some((g) => !this._esPasoCheckout(g))
+                });
+            }
+            if (subCands.length === 0) return cand;
+
+            const tituloNodo = nodo.title || cand.title || cand.trigger;
+            const claveQuedarse = 'QUEDARSE';
+            const criteria = {
+                [claveQuedarse]: `quedarse en "${tituloNodo}" (la consulta es general o ninguna sub-opción coincide)`
+            };
+            const lineasSub = [];
+            for (const s of subCands) {
+                criteria[s.key] = `acceder a "${s.title}"${s.funcion ? ` — ${s.funcion}` : ''}`;
+                lineasSub.push(`  ${s.key}→${s.title}${s.funcion ? ` — ${s.funcion}` : ''}`);
+            }
+
+            const estado = [
+                `CONSULTA DEL CLIENTE: "${text}"`,
+                `El cliente está por entrar a "${tituloNodo}", que tiene sub-opciones.`,
+                'SUB-OPCIONES (clave→título):',
+                lineasSub.join('\n'),
+                `  ${claveQuedarse}→quedarse en "${tituloNodo}"`
+            ].join('\n');
+
+            const respuesta = await jevService.consultarJev(estado, {
+                subcategoria: {
+                    type: 'choice',
+                    instructions: 'Determiná si la consulta del cliente apunta a ALGUNA de las sub-opciones (buscaba algo puntual dentro de la sección) o si se refiere a la sección en general. Si una sub-opción coincide claramente, elegí su clave; si ninguna coincide o la consulta era general, elegí QUEDARSE.',
+                    criteria
+                }
+            });
+
+            const usage = jevService.tokensUsados(respuesta);
+            if (usage > 0 && typeof onTokens === 'function') onTokens(usage);
+
+            const ch = jevService.obtenerChoice(respuesta, 'subcategoria');
+            if (ch && ch.choice && ch.choice !== claveQuedarse &&
+                typeof ch.confidence === 'number' && ch.confidence >= jevService.UMBRAL_NAVEGACION) {
+                const sub = subCands.find((s) => s.key === ch.choice);
+                if (sub) {
+                    console.log(`[Jev] ${this.idCliente}: descenso "${tituloNodo}" -> "${sub.title}" (confianza ${ch.confidence.toFixed(2)}) | msg: "${text}"`);
+                    const elegido = {
+                        key: sub.key,
+                        scope: 'nodo',
+                        trigger: sub.trigger,
+                        title: sub.title,
+                        price: '',
+                        funcion: sub.funcion,
+                        seccion: sub.seccion,
+                        ruta: [...(cand.ruta || []), tituloNodo],
+                        nodeId: sub.nodeId
+                    };
+                    // Si la sub-opción también es una sección, probamos bajar un nivel más.
+                    return await this._descenderCandidato(jid, text, elegido, onTokens, profundidad + 1);
+                }
+            }
+            return cand;
+        } catch (err) {
+            console.error(`[Jev] Error descendiendo candidato ${this.idCliente}:`, err.message);
+            return cand;
+        }
     }
 
     /**

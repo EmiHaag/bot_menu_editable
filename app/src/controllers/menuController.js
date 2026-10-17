@@ -494,7 +494,12 @@ class MenuController {
         // PAGINACIÓN: si hay más opciones que el tope, la lista completa se
         // guarda en estado temporal y se muestra página por página.
         let listado = null;
-        if (visibleNodes.length > MAX_ITEMS_POR_PAGINA) {
+        // La paginación existe para no saturar el chat con las fotos de vista
+        // previa (máx. MAX_ITEMS_POR_PAGINA por bloque). Si ninguna opción del
+        // nivel tiene imágenes, no hay nada que paginar: mostramos el menú
+        // completo de una sola vez.
+        const hayImagenes = visibleNodes.some(n => n && Array.isArray(n.imagenes) && n.imagenes.length > 0);
+        if (visibleNodes.length > MAX_ITEMS_POR_PAGINA && hayImagenes) {
             listado = this.stateService.getMenuListado(jid);
             // La lista cacheada pertenece a otro menú: se descarta.
             if (listado && listado.parentId !== parentId) listado = null;
