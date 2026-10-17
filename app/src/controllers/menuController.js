@@ -1135,7 +1135,8 @@ class MenuController {
         }
 
         let msg = await this.replaceOrderSummary(node.message, jid);
-        msg += `\n\n📅 *¿Para qué día querés tu turno?*\n\n_Escribí la fecha (ej: *25/12* o *25/12/2026*)._`;
+        const servicioTxt = node.title ? ` de *${node.title}*` : '';
+        msg += `\n\n📅 *¿Para qué día querés el turno${servicioTxt}?*\n\n_Escribí la fecha (ej: *25/12* o *25/12/2026*)._`;
         msg += `\n\n_Escribe *v* para volver atrás._`;
         await this.sendPresenceTyping(sock, jid);
         await sock.sendMessage(jid, { text: msg });
@@ -1243,7 +1244,8 @@ class MenuController {
             this.stateService.clearWaitingTurnoSlot(jid);
             this.stateService.setWaitingTurnoDate(jid, { id: session.nodeId, title: session.nodeTitle || '' });
             await this.sendPresenceTyping(sock, jid);
-            await sock.sendMessage(jid, { text: '📅 ¿Para qué día querés tu turno?' });
+            const servicioTxt = session.nodeTitle ? ` de *${session.nodeTitle}*` : '';
+            await sock.sendMessage(jid, { text: `📅 ¿Para qué día querés el turno${servicioTxt}?` });
             return;
         }
         if (text === '0') {
@@ -1260,8 +1262,9 @@ class MenuController {
             this.stateService.clearWaitingTurnoSlot(jid);
             this.stateService.setWaitingTurnoWaitlistName(jid, { ...session, slot: ocupado });
             await this.sendPresenceTyping(sock, jid);
+            const servicioWaitlist = session.nodeTitle ? ` para *${session.nodeTitle}*` : '';
             await sock.sendMessage(jid, {
-                text: `✅ Anotaste para avisarte si se libera *${this._fmtFecha(session.fecha)} a las ${ocupado.label}*.\n\n📝 ¿Cuál es tu nombre?`
+                text: `✅ Anotaste para avisarte si se libera *${this._fmtFecha(session.fecha)} a las ${ocupado.label}*${servicioWaitlist}.\n\n📝 ¿Cuál es tu nombre?`
             });
             return;
         }
@@ -1277,8 +1280,9 @@ class MenuController {
         this.stateService.setWaitingTurnoConfirm(jid, { ...session, slot, nombre: '' });
 
         await this.sendPresenceTyping(sock, jid);
+        const servicioSlot = session.nodeTitle ? ` para *${session.nodeTitle}*` : '';
         await sock.sendMessage(jid, {
-            text: `✅ Elegiste *${this._fmtFecha(session.fecha)} a las ${slot.label}*.\n\n📝 ¿Cuál es tu nombre?`
+            text: `✅ Elegiste *${this._fmtFecha(session.fecha)} a las ${slot.label}*${servicioSlot}.\n\n📝 ¿Cuál es tu nombre?`
         });
     }
 
@@ -1352,6 +1356,7 @@ class MenuController {
                 await this.sendPresenceTyping(sock, jid);
                 await sock.sendMessage(jid, {
                     text: `✅ *Turno confirmado!*\n\n` +
+                        (session.nodeTitle ? `🏷️ Servicio: *${session.nodeTitle}*\n` : '') +
                         `📅 ${this._fmtFecha(session.fecha)} a las *${session.slot.label}*\n` +
                         `👤 ${session.nombre}\n\nTe esperamos.\n\n_Escribe *0* para volver al menú principal._`
                 });
@@ -1483,7 +1488,8 @@ class MenuController {
             this.stateService.clearWaitingTurnoWaitlistName(jid);
             this.stateService.setWaitingTurnoDate(jid, { id: session.nodeId, title: session.nodeTitle || '' });
             await this.sendPresenceTyping(sock, jid);
-            await sock.sendMessage(jid, { text: '📅 ¿Para qué día querés tu turno?' });
+            const servicioTxt = session.nodeTitle ? ` de *${session.nodeTitle}*` : '';
+            await sock.sendMessage(jid, { text: `📅 ¿Para qué día querés el turno${servicioTxt}?` });
             return;
         }
         if (text === '0') {

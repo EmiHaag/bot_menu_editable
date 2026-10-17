@@ -1039,6 +1039,12 @@ class Dashboard {
                 let aiCfg = typeof ai_config !== 'undefined' ? ai_config : current.ai_config;
                 if (aiCfg && typeof aiCfg === 'object') {
                     const curAi = current.ai_config || {};
+                    // El asistente IA / motor de decisiones (Jev) es exclusivo de premium:
+                    // si el comercio no lo es, nunca se deja activado.
+                    const esPremium = await require('../services/planService').verificarPlanPremium(botId).catch(() => false);
+                    if (!esPremium) {
+                        aiCfg = { ...aiCfg, enabled: false };
+                    }
                     // Registrar fecha de activación la primera vez que se enciende
                     if (aiCfg.enabled && !curAi.activadoEn && !aiCfg.activadoEn) {
                         aiCfg = { ...aiCfg, activadoEn: new Date().toISOString() };
@@ -1132,6 +1138,8 @@ class Dashboard {
                 const activeClients = await userService.getActiveClients();
 
                 const targetUser = (await userService.getUsers()).find(u => u.idCliente === botId);
+                // Motor de decisión (Jev) y campo "función" del nodo: exclusivos de premium.
+                const esPremiumPlan = !!(targetUser && targetUser.plan === 'premium');
                 const scheduleConfig = {
                     online24_7: targetUser ? targetUser.online24_7 !== false : true,
                     horarios: targetUser ? parseHorariosJson(targetUser.horarios) : {}
@@ -1204,7 +1212,7 @@ class Dashboard {
                         : `<span class="connector" style="color: #999;">${connector}</span><b>${displayTrigger}</b>`)
                     : `<b>${displayTrigger}</b>`;
 
-                const sinFuncion = !node.funcion || !String(node.funcion).trim();
+                const sinFuncion = esPremiumPlan && (!node.funcion || !String(node.funcion).trim());
 
                 const metaJson = JSON.stringify({
                     id: node.id,
@@ -1221,7 +1229,7 @@ class Dashboard {
                 }).replace(/'/g, '&#39;');
 
                 return `
-                <tr data-meta='${metaJson}'${sinFuncion ? ' class="row-sin-funcion"' : ''}>
+                <tr${esPremiumPlan ? ` data-meta='${metaJson}'` : ''}${sinFuncion ? ' class="row-sin-funcion"' : ''}>
                     <td${indent}>${triggerCell}</td>
                     <td>${displayTitle}</td>
                     <td style="max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${cleanMessage}</td>
@@ -2502,6 +2510,7 @@ ${helpGuideHTML}
                                                 </label>
                                                 <textarea id="addMessage" name="message" rows="3" placeholder="Mensaje que enviará el bot..." oninput="updatePreview('add')"></textarea>
                                             </div>
+                                            ${esPremiumPlan ? `
                                             <div class="form-group" id="addFuncionGroup">
                                                 <label style="display: flex; align-items: center;">
                                                     Qué función cumple esta opción?<span style="color:#dc3545;margin-left:3px;">*</span>
@@ -2515,6 +2524,7 @@ ${helpGuideHTML}
                                                 </div>
                                                 <small id="addFuncionMsg" style="color:#888;"></small>
                                             </div>
+                                            ` : ''}
                                             <div class="form-group" style="margin-bottom: 12px;">
                                                 <label style="display: flex; align-items: center;">Imágenes del catálogo
                                                     <span class="info-icon">i
@@ -2702,6 +2712,7 @@ ${helpGuideHTML}
                                             </label>
                                             <textarea id="editMessage" name="message" rows="4" oninput="updatePreview('edit')"></textarea>
                                         </div>
+                                        ${esPremiumPlan ? `
                                         <div class="form-group" id="editFuncionGroup">
                                             <label style="display: flex; align-items: center;">
                                                 Qué función cumple esta opción?<span style="color:#dc3545;margin-left:3px;">*</span>
@@ -2715,6 +2726,7 @@ ${helpGuideHTML}
                                             </div>
                                             <small id="editFuncionMsg" style="color:#888;"></small>
                                         </div>
+                                        ` : ''}
                                         <div class="form-group" style="margin-bottom: 12px;">
                                             <label style="display: flex; align-items: center;">Imágenes del catálogo
                                                 <span class="info-icon">i
@@ -4017,6 +4029,7 @@ ${helpGuideJS}
 
                             const payload = {
                                 type: type,
+                                botId: botId,
                                 id: (document.getElementById(type + 'Id') || {}).value || '',
                                 parentId: parentId,
                                 trigger: (document.getElementById(type + 'Trigger') || {}).value || '',
@@ -4113,8 +4126,10 @@ ${helpGuideJS}
                             document.getElementById('editTitle').value = node.title;
                             document.getElementById('editMessage').value = stripTagsFromMessage(node.message || '');
                             document.getElementById('editPrice').value = node.price || '';
-                            document.getElementById('editFuncion').value = node.funcion || '';
-                            document.getElementById('editFuncionMsg').textContent = '';
+                            const editFuncionEl = document.getElementById('editFuncion');
+                            if (editFuncionEl) editFuncionEl.value = node.funcion || '';
+                            const editFuncionMsgEl = document.getElementById('editFuncionMsg');
+                            if (editFuncionMsgEl) editFuncionMsgEl.textContent = '';
                             document.getElementById('editIsOrder').checked = isOrder;
                             document.getElementById('editIsQty').checked = isQty;
                             document.getElementById('editIsFinal').checked = isFinal;
@@ -4770,7 +4785,9 @@ ${helpGuideJS}
                     funcion
                 } = req.body;
 
-                if (!funcion || !String(funcion).trim()) {
+                // El campo "función" es una ayuda para la IA (Jev), solo premium.
+                const esPremium = await require('../services/planService').verificarPlanPremium(botId).catch(() => false);
+                if (esPremium && (!funcion || !String(funcion).trim())) {
                     return res.status(400).send('El campo "Qué función cumple esta opción?" es obligatorio. Escribila o usá "Sugerir con IA".');
                 }
 
@@ -4785,7 +4802,7 @@ ${helpGuideJS}
                     redirigirA,
                     disponible: disponible || 'true',
                     imagenes,
-                    funcion
+                    funcion: (funcion && String(funcion).trim()) || funcionPorDefecto({ ...req.body })
                 });
                 res.redirect(`/app/?botId=${encodeURIComponent(botId)}`);
             } catch (error) {
@@ -4839,6 +4856,12 @@ ${helpGuideJS}
         // Ruta JSON API para sugerir la "función" de un nodo con IA (campo de metadatos)
         router.post('/api/suggest-funcion', async (req, res) => {
             try {
+                // La sugerencia de "función" alimenta a la IA clasificadora (Jev): solo premium.
+                const { service, botId } = await getServiceInfo(req);
+                const esPremium = await require('../services/planService').verificarPlanPremium(botId).catch(() => false);
+                if (!esPremium) {
+                    return res.status(403).json({ success: false, error: 'Requiere plan premium' });
+                }
                 const { title, trigger, price, message, rawMessage, categoria, catFuncion, hermanos } = req.body;
                 const texto = [title, message, categoria, rawMessage].filter(Boolean).join(' ').trim();
                 if (!texto) {
@@ -4905,7 +4928,9 @@ ${helpGuideJS}
                     funcion
                 } = req.body;
 
-                if (!funcion || !String(funcion).trim()) {
+                // El campo "función" es una ayuda para la IA (Jev), solo premium.
+                const esPremium = await require('../services/planService').verificarPlanPremium(botId).catch(() => false);
+                if (esPremium && (!funcion || !String(funcion).trim())) {
                     return res.status(400).send('El campo "Qué función cumple esta opción?" es obligatorio. Escribila o usá "Sugerir con IA".');
                 }
 
@@ -4919,7 +4944,7 @@ ${helpGuideJS}
                     redirigirA,
                     disponible: disponible || 'true',
                     imagenes,
-                    funcion
+                    funcion: (funcion && String(funcion).trim()) || funcionPorDefecto({ ...req.body })
                 });
 
                 res.redirect(`/app/?botId=${encodeURIComponent(botId)}`);
