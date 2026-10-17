@@ -1861,6 +1861,12 @@ class AITranslatorController {
             /(?:^|\n)\*[a-z0-9]+\*\.\s+\S+/i.test(rawText);
         if (!tieneNodos) return rawText;
 
+        // Bots de TURNOS: el menú numerado es la UI de navegación (el cliente
+        // elige por número o por nombre). La reescritura le quita los números y
+        // lo deja sin referencia para responder, así que devolvemos el menú tal
+        // cual (con sus opciones numeradas).
+        if (this._botType === 'TURNOS') return rawText;
+
         // Gates premium/ai/quota: sin ellos, el menú se muestra tal cual.
         const user = await userService.getUserByIdCliente(this.idCliente).catch(() => null);
         if (!user || user.plan !== 'premium') return rawText;

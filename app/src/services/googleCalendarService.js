@@ -179,6 +179,21 @@ class GoogleCalendarService extends GoogleAuthBase {
     }
 
     /**
+     * Obtiene un evento puntual (para mostrar detalle de turnos viejos que no
+     * tengan el servicio guardado en la base).
+     */
+    async obtenerEvento({ calendarId, eventId }) {
+        if (!calendarId || !eventId) throw new Error('calendar_id/eventId requeridos');
+        try {
+            const res = await this.calendar.events.get({ calendarId, eventId });
+            return res.data;
+        } catch (err) {
+            console.error('[Calendar] Error obteniendo evento:', err.message);
+            return null;
+        }
+    }
+
+    /**
      * Elimina un evento del calendario.
      */
     async cancelarTurno({ calendarId, eventId }) {

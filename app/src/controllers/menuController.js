@@ -1345,6 +1345,7 @@ class MenuController {
                     idCliente: this.stateService.clientId,
                     clienteTelefono: jid,
                     clienteNombre: session.nombre,
+                    servicio: session.nodeTitle || '',
                     fechaInicio: session.slot.startISO,
                     fechaFin: session.slot.endISO
                 });
@@ -1583,6 +1584,7 @@ class MenuController {
                     idCliente: this.stateService.clientId,
                     clienteTelefono: jid,
                     clienteNombre: data.nombre,
+                    servicio: data.nodeTitle || '',
                     fechaInicio: data.startISO,
                     fechaFin: data.endISO
                 });
@@ -1643,26 +1645,100 @@ class MenuController {
             return;
         }
 
+        // Completar el servicio en turnos viejos (reservados antes de que se
+        // guardara en la base): se recupera del evento de Google Calendar.
+        await this._completarServicioTurnos(display.map((d) => d.turno));
+
         // Guardar solo los seleccionables para la elección numerada
         this.stateService.setMisTurnos(jid, seleccionables);
 
         let msg = `🗓️ *Tus turnos:*\n\n`;
         let num = 0;
         display.forEach(({ turno: t, paso }) => {
-            const fecha = this._fmtTurnoFecha(t.fecha_inicio);
-            const hora = this._fmtTurnoHora(t.fecha_inicio);
+            const resumen = this._fmtTurnoResumen(t);
             const estado = t.estado === 'confirmado' ? '✅' : (t.estado === 'recordado' ? '🔔' : '⏳');
             if (paso) {
-                msg += `~${estado} ${fecha} a las ${hora} (${t.cliente_nombre || ''}) (vencido)~\n`;
+                msg += `~${estado} ${resumen} (vencido)~\n`;
             } else {
                 num += 1;
-                msg += `${estado} *${num}*. ${fecha} a las ${hora} (${t.cliente_nombre || ''})\n`;
+                msg += `${estado} *${num}*. ${resumen}\n`;
             }
         });
         msg += `\n_Escribí el número de un turno para verlo. Escribe *0* para salir._`;
 
         await this.sendPresenceTyping(sock, jid);
         await sock.sendMessage(jid, { text: msg });
+    }
+
+    /**
+     * Recupera el servicio de turnos que no lo tengan guardado (filas viejas),
+     * leyendo el evento de Google Calendar. Es best-effort: si falla, se omite.
+     */
+    async _completarServicioTurnos(turnos) {
+        const faltantes = (turnos || []).filter((t) => t && !t.servicio && t.google_event_id);
+        if (!faltantes.length) return;
+        let calendarId = '';
+        try {
+            const cfg = await botConfigService.getBotConfig(this.stateService.clientId);
+            calendarId = (cfg.calendar_config || {}).calendar_id || '';
+        } catch (err) {
+            return;
+        }
+        if (!calendarId) return;
+        for (const t of faltantes) {
+            try {
+                const evento = await calendarService.obtenerEvento({ calendarId, eventId: t.google_event_id });
+                const servicio = this._servicioDelEvento(evento);
+                if (servicio) {
+                    t.servicio = servicio;
+                    botConfigService.actualizarServicioTurno(t.google_event_id, servicio).catch(() => {});
+                }
+            } catch (err) {
+                // best-effort: seguimos con el resto
+            }
+        }
+    }
+
+    /** Extrae el nombre del servicio del evento ("Servicio: X" o "X: Nombre"). */
+    _servicioDelEvento(evento) {
+        if (!evento) return '';
+        const desc = String(evento.description || '');
+        const m = desc.match(/Servicio:\s*(.+)/i);
+        if (m) {
+            const s = String(m[1]).split('\n')[0].trim();
+            if (s && s !== '-') return s;
+        }
+        const sum = String(evento.summary || '').trim();
+        const idx = sum.indexOf(': ');
+        return idx > 0 ? sum.slice(0, idx).trim() : '';
+    }
+
+    /** Rango horario legible del turno ("10:00 a 11:00" o "10:00"). */
+    _fmtTurnoRango(t) {
+        const inicio = this._fmtTurnoHora(t.fecha_inicio);
+        const fin = t.fecha_fin ? this._fmtTurnoHora(t.fecha_fin) : '';
+        return (fin && fin !== inicio) ? `${inicio} a ${fin}` : inicio;
+    }
+
+    /** Resumen de una línea para la lista de turnos. */
+    _fmtTurnoResumen(t) {
+        const fecha = this._fmtTurnoFecha(t.fecha_inicio);
+        const servicio = t.servicio ? `${t.servicio} — ` : '';
+        return `${servicio}${fecha} · ${this._fmtTurnoRango(t)} hs`;
+    }
+
+    /** Detalle completo del turno para la vista de consulta. */
+    _fmtTurnoDetalle(t) {
+        const estado = t.estado === 'confirmado'
+            ? 'Confirmado ✅'
+            : (t.estado === 'recordado' ? 'Recordado 🔔' : 'Pendiente ⏳');
+        let out = '';
+        if (t.servicio) out += `🏷️ Servicio: *${t.servicio}*\n`;
+        out += `📆 Fecha: *${this._fmtTurnoFecha(t.fecha_inicio)}*\n`;
+        out += `🕐 Horario: *${this._fmtTurnoRango(t)} hs*\n`;
+        if (t.cliente_nombre) out += `👤 A nombre de: *${t.cliente_nombre}*\n`;
+        out += `📌 Estado: ${estado}\n`;
+        return out;
     }
 
     /**
@@ -1689,16 +1765,28 @@ class MenuController {
         const fecha = this._fmtTurnoFecha(turno.fecha_inicio);
         const hora = this._fmtTurnoHora(turno.fecha_inicio);
 
+        // Completar el servicio si es un turno viejo sin él guardado.
+        await this._completarServicioTurnos([turno]);
+
         // Guardar el turno seleccionado para confirmar/cancelar
-        this.stateService.setMisTurnoSeleccionado(jid, { eventId: turno.google_event_id, fecha, hora });
+        this.stateService.setMisTurnoSeleccionado(jid, {
+            eventId: turno.google_event_id,
+            fecha,
+            hora,
+            horaFin: turno.fecha_fin ? this._fmtTurnoHora(turno.fecha_fin) : '',
+            servicio: turno.servicio || '',
+            nombre: turno.cliente_nombre || ''
+        });
+
+        const detalle = this._fmtTurnoDetalle(turno);
         await this.sendPresenceTyping(sock, jid);
         if (await this._misTurnosCancelarHabilitado()) {
             await sock.sendMessage(jid, {
-                text: `📅 *${fecha} a las ${hora}*\n\n¿Qué querés hacer?\n\n*1*. Dejarlo así\n*2*. Cancelar turno`
+                text: `📅 *Tu turno*\n\n${detalle}\n¿Qué querés hacer?\n\n*1*. Dejarlo así\n*2*. Cancelar turno`
             });
         } else {
             await sock.sendMessage(jid, {
-                text: `📅 *${fecha} a las ${hora}*\n\nTu turno está reservado. Escribí *0* para volver al menú principal.`
+                text: `📅 *Tu turno*\n\n${detalle}\nTu turno está reservado. Escribí *0* para volver al menú principal.`
             });
         }
     }
@@ -1711,8 +1799,10 @@ class MenuController {
             // "Dejarlo así": el turno ya quedó reservado cuando se creó, así que
             // no hacemos ningún cambio. Solo avisamos y volvemos a la lista.
             this.stateService.clearMisTurnoSeleccionado(jid);
+            const ref = data.servicio ? `tu turno de *${data.servicio}*` : 'tu turno';
+            const cuando = `${data.fecha} a las ${data.hora}${data.horaFin ? ` a ${data.horaFin}` : ''}`;
             await this.sendPresenceTyping(sock, jid);
-            await sock.sendMessage(jid, { text: `👍 Listo, dejamos tu turno del *${data.fecha} a las ${data.hora}* como está.` });
+            await sock.sendMessage(jid, { text: `👍 Listo, dejamos ${ref} del *${cuando}* como está.` });
             await this._mostrarMisTurnos(sock, jid, null);
             return;
         }

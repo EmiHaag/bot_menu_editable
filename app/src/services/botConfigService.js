@@ -75,6 +75,7 @@ async function ensureTable() {
             CREATE UNIQUE INDEX IF NOT EXISTS turnos_event_uq ON turnos (google_event_id)
         `;
         await sql`ALTER TABLE turnos ADD COLUMN IF NOT EXISTS recordatorio_enviado BOOLEAN NOT NULL DEFAULT false`;
+        await sql`ALTER TABLE turnos ADD COLUMN IF NOT EXISTS servicio TEXT DEFAULT ''`;
         await sql`
             CREATE TABLE IF NOT EXISTS lista_espera (
                 id SERIAL PRIMARY KEY,
@@ -178,13 +179,13 @@ function normalizarTelefono(telefono) {
     return String(telefono).split('@')[0];
 }
 
-async function registrarTurno({ googleEventId, idCliente, clienteTelefono, clienteNombre, fechaInicio, fechaFin }) {
+async function registrarTurno({ googleEventId, idCliente, clienteTelefono, clienteNombre, servicio = '', fechaInicio, fechaFin }) {
     if (!sql || !googleEventId || !idCliente) return false;
     const numero = normalizarTelefono(clienteTelefono);
     try {
         await sql`
-            INSERT INTO turnos (google_event_id, id_cliente, cliente_telefono, cliente_nombre, fecha_inicio, fecha_fin, estado)
-            VALUES (${googleEventId}, ${idCliente}, ${numero}, ${clienteNombre || ''}, ${fechaInicio}, ${fechaFin}, 'activo')
+            INSERT INTO turnos (google_event_id, id_cliente, cliente_telefono, cliente_nombre, fecha_inicio, fecha_fin, estado, servicio)
+            VALUES (${googleEventId}, ${idCliente}, ${numero}, ${clienteNombre || ''}, ${fechaInicio}, ${fechaFin}, 'activo', ${servicio || ''})
             ON CONFLICT (google_event_id) DO NOTHING
         `;
         return true;
@@ -294,6 +295,17 @@ async function actualizarEstadoTurno(googleEventId, estado) {
     }
 }
 
+async function actualizarServicioTurno(googleEventId, servicio) {
+    if (!sql || !googleEventId || !servicio) return false;
+    try {
+        await sql`UPDATE turnos SET servicio = ${servicio} WHERE google_event_id = ${googleEventId}`;
+        return true;
+    } catch (err) {
+        console.error('[BotConfigService] Error actualizando servicio de turno:', err.message);
+        return false;
+    }
+}
+
 async function getTurnoByGoogleEventId(googleEventId) {
     if (!sql || !googleEventId) return null;
     try {
@@ -377,6 +389,7 @@ module.exports = {
     getTurnosProximos,
     marcarRecordatorioEnviado,
     actualizarEstadoTurno,
+    actualizarServicioTurno,
     getTurnoByGoogleEventId,
     registrarEnListaEspera,
     getListaEsperaParaSlot,
