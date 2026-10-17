@@ -967,7 +967,20 @@ class MenuController {
         if (node.redirigirA) {
             await this.sendMenu(sock, jid, node.redirigirA);
         } else {
-            this.stateService.setUserState(jid, node.id);
+            // Bots sin carrito (FAQ/TURNOS): una ficha (hoja de contenido, sin
+            // pasos de proceso) no "retiene" al cliente. Dejamos el estado en la
+            // raíz para que el próximo mensaje se interprete desde el menú
+            // principal y no quede atrapado dentro de la ficha.
+            let volverRaiz = false;
+            if (subOptions.length === 0 && nodeTags.length === 0) {
+                try {
+                    const cfg = await botConfigService.getBotConfig(this.stateService.clientId);
+                    volverRaiz = cfg.bot_type === 'FAQ' || cfg.bot_type === 'TURNOS';
+                } catch (err) {
+                    console.error('[MenuController] Error leyendo tipo de bot en ficha:', err.message);
+                }
+            }
+            this.stateService.setUserState(jid, volverRaiz ? 'root' : node.id);
         }
     }
 
