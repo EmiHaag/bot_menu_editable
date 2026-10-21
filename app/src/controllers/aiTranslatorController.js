@@ -1312,13 +1312,13 @@ class AITranslatorController {
                         if (this._esPasoCheckout(h) && hijosH.length === 0) continue;
                         const esSeccion = hijosH.some((x) => !this._esPasoCheckout(x));
                         const candidato = {
+                            key: `nodo:${h.id}`,
                             scope: 'nodo', trigger: String(h.trigger || '').trim(),
                             title: h.title || '', price: h.price || '', seccion: esSeccion,
                             funcion: h.funcion || '', ruta: rutaHijo, nodeId: h.id
                         };
-                        const key = `nodo:${h.id}`;
-                        if (candidato.trigger && !vistos.has(key)) {
-                            vistos.add(key);
+                        if (candidato.trigger && !vistos.has(candidato.key)) {
+                            vistos.add(candidato.key);
                             candidatos.push(candidato);
                             candidatosProfundos.push(candidato);
                         }
