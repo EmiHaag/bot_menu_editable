@@ -21,6 +21,11 @@ const MAX_TRANSLATION_FAILS = 3;
 // confianza alta.
 const MAX_CANDIDATOS_NAVEGACION = 45;
 
+// Palabras vacías del español/inglés comunes en pedidos de menú. Se usan para
+// el matching determinista (_matchOption) y para el scoring de relevancia de
+// candidatos profundos (_scoreRelevancia).
+const STOPWORDS = new Set(['nada', 'mas', 'más', 'solo', 'sola', 'una', 'un', 'dos', 'tres', 'el', 'la', 'los', 'las', 'y', 'e', 'mi', 'para', 'por', 'con', 'de', 'del', 'que', 'quiero', 'me', 'te', 'se', 'es', 'en', 'a', 'o', 'pero', 'cuanto', 'hay', 'tiene', 'tienen', 'trae', 'dame', 'dar', 'otra', 'otro', 'cada', 'otras', 'otros', 'seria', 'sería', 'todo']);
+
 // Profundidad de ramas que se despliegan como candidatos para Jev (hijos,
 // nietos, ...). Si en el primer nivel no hay coincidencia fuerte, Jev puede
 // elegir un nodo más profundo del subárbol del nivel actual. Configurable por
@@ -708,7 +713,7 @@ class AITranslatorController {
                 : 'PANTALLA ACTUAL: menú raíz';
 
             // Candidatos de navegación: nivel actual + menú principal + hermanos.
-            const candidatos = await this._candidatosNavegacion(jid, nodeId, options);
+            const candidatos = await this._candidatosNavegacion(jid, nodeId, options, text);
             const padreHermanos = (nodoActual && nodoActual.parentId && nodoActual.parentId !== 'root')
                 ? ((await this._getNodeById(nodoActual.parentId).catch(() => null)) || {}).title || ''
                 : '';
@@ -1078,7 +1083,6 @@ class AITranslatorController {
             if (titulo.length >= 3 && texto.includes(titulo)) return opt.trigger;
         }
         // 4. Coincidencia por palabras clave (término más largo del input que esté en el título)
-        const STOPWORDS = new Set(['nada', 'mas', 'más', 'solo', 'sola', 'una', 'un', 'dos', 'tres', 'el', 'la', 'los', 'las', 'y', 'e', 'mi', 'para', 'por', 'con', 'de', 'del', 'que', 'que', 'quiero', 'me', 'te', 'se', 'es', 'en', 'a', 'o', 'pero', 'cuanto', 'hay', 'tiene', 'tienen', 'trae', 'dame', 'dar', 'otra', 'otro', 'mas', 'cada', 'otras', 'otros', 'seria', 'sería', 'todo']);
         const palabras = texto.split(/\s+/).filter(w => w.length >= 3 && !STOPWORDS.has(w));
         for (const opt of options) {
             const titulo = this._normalizarMatch(opt.title);
@@ -1182,6 +1186,60 @@ class AITranslatorController {
     }
 
     /**
+     * Score de relevancia (0..~100+) de un candidato de navegación contra el
+     * texto del cliente. Se usa para ORDENAR/DESCARTAR candidatos profundos
+     * cuando el subárbol supera MAX_CANDIDATOS_NAVEGACION (Opción B: recorte
+     * por relevancia en vez de por orden de llegada). Reutiliza la misma
+     * lógica de matching que _matchOption (exacto, inclusión, palabras clave,
+     * raíz/plural y colapso de letras dobles).
+     */
+    _scoreRelevancia(texto, cand) {
+        const t = this._normalizarMatch(texto);
+        if (!t) return 0;
+        const titulo = this._normalizarMatch(cand.title || '');
+        const funcion = this._normalizarMatch(cand.funcion || '');
+        if (!titulo && !funcion) return 0;
+
+        let score = 0;
+
+        // Coincidencia exacta o por inclusión: máxima relevancia.
+        if (titulo && (titulo === t || (t.length >= 3 && titulo.includes(t)) || (titulo.length >= 3 && t.includes(titulo)))) {
+            return 100;
+        }
+
+        // Palabras del input presentes en el título (o en la función declarada).
+        const palabras = t.split(/\s+/).filter(w => w.length >= 3 && !STOPWORDS.has(w));
+        if (palabras.length === 0) return 0;
+
+        const raices = new Set();
+        for (const w of palabras) {
+            raices.add(w);
+            if (w.length > 4 && w.endsWith('s')) raices.add(w.slice(0, -1));
+        }
+        const colapsar = s => s.replace(/(.)\1+/g, '$1');
+        const tituloColapsado = colapsar(titulo);
+        const funcionColapsada = colapsar(funcion);
+
+        let coincidencias = 0;
+        for (const r of raices) {
+            if (titulo.includes(r) || funcion.includes(r)) {
+                coincidencias++;
+            } else {
+                const rc = colapsar(r);
+                if (rc.length >= 4 && (tituloColapsado.includes(rc) || funcionColapsada.includes(rc))) {
+                    coincidencias++;
+                }
+            }
+        }
+        score = (coincidencias / raices.size) * 80;
+
+        // Bonus: cuantas más palabras del input calzan, más seguro es el destino.
+        score += Math.min(coincidencias, 3) * 5;
+
+        return score;
+    }
+
+    /**
      * Arma los candidatos de navegación que Jev puede elegir como destino:
      * opciones del nivel actual (scope 'actual') + secciones del menú principal
      * (scope 'raiz') + secciones hermanas de la sección donde está el cliente
@@ -1189,7 +1247,7 @@ class AITranslatorController {
      * para que Jev pueda referenciar sin ambigüedad incluso si dos niveles
      * comparten el mismo trigger.
      */
-    async _candidatosNavegacion(jid, nodeId, optionsActual) {
+    async _candidatosNavegacion(jid, nodeId, optionsActual, text) {
         const nodoActual = await this._getNodeById(nodeId).catch(() => null);
         const candidatos = [];
         const vistos = new Set();
@@ -1232,9 +1290,17 @@ class AITranslatorController {
         // sin carrito (FAQ y TURNOS): navegan entre las ramas del menú. En el
         // bot de ventas (CARRITO) un ítem profundo debe agregarse al carrito,
         // no navegarse al abrir la categoría, así que se deja fuera.
+        //
+        // IMPORTANTE: el BFS NO corta por cantidad durante el recorrido (eso
+        // descartaba hojas relevantes de ramas anchas, ver MAX_CANDIDATOS).
+        // Recolecta todo el subárbol a profundidad y el recorte se hace al
+        // final por score de relevancia contra el texto del cliente (Opción B),
+        // para que una hoja profunda y pertinente compita por cupo aunque su
+        // rama venga tarde en el orden de hijos.
+        const candidatosProfundos = [];
         if (this._esFAQ() || this._botType === 'TURNOS') {
             let pendientes = (await this._getChildren(nodeId).catch(() => [])).map((n) => ({ node: n, ruta: [] }));
-            for (let d = 2; d <= PROFUNDIDAD_NAVEGACION && candidatos.length < MAX_CANDIDATOS_NAVEGACION; d++) {
+            for (let d = 2; d <= PROFUNDIDAD_NAVEGACION; d++) {
                 const siguientes = [];
                 for (const { node: padre, ruta } of pendientes) {
                     const tienePagar = !!(padre.message && padre.message.includes('##PAGAR##'));
@@ -1245,11 +1311,19 @@ class AITranslatorController {
                         // Los pasos de checkout solo se listan si tienen sub-ramas.
                         if (this._esPasoCheckout(h) && hijosH.length === 0) continue;
                         const esSeccion = hijosH.some((x) => !this._esPasoCheckout(x));
-                        agregar('nodo', h.trigger, h.title, h.price, esSeccion, h.funcion, rutaHijo, h.id);
+                        const candidato = {
+                            scope: 'nodo', trigger: String(h.trigger || '').trim(),
+                            title: h.title || '', price: h.price || '', seccion: esSeccion,
+                            funcion: h.funcion || '', ruta: rutaHijo, nodeId: h.id
+                        };
+                        const key = `nodo:${h.id}`;
+                        if (candidato.trigger && !vistos.has(key)) {
+                            vistos.add(key);
+                            candidatos.push(candidato);
+                            candidatosProfundos.push(candidato);
+                        }
                         siguientes.push({ node: h, ruta: rutaHijo });
-                        if (candidatos.length >= MAX_CANDIDATOS_NAVEGACION) break;
                     }
-                    if (candidatos.length >= MAX_CANDIDATOS_NAVEGACION) break;
                 }
                 pendientes = siguientes;
                 if (!pendientes.length) break;
@@ -1277,6 +1351,27 @@ class AITranslatorController {
             for (const c of this._filtrarNavegables(hermanos, tienePagar, jid)) {
                 agregar('hermano', c.trigger, c.title, c.price, true, c.funcion || '', '', '');
             }
+        }
+
+        // Si el total de candidatos supera el tope, recortamos por relevancia
+        // (Opción B). Los candidatos "no profundos" (nivel actual, especial,
+        // raíz, hermano) van SIEMPRE: son pocos, visibles en pantalla o son el
+        // menú vecino. Solo los profundos (scope 'nodo') compiten por cupo
+        // según su score contra el texto del cliente, en vez de ganar por orden
+        // de llegada. Así una hoja pertinente de una rama ancha no se pierde.
+        if (candidatos.length > MAX_CANDIDATOS_NAVEGACION) {
+            const fijos = candidatos.filter((c) => c.scope !== 'nodo');
+            const profundos = candidatosProfundos
+                .map((c) => ({ ...c, _score: this._scoreRelevancia(text, c) }))
+                .sort((a, b) => b._score - a._score)
+                .slice(0, Math.max(0, MAX_CANDIDATOS_NAVEGACION - fijos.length))
+                .map(({ _score, ...c }) => c);
+            // Mezclamos fijos + los mejores profundos; el orden final no importa
+            // porque Jev recibe todos como criterios (clave→descripción).
+            const recortados = [...fijos, ...profundos];
+            for (const c of profundos) vistos.add(c.key);
+            candidatos.length = 0;
+            candidatos.push(...recortados);
         }
 
         return candidatos.slice(0, MAX_CANDIDATOS_NAVEGACION);
